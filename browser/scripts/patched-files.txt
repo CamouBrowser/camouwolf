@@ -21,6 +21,8 @@ base/i18n/icu_util.cc
 
 # --- graphics ----------------------------------------------------------------
 third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
+third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
 third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
 third_party/blink/renderer/platform/graphics/image_data_buffer.cc
 third_party/blink/renderer/core/html/canvas/text_metrics.cc

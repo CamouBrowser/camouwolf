@@ -184,14 +184,48 @@ dates there; `services/device/time_zone_monitor/time_zone_monitor.cc`
 
 ### 0007 — WebGL
 
-`webgl_rendering_context_base.cc`. Unmasked vendor/renderer **and** the numeric
-`getParameter` limits.
+`webgl_rendering_context_base.{h,cc}` and `webgl2_rendering_context_base.cc`.
+Unmasked vendor/renderer, the `getParameter` limits, the extension list and the
+shader precision table.
 
 The strings alone are not the fingerprint. Detectors read `MAX_TEXTURE_SIZE`,
 `MAX_VERTEX_UNIFORM_VECTORS` and friends and cross-check them against the
 claimed adapter: a renderer string naming an RTX 4070 whose `MAX_TEXTURE_SIZE`
 is 8192 (SwiftShader's value) is a mismatch that costs one extra call to find.
 `webgl_adapters.json` ships them as whole records so they cannot be mixed.
+
+**`webGl:parameters` / `webGl2:parameters`** — a map of decimal `pname` to
+value. A WebGL2 context reads `webGl2:parameters`, a WebGL1 context
+`webGl:parameters`; they differ on one GPU (`VERSION`,
+`SHADING_LANGUAGE_VERSION`, every WebGL2-only limit) and a page that opens both
+compares them. If the identity has no `webGl2:parameters` map at all, WebGL2
+falls back to `webGl:parameters` — the pre-existing behaviour. The WebGL2 file
+is patched because `WebGL2RenderingContextBase::getParameter` answers the
+WebGL2-only names itself and never reaches the base class for them. Values:
+number, bool, string, `null` (a configured null), or a list of 2–4 numbers,
+which becomes the `Float32Array`/`Int32Array` upstream returns for that name.
+
+**`webGl:supportedExtensions` / `webGl2:supportedExtensions`** — a list of
+names, enforced in `ExtensionSupportedAndAllowed()`, the one predicate both
+`getSupportedExtensions()` and `getExtension()` ask, so the two cannot
+disagree. The list can only *hide*: a name the host cannot provide is not
+reported, because an extension object backed by nothing fails on first use.
+The result is the configured list ∩ what the build supports, in upstream's
+order. No fallback between the two keys — the lists share almost nothing.
+`WEBGL_debug_renderer_info` must be in the list for the unmasked strings to be
+readable at all.
+
+**`webGl:shaderPrecisionFormats` / `webGl2:shaderPrecisionFormats`** — a map of
+`"<shaderType>,<precisionType>"` (decimal, Camoufox's form) to
+`{rangeMin, rangeMax, precision}`, served from `getShaderPrecisionFormat()`
+after its enum validation.
+
+Left out on purpose, following Camoufox: `webGl:contextAttributes` /
+`webGl2:contextAttributes` (Camoufox removed them in 156 — the attributes a
+page gets back depend on what it asked for, so a fixed answer contradicts the
+request) and the `:blockIfNotDefined` switches (`parameters:` removed upstream;
+`shaderPrecisionFormats:` returns null for a valid enum, which no real context
+does).
 
 ### 0008 — WebGPU
 

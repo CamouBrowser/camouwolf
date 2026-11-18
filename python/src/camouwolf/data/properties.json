@@ -120,6 +120,26 @@
     "type": "dict"
   },
   {
+    "property": "webGl2:parameters",
+    "type": "dict"
+  },
+  {
+    "property": "webGl:supportedExtensions",
+    "type": "array"
+  },
+  {
+    "property": "webGl2:supportedExtensions",
+    "type": "array"
+  },
+  {
+    "property": "webGl:shaderPrecisionFormats",
+    "type": "dict"
+  },
+  {
+    "property": "webGl2:shaderPrecisionFormats",
+    "type": "dict"
+  },
+  {
     "property": "webGpu:vendor",
     "type": "str"
   },
