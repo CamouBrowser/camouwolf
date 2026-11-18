@@ -46,7 +46,7 @@ diff --git a/base/i18n/icubridge/default_icu_locale.cc b/base/i18n/icubridge/def
 +  // tag ICU's converter rejects falls through to the caller's.
 +  LanguageTag language_tag = requested_tag;
 +  if (const std::optional<std::string> configured =
-+          CamouwolfConfig::Get().GetString("locale:all")) {
++          CamouwolfConfig::Get().GetString("locale:intl")) {
 +    if (std::optional<LanguageTag> configured_tag =
 +            GetLanguageTagFromString(*configured)) {
 +      language_tag = *configured_tag;

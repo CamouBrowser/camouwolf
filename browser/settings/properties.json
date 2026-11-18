@@ -28,7 +28,7 @@
     "type": "array"
   },
   {
-    "property": "locale:all",
+    "property": "locale:intl",
     "type": "str"
   },
   {

@@ -399,8 +399,11 @@ and a screenshot's pixel size against a run with the switch.
 
 ### 0026 — ICU default locale
 
-`base/i18n/icubridge/default_icu_locale.cc`. Key **`locale:all`** (Camoufox's
-name for the same thing), a BCP 47 tag.
+`base/i18n/icubridge/default_icu_locale.cc`. Key **`locale:intl`**, one BCP 47
+tag. (Not `locale:all`: the launcher already uses that name for the
+comma-joined language list, as Camoufox does. Camoufox builds its Intl default
+from `locale:language` + `locale:region`; one explicit tag is used here so the
+launcher decides the value, for the reason below.)
 
 `SetDefaultIcuLocale()` is the only function that can move ICU's default locale
 — upstream guards it with a pass-key — and ICU's default is what V8 reports

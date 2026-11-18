@@ -35,6 +35,7 @@ BROWSER = REPO / "browser"
 CARRIED_BY_LAUNCHER = {
     # Resolved into navigator.languages, the Accept-Language header, and the
     # font/voice draws. Never read as a key.
+    "locale:all": "launcher-internal: drives navigator.languages + fonts/voices",
     "locale:language": "launcher-internal: font and voice selection",
     "locale:region": "launcher-internal: font and voice selection",
     "locale:script": "launcher-internal: locale normalization",
