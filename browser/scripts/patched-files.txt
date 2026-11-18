@@ -17,6 +17,7 @@ components/embedder_support/user_agent_utils.cc
 # --- display / locale --------------------------------------------------------
 third_party/blink/renderer/core/frame/screen.cc
 third_party/blink/renderer/core/timezone/timezone_controller.cc
+base/i18n/icu_util.cc
 
 # --- graphics ----------------------------------------------------------------
 third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc

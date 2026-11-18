@@ -145,14 +145,42 @@ the header, and the launcher models both halves.
 
 ### 0006 — timezone
 
-`timezone_controller.cc`. The configured zone becomes the process's idea of the
-**host** zone, and is adopted as ICU's default at construction.
+`base/i18n/icu_util.cc` and `timezone_controller.cc`. Key `timezone`, an IANA
+id. Two files because the zone has to be right in two places, and the first
+version of this patch covered only one.
+
+- **`InitializeIcuTimeZone()`** (`icu_util.cc`) adopts the configured zone as
+  ICU's default. Every process runs it once, straight after ICU's data loads:
+  before the sandbox, before V8, before any mojo. So there is no moment at
+  which a process holds the host zone, V8 has nothing stale to flush, and
+  worker isolates — which read the same process-wide ICU default — agree by
+  construction.
+- **`TimeZoneController::OnTimeZoneChange()`** ignores the host's zone when one
+  is configured.
+
+The second is what the original patch missed, and why a real build reported the
+host zone from both `Date` and `Intl`. The renderer subscribes to the browser's
+`device::TimeZoneMonitor` during start-up, and `TimeZoneMonitor::AddClient()`
+does not wait for a change: it **replies at once** with the zone the browser
+captured at its own start-up. Upstream's `OnTimeZoneChange()` adopts whatever
+arrives and notifies V8. The constructor hook had adopted the configured zone
+correctly; the subscription reply replaced it a few milliseconds later, before
+the first script. Nothing was wrong with init order, the sandbox or V8's cache.
+
+With the ICU hook the browser's monitor now captures the configured zone too,
+so the reply already carries it; the `OnTimeZoneChange()` guard is still needed
+for a real host change, which on Windows includes every `WM_TIMECHANGE`.
 
 Not CDP's `Emulation.setTimezoneOverride`, for two reasons: an override is a
 distinct state upstream (`HasTimeZoneOverride()`, and a second caller gets
-`kAlreadyOverridden`), and it lands after startup, so early script and workers
-can observe the host zone first. Adopting at construction means `Date`, `Intl`
-and every worker agree from the first line of script.
+`kAlreadyInEffect`), and it lands after startup, so early script and workers
+can observe the host zone first. The CDP override still works on top of a
+configured zone.
+
+Known edge: a host zone change makes `TimeZoneMonitor` re-adopt the host zone
+in the **browser** process (renderers ignore it). Nothing page-visible formats
+dates there; `services/device/time_zone_monitor/time_zone_monitor.cc`
+`UpdateIcuAndNotifyClients()` is where to stop it if that ever matters.
 
 ### 0007 — WebGL
 
