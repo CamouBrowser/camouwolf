@@ -20,6 +20,17 @@
 #                     (default 40). A Chromium link that runs the disk to zero
 #                     takes the whole machine's other tenants down with it, so
 #                     this is checked continuously, not just at startup.
+#
+# Network:
+#   CAMOUWOLF_INSTALL_DEPS=1  run Chromium's install-build-deps.sh (uses sudo)
+#   CAMOUWOLF_RATE_LIMIT_MB  cap the whole sync's download speed, in MB/s.
+#                     gclient, git, cipd and gsutil have no limit of their own;
+#                     this routes them through browser/scripts/ratecap-proxy.py.
+#
+# Stages:
+#   CAMOUWOLF_STAGES  space-separated subset of "sync patch build" (default:
+#                     all three). "sync" alone prepares a checkout while the
+#                     patch series is still being worked on.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -82,6 +93,25 @@ watchdog &
 WATCHDOG_PID=$!
 trap 'kill "$WATCHDOG_PID" 2>/dev/null || true' EXIT
 
+STAGES=" ${CAMOUWOLF_STAGES:-sync patch build} "
+stage() { case "$STAGES" in *" $1 "*) return 0 ;; esac; return 1; }
+
+# ----------------------------------------------------------------- rate limit
+if [ -n "${CAMOUWOLF_RATE_LIMIT_MB:-}" ] && stage sync; then
+  PORT_FILE="$TMPDIR/ratecap-port.$$"
+  rm -f "$PORT_FILE"
+  python3 "$REPO/browser/scripts/ratecap-proxy.py" \
+    --mb-per-s "$CAMOUWOLF_RATE_LIMIT_MB" --port-file "$PORT_FILE" &
+  RATECAP_PID=$!
+  trap 'kill "$WATCHDOG_PID" "$RATECAP_PID" 2>/dev/null || true' EXIT
+  for _ in $(seq 50); do [ -s "$PORT_FILE" ] && break; sleep 0.1; done
+  [ -s "$PORT_FILE" ] || { echo "!! the rate-limit proxy did not start" >&2; exit 1; }
+  export https_proxy="http://127.0.0.1:$(cat "$PORT_FILE")"
+  export http_proxy="$https_proxy" HTTPS_PROXY="$https_proxy" HTTP_PROXY="$https_proxy"
+  export no_proxy="localhost,127.0.0.1" NO_PROXY="localhost,127.0.0.1"
+  echo "    downloads capped at ${CAMOUWOLF_RATE_LIMIT_MB} MB/s"
+fi
+
 # ---------------------------------------------------------------- depot_tools
 if [ ! -d "$WORK/depot_tools" ]; then
   git clone --depth 1 \
@@ -116,6 +146,8 @@ if [ ! -d "$WORK/chromium/src" ]; then
   ( cd "$WORK/chromium" && fetch --nohooks --no-history chromium )
 fi
 cd "$WORK/chromium/src"
+
+if stage sync; then
 
 # `git checkout -f` before syncing: it also discards a previous run's applied
 # patches, which is what makes a rebuild reproducible rather than cumulative.
@@ -155,13 +187,18 @@ if [ "$SYNC_OK" != 1 ]; then
   exit 1
 fi
 
-# First run only; harmless afterwards.
-./build/install-build-deps.sh --no-prompt || true
+# Installs system packages with sudo, so it is opt-in: a build box that serves
+# other work should not have its packages changed by a browser build.
+if [ "${CAMOUWOLF_INSTALL_DEPS:-0}" = 1 ]; then
+  ./build/install-build-deps.sh --no-prompt
+fi
+fi  # sync
 
 # ------------------------------------------------------------------- patch it
-bash "$REPO/browser/scripts/apply-patches.sh" "$WORK/chromium/src" --force
+stage patch && bash "$REPO/browser/scripts/apply-patches.sh" "$WORK/chromium/src" --force
 
 # ------------------------------------------------------------ configure, build
+stage build || { echo "==> stages done:$STAGES"; exit 0; }
 gn gen "out/$OUT" --args="$(cat "$REPO/browser/args.gn")"
 
 # `ninja -j`, not `autoninja`. autoninja recomputes its own job count from the
