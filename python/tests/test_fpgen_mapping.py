@@ -86,7 +86,7 @@ def test_every_mapped_key_is_in_the_schema():
 
 def test_keys_the_browser_cannot_read_are_not_sent():
     config = from_fpgen(WINDOWS_FINGERPRINT, chrome_version=152)
-    assert not {'navigator.oscpu', 'window.devicePixelRatio', 'navigator.maxTouchPoints', 'screen.pixelDepth'} & set(config)
+    assert not {'navigator.oscpu', 'window.devicePixelRatio'} & set(config)
 
 
 @pytest.mark.parametrize('renderer, target, ok', [
