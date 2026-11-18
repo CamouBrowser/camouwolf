@@ -1,0 +1,47 @@
+diff --git a/third_party/blink/renderer/core/layout/layout_theme.cc b/third_party/blink/renderer/core/layout/layout_theme.cc
+--- a/third_party/blink/renderer/core/layout/layout_theme.cc
++++ b/third_party/blink/renderer/core/layout/layout_theme.cc
+@@ -20,6 +20,8 @@
+  */
+ 
+ #include "third_party/blink/renderer/core/layout/layout_theme.h"
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ 
+ #include "build/build_config.h"
+ #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
+@@ -621,6 +623,34 @@
+                                mojom::blink::ColorScheme color_scheme,
+                                const ui::ColorProvider* color_provider,
+                                bool can_expose_accent_color) const {
++  // CAMOUWOLF: CSS system-color spoof. This is the single shared resolver every
++  // web-exposed system color passes through. On a headless Linux host the
++  // renderer has no ui::ColorProvider, so resolution falls to
++  // DefaultSystemColor() below, whose hardcoded palette is a direct headless
++  // tell: ActiveText resolves to exactly rgb(255,0,0), and the whole palette
++  // (LinkText, VisitedText, Highlight, GrayText, ButtonFace, ...) is the
++  // Chromium default set rather than the claimed OS's. Measured on a real
++  // Windows 11 Chrome: ActiveText is rgb(0,102,204), Highlight rgb(0,120,215),
++  // GrayText rgb(109,109,109) — none of which this build produces unspoofed.
++  //
++  // When the launcher supplies a "systemColors" map (only for an OS-spoof
++  // whose native palette the host cannot produce; captured light-scheme values
++  // from a real machine of the target OS), substitute here — ahead of BOTH the
++  // color-provider and default paths. The keys are canonical lowercase CSS
++  // value names (GetCSSValueName), the values 0xRRGGBB ints. Absent the map,
++  // and for a dark scheme (whose values were not captured), this is a no-op and
++  // resolution proceeds exactly as upstream — so lin->lin and an unconfigured
++  // binary keep the real behavior untouched.
++  if (color_scheme != mojom::blink::ColorScheme::kDark) {
++    if (const base::Value* v = base::CamouwolfConfig::Get().GetNested(
++            "systemColors", GetCSSValueName(css_value_id))) {
++      if (v->is_int()) {
++        return Color::FromRGBA32(0xFF000000u |
++                                 static_cast<uint32_t>(v->GetInt()));
++      }
++    }
++  }
++
+   if (color_provider && !WebTestSupport::IsRunningWebTest()) {
+     return SystemColorFromColorProvider(
+         css_value_id, color_scheme, color_provider, can_expose_accent_color);

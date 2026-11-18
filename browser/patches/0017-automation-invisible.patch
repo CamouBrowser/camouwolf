@@ -1,0 +1,42 @@
+diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+--- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
++++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+@@ -803,10 +803,37 @@
+       status: "stable",
+     },
+     {
++      // CAMOUWOLF: never let the automation bit reach a web-visible surface.
++      //
++      // Upstream, --enable-automation (which Playwright, Puppeteer and
++      // chromedriver all pass) turns this on, and its ONLY web-visible consumer
++      // is navigator.webdriver. The Navigator::webdriver patch already returns
++      // false unconditionally and no longer reads this feature at all, so after
++      // that patch NOTHING in blink/renderer, content/ or chrome/ reads
++      // AutomationControlledEnabled(). The bit is write-only.
++      //
++      // What is left to close is `settable_from_internals`, which lets a
++      // page-reachable internals build flip the bit at runtime. That is the
++      // half that still does work, so it stays false.
++      //
++      // `public` MUST stay true. It gates blink's codegen of the
++      // WebRuntimeFeatures::EnableAutomationControlled() setter, and upstream
++      // content/child/runtime_features.cc calls that setter unconditionally
++      // (a switch->feature table plus a direct call). Setting it false deletes
++      // the symbol out from under upstream and the build fails to compile —
++      // see scripts/check-automation-readers.py, which guards the other half of
++      // this: if a future bump introduces a real reader of the feature, the bit
++      // becomes load-bearing again and this entry needs revisiting.
++      //
++      // NOTE: this is only layer C (fingerprint surface). The CDP-side tells —
++      // Runtime.enable's executionContextCreated leak, init-script residue, the
++      // isolated-world seam — are the DRIVER's responsibility and are handled
++      // in the launcher (see src/switches.ts and tests/compare/cdp-leak.mjs);
++      // no browser patch can fix a driver that announces itself.
+       name: "AutomationControlled",
+       base_feature: "none",
+       public: true,
+-      settable_from_internals: true,
++      settable_from_internals: false,
+     },
+     {
+       name: "AutoPictureInPictureVideoHeuristics",

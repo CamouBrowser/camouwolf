@@ -1,0 +1,48 @@
+name: Release browser
+
+# Manual only. Builds the Camouwolf browser and publishes a GitHub Release with a
+# platform zip. Self-hosted for the same reason ci-heavy is.
+#
+# Manual rather than on-tag on purpose: a Chromium build is hours of a shared
+# machine, so starting one is a decision, not a side effect of pushing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "linux | macos | windows"
+        required: true
+        default: linux
+      skip_build:
+        description: "Package an existing out/ tree instead of rebuilding"
+        type: boolean
+        default: false
+      no_release:
+        description: "Build and package, but do not publish"
+        type: boolean
+        default: false
+
+concurrency:
+  group: camouwolf-heavy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: [self-hosted, camouwolf-ci]
+    timeout-minutes: 600
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - name: Build + release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/release-camouwolf.sh \
+            --target "${{ inputs.target }}" \
+            ${{ inputs.skip_build && '--skip-build' || '' }} \
+            ${{ inputs.no_release && '--no-release' || '' }}

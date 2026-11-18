@@ -1,0 +1,167 @@
+diff --git a/third_party/blink/renderer/core/css/css_font_selector_base.h b/third_party/blink/renderer/core/css/css_font_selector_base.h
+--- a/third_party/blink/renderer/core/css/css_font_selector_base.h
++++ b/third_party/blink/renderer/core/css/css_font_selector_base.h
+@@ -46,6 +46,26 @@
+ 
+   AtomicString FamilyNameFromSettings(const FontDescription&,
+                                       const FontFamily& generic_family_name);
++
++  // CAMOUWOLF: whether the identity claims this family is installed.
++  //
++  // The installed-font SET is the highest-entropy fingerprint a page can read
++  // without a permission prompt, and it is read two ways: by MEASURING text in
++  // a named family and comparing the advance against a fallback, and by asking
++  // directly through document.fonts.check() or an @font-face src:local()
++  // match. Both must give the same answer as `config.fonts`, or the identity
++  // reports one font set and renders another.
++  //
++  // This is the Chromium equivalent of Holo's font-hijacker.patch, which
++  // prunes the platform font list behind kFontSystemWhitelistPref. Chromium
++  // has no such pref, so the gate goes on the selector instead — which is
++  // better placed anyway, because the FontFamily here still knows whether it
++  // came from a CSS generic keyword or from a name the page chose.
++  //
++  // Returns true (allow) when the launch carried no font list, so an
++  // unconfigured build behaves exactly like upstream Chromium.
++  static bool CamouwolfFamilyInstalled(const FontFamily& family);
++
+   Member<FontFaceCache> font_face_cache_;
+   GenericFontFamilySettings generic_font_family_settings_;
+   HashSet<AtomicString> prewarmed_generic_families_;
+diff --git a/third_party/blink/renderer/core/css/css_font_selector_base.cc b/third_party/blink/renderer/core/css/css_font_selector_base.cc
+--- a/third_party/blink/renderer/core/css/css_font_selector_base.cc
++++ b/third_party/blink/renderer/core/css/css_font_selector_base.cc
+@@ -4,6 +4,14 @@
+ 
+ #include "third_party/blink/renderer/core/css/css_font_selector_base.h"
+ 
++#include <algorithm>  // CAMOUWOLF
++#include <cctype>     // CAMOUWOLF
++#include <string>     // CAMOUWOLF
++#include <vector>     // CAMOUWOLF
++
++#include "base/containers/flat_set.h"  // CAMOUWOLF
++#include "base/camouwolf_config.h"         // CAMOUWOLF
++#include "base/no_destructor.h"        // CAMOUWOLF
+ #include "build/build_config.h"
+ #include "third_party/blink/renderer/core/css/css_segmented_font_face.h"
+ #include "third_party/blink/renderer/core/frame/web_feature.h"
+@@ -14,6 +22,58 @@
+ #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+ 
+ namespace blink {
++
++namespace {
++
++// CAMOUWOLF: the identity's installed-font set, parsed once per process.
++//
++// Hoisted into a NoDestructor because this is consulted on every font lookup —
++// once per family per FontDescription — and re-walking the config there would
++// show up in layout. Null when the launch carried no "fonts" key, which is the
++// signal to leave upstream behavior alone.
++//
++// Names are compared ASCII-lowercased, matching CamouwolfConfig::GetStringListLower
++// byte for byte, because CSS family matching is case-insensitive: a page asking
++// for "segoe ui" must get the same answer as one asking for "Segoe UI".
++const base::flat_set<std::string>* CamouwolfInstalledFonts() {
++  static const base::NoDestructor<base::flat_set<std::string>> kInstalled([] {
++    const std::vector<std::string> fonts =
++        base::CamouwolfConfig::Get().GetStringListLower("fonts");
++    return base::flat_set<std::string>(fonts.begin(), fonts.end());
++  }());
++  return kInstalled->empty() ? nullptr : kInstalled.get();
++}
++
++std::string CamouwolfAsciiLower(const AtomicString& name) {
++  std::string utf8 = name.Utf8();
++  std::transform(utf8.begin(), utf8.end(), utf8.begin(), [](unsigned char c) {
++    return static_cast<char>(std::tolower(c));
++  });
++  return utf8;
++}
++
++}  // namespace
++
++// static
++bool CSSFontSelectorBase::CamouwolfFamilyInstalled(const FontFamily& family) {
++  // A CSS generic keyword (serif, sans-serif, monospace, cursive, fantasy,
++  // system-ui, math) is not an installed face — it is a request for whatever
++  // the platform maps that keyword to. Blocking one would leave a document with
++  // no usable font at all rather than making it look like a different machine,
++  // so generics always fall through and the last-resort fallback keeps working.
++  if (family.FamilyIsGeneric()) {
++    return true;
++  }
++  const base::flat_set<std::string>* installed = CamouwolfInstalledFonts();
++  if (!installed) {
++    return true;
++  }
++  const AtomicString& name = family.FamilyName();
++  if (name.empty()) {
++    return true;
++  }
++  return installed->contains(CamouwolfAsciiLower(name));
++}
+ 
+ AtomicString CSSFontSelectorBase::FamilyNameFromSettings(
+     const FontDescription& font_description,
+@@ -26,6 +86,13 @@
+ bool CSSFontSelectorBase::IsPlatformFamilyMatchAvailable(
+     const FontDescription& font_description,
+     const FontFamily& passed_family) {
++  // CAMOUWOLF: the direct presence oracle — document.fonts.check() and
++  // @font-face src:local() both land here. Answering it from the platform
++  // while the measurement path is filtered would let a page find a font it
++  // cannot render, which is a sharper signal than either answer alone.
++  if (!CamouwolfFamilyInstalled(passed_family)) {
++    return false;
++  }
+   AtomicString family = FamilyNameFromSettings(font_description, passed_family);
+   if (family.empty()) {
+     family = passed_family.FamilyName();
+diff --git a/third_party/blink/renderer/core/css/css_font_selector.cc b/third_party/blink/renderer/core/css/css_font_selector.cc
+--- a/third_party/blink/renderer/core/css/css_font_selector.cc
++++ b/third_party/blink/renderer/core/css/css_font_selector.cc
+@@ -243,6 +243,19 @@
+     }
+   }
+ 
++  // CAMOUWOLF: a locally-installed family the identity does not claim must not
++  // resolve — this is the MEASUREMENT half of the font fingerprint, the one a
++  // page reads by rendering a string in a named family and comparing the
++  // advance against a fallback. It has to agree with
++  // IsPlatformFamilyMatchAvailable() above, or a page can find a font it
++  // cannot render, which is louder than either answer on its own.
++  //
++  // Placed AFTER the @font-face lookup, so a web font the page downloaded is
++  // untouched: that is a font the page shipped, not evidence about this host.
++  if (!CamouwolfFamilyInstalled(font_family)) {
++    return nullptr;
++  }
++
+   // Try to return the correct font based off our settings, in case we were
+   // handed the generic font family name.
+   AtomicString settings_family_name =
+diff --git a/third_party/blink/renderer/core/css/offscreen_font_selector.cc b/third_party/blink/renderer/core/css/offscreen_font_selector.cc
+--- a/third_party/blink/renderer/core/css/offscreen_font_selector.cc
++++ b/third_party/blink/renderer/core/css/offscreen_font_selector.cc
+@@ -44,6 +44,19 @@
+     return face->GetFontData(font_description);
+   }
+ 
++  // CAMOUWOLF: a locally-installed family the identity does not claim must not
++  // resolve — this is the MEASUREMENT half of the font fingerprint, the one a
++  // page reads by rendering a string in a named family and comparing the
++  // advance against a fallback. It has to agree with
++  // IsPlatformFamilyMatchAvailable() above, or a page can find a font it
++  // cannot render, which is louder than either answer on its own.
++  //
++  // Placed AFTER the @font-face lookup, so a web font the page downloaded is
++  // untouched: that is a font the page shipped, not evidence about this host.
++  if (!CamouwolfFamilyInstalled(font_family)) {
++    return nullptr;
++  }
++
+   // Try to return the correct font based off our settings, in case we were
+   // handed the generic font family name.
+   AtomicString settings_family_name =

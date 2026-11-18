@@ -1,0 +1,133 @@
+diff --git a/third_party/blink/renderer/platform/fonts/font_cache.cc b/third_party/blink/renderer/platform/fonts/font_cache.cc
+--- a/third_party/blink/renderer/platform/fonts/font_cache.cc
++++ b/third_party/blink/renderer/platform/fonts/font_cache.cc
+@@ -28,6 +28,9 @@
+  */
+ 
+ #include "third_party/blink/renderer/platform/fonts/font_cache.h"
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
++#include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"  // CAMOUWOLF
+ 
+ #include <unicode/uscript.h>
+ 
+@@ -139,6 +142,29 @@
+ #if !BUILDFLAG(IS_MAC)
+ const FontPlatformData* FontCache::SystemFontPlatformData(
+     const FontDescription& font_description) {
++  // CAMOUWOLF: the `system-ui` generic names the claimed platform's UI font.
++  //
++  // Chrome on Windows resolves system-ui to Segoe UI; on Linux it resolves to
++  // whatever the desktop configured, which under a bare X server is a bundled
++  // face and under none is empty. A page that sets `font: 1em system-ui` and
++  // measures the result reads the host's desktop, not the identity's — and it
++  // is the same answer the CSS2 keywords must give, which is why both live in
++  // this one patch.
++  //
++  // Keyed on navigator.platform rather than a dedicated key, matching 0019, so
++  // it cannot drift out of step with the identity the rest of the series
++  // serves. macOS is absent deliberately: this whole function is compiled out
++  // on Mac (the #if above), and a mac->mac launch uses the real host font.
++  if (const auto platform =
++          base::CamouwolfConfig::Get().GetString("navigator.platform")) {
++    if (*platform == "Win32") {
++      DEFINE_THREAD_SAFE_STATIC_LOCAL(const AtomicString, kSegoeUi,
++                                      ("Segoe UI"));
++      return GetFontPlatformData(font_description,
++                                 FontFaceCreationParams(kSegoeUi),
++                                 AlternateFontName::kNoAlternate);
++    }
++  }
+   const AtomicString& family = FontCache::SystemFontFamily();
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA) || \
+     BUILDFLAG(IS_IOS)
+diff --git a/third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc b/third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc
+--- a/third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc
++++ b/third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc
+@@ -25,6 +25,8 @@
+ 
+ #include "third_party/blink/renderer/core/layout/layout_theme_font_provider.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
++
+ #include "third_party/blink/renderer/core/css_value_keywords.h"
+ #include "third_party/blink/renderer/platform/fonts/font_cache.h"
+ #include "third_party/blink/renderer/platform/fonts/font_description.h"
+@@ -36,12 +38,77 @@
+ // static
+ const AtomicString& LayoutThemeFontProvider::SystemFontFamily(
+     CSSValueID system_font_id) {
++  // CAMOUWOLF: the CSS2 system-font keywords, which CreepJS's headless detector
++  // probes all six of (caption, icon, menu, message-box, small-caption,
++  // status-bar).
++  //
++  // Only THREE of them differ on Windows. layout_theme_font_provider_win.cc
++  // routes small-caption, menu and status-bar through the NONCLIENTMETRICS the
++  // browser process reads off the OS — normally Segoe UI — and lets caption,
++  // icon and message-box fall through to DefaultGUIFont(), which is "Arial" on
++  // every platform. So a Windows persona must answer Segoe UI for exactly those
++  // three and Arial for the rest; answering Segoe UI for all six would be as
++  // wrong as answering Arial for all six, just in the other direction.
++  //
++  // Linux needs nothing here: real Chrome on Linux uses this same file, so the
++  // unspoofed answer is already correct. macOS is handled by LayoutThemeMac,
++  // which is a different code path entirely.
++  if (const auto platform =
++          base::CamouwolfConfig::Get().GetString("navigator.platform")) {
++    if (*platform == "Win32") {
++      switch (system_font_id) {
++        case CSSValueID::kSmallCaption:
++        case CSSValueID::kMenu:
++        case CSSValueID::kStatusBar: {
++          DEFINE_THREAD_SAFE_STATIC_LOCAL(const AtomicString, kSegoeUi,
++                                          ("Segoe UI"));
++          return kSegoeUi;
++        }
++        default:
++          break;
++      }
++    }
++  }
+   return DefaultGUIFont();
+ }
+ 
+ // static
+ float LayoutThemeFontProvider::SystemFontSize(CSSValueID system_font_id,
+                                               const Document* document) {
++  // CAMOUWOLF: the SIZE half of the same three keywords SystemFontFamily() above
++  // rewrites. These two lists must stay in sync, and the reason is that a
++  // half-applied spoof is worse than none.
++  //
++  // Spoofing only the family gives `menu`, `small-caption` and `status-bar` a
++  // family of "Segoe UI" at DefaultFontSize()'s 16px. Real Windows reports
++  // Segoe UI at 12px and real Linux reports Arial at 16px, so "Segoe UI 16px"
++  // is a pairing NEITHER operating system produces — it exists only because the
++  // patch ran, which makes it a tell this series CREATED rather than closed.
++  // Measured both sides: docs/WINDOWS-DIVERGENCE.md §1.
++  //
++  // 12px is not a magic number. layout_theme_font_provider_win.cc takes these
++  // three from the NONCLIENTMETRICS the browser process reads off the OS, whose
++  // default is 9pt Segoe UI; at the 96dpi Chromium assumes throughout this file
++  // that is exactly 12px. Expressed as the conversion rather than as a literal
++  // so it reads as the same derivation the kWebkitControl case below uses.
++  if (const auto platform =
++          base::CamouwolfConfig::Get().GetString("navigator.platform")) {
++    if (*platform == "Win32") {
++      switch (system_font_id) {
++        case CSSValueID::kSmallCaption:
++        case CSSValueID::kMenu:
++        case CSSValueID::kStatusBar: {
++          static const float kNonClientPoints = 9.0f;
++          static const float kNonClientPointsPerInch = 72.0f;
++          static const float kNonClientPixelsPerInch = 96.0f;
++          return (kNonClientPoints / kNonClientPointsPerInch) *
++                 kNonClientPixelsPerInch;
++        }
++        default:
++          break;
++      }
++    }
++  }
+   switch (system_font_id) {
+     case CSSValueID::kWebkitMiniControl:
+     case CSSValueID::kWebkitSmallControl:

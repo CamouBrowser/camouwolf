@@ -1,0 +1,169 @@
+diff --git a/third_party/blink/renderer/core/frame/navigator.cc b/third_party/blink/renderer/core/frame/navigator.cc
+--- a/third_party/blink/renderer/core/frame/navigator.cc
++++ b/third_party/blink/renderer/core/frame/navigator.cc
+@@ -23,6 +23,8 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
++
+ #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
+ #include "third_party/blink/renderer/core/dom/document.h"
+ #include "third_party/blink/renderer/core/execution_context/navigator_base.h"
+@@ -44,6 +46,12 @@
+ }
+ 
+ String Navigator::vendor() const {
++  // CAMOUWOLF: navigator.vendor is one of the few strings that differs between
++  // Chrome ("Google Inc.") and every Chromium-derived browser that rebrands, so
++  // it is checked. Configurable, defaulting to the Chrome value.
++  if (const auto v = base::CamouwolfConfig::Get().GetString("navigator.vendor")) {
++    return String::FromUtf8(*v);
++  }
+   // Do not change without good cause. History:
+   // https://code.google.com/p/chromium/issues/detail?id=276813
+   // https://www.w3.org/Bugs/Public/show_bug.cgi?id=27786
+@@ -56,6 +64,13 @@
+ }
+ 
+ String Navigator::platform() const {
++  // CAMOUWOLF: the configured platform wins over both the DevTools override and the
++  // build-time constant. Returned from C++ so it is identical in the main frame,
++  // in every iframe, and in workers (NavigatorBase::platform below serves those)
++  // — a realm-crossing check cannot find a seam.
++  if (const auto p = base::CamouwolfConfig::Get().GetString("navigator.platform")) {
++    return String::FromUtf8(*p);
++  }
+   // TODO(955620): Consider changing devtools overrides to only allow overriding
+   // the platform with a frozen platform to distinguish between
+   // mobile and desktop when ReduceUserAgent is enabled.
+@@ -98,12 +113,21 @@
+ }
+ 
+ bool Navigator::webdriver() const {
+-  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
+-    return true;
+-
+-  bool automation_enabled = false;
+-  probe::ApplyAutomationOverride(GetExecutionContext(), automation_enabled);
+-  return automation_enabled;
++  // CAMOUWOLF: navigator.webdriver is FALSE, natively, always.
++  //
++  // Upstream returns true under either the AutomationControlled runtime feature
++  // (set by --enable-automation, which Playwright/Puppeteer pass) or the CDP
++  // Emulation.setAutomationOverride probe. Both are load-bearing tells: the
++  // former is on for every stock automated launch, and the latter means a
++  // detector can flip the bit from a page that got a CDP session.
++  //
++  // Returning the constant from C++ — rather than deleting the property from JS
++  // — is what makes this undetectable: the accessor is still an own property of
++  // Navigator.prototype with a native getter, `toString()` reports
++  // "[native code]", the property descriptor is unchanged, and re-acquiring a
++  // fresh realm (an about:blank iframe, a Worker) yields the same false. Every
++  // JS-level webdriver patch fails at least one of those.
++  return false;
+ }
+ 
+ String Navigator::GetAcceptLanguages() {
+diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+--- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
++++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/renderer/core/execution_context/navigator_base.h"
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ 
+ #include "base/feature_list.h"
+ #include "build/build_config.h"
+@@ -47,11 +49,27 @@
+     : NavigatorLanguage(context), ExecutionContextClient(context) {}
+ 
+ String NavigatorBase::userAgent() const {
++  // CAMOUWOLF: last-resort UA override.
++  //
++  // The UA is normally set coherently at the embedder layer (see the
++  // user_agent_utils.cc patch), which is what keeps navigator.userAgent, the
++  // User-Agent request header, and the Sec-CH-UA hints telling the same story.
++  // This hook exists for the worker/detached-context path, where the embedder
++  // metadata may not have been threaded through, so that a Worker can never
++  // report a different UA than its parent document — a one-line check.
++  if (const auto ua = base::CamouwolfConfig::Get().GetString("navigator.userAgent")) {
++    return String::FromUtf8(*ua);
++  }
+   ExecutionContext* execution_context = GetExecutionContext();
+   return execution_context ? execution_context->UserAgent() : String();
+ }
+ 
+ String NavigatorBase::platform() const {
++  // CAMOUWOLF: serves workers and any context without a LocalDOMWindow. Must agree
++  // with Navigator::platform() — they read the same key.
++  if (const auto p = base::CamouwolfConfig::Get().GetString("navigator.platform")) {
++    return String::FromUtf8(*p);
++  }
+ #if BUILDFLAG(IS_ANDROID)
+   // We need to check the ReduceUserAgentMinorVersion feature flag for
+   // Android WebView, which does not currently ship a reduced User-Agent.
+@@ -70,6 +88,13 @@
+ }
+ 
+ unsigned int NavigatorBase::hardwareConcurrency() const {
++  // CAMOUWOLF: the configured core count wins, and short-circuits the CDP
++  // ApplyHardwareConcurrencyOverride probe so a detector holding a CDP session
++  // cannot read back the host's real core count.
++  if (const auto hc =
++          base::CamouwolfConfig::Get().GetUint32("navigator.hardwareConcurrency")) {
++    return *hc;
++  }
+   unsigned int hardware_concurrency =
+       NavigatorConcurrentHardware::hardwareConcurrency();
+ 
+diff --git a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+--- a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
++++ b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+@@ -4,11 +4,18 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/system/sys_info.h"
+ 
+ namespace blink {
+ 
+ unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {
++  // CAMOUWOLF: this is the WorkerNavigator path (NavigatorBase covers the window
++  // one). Both must answer the same, or a Worker leaks the host core count.
++  if (const auto hc =
++          base::CamouwolfConfig::Get().GetUint32("navigator.hardwareConcurrency")) {
++    return *hc;
++  }
+   return static_cast<unsigned>(base::SysInfo::NumberOfProcessors());
+ }
+ 
+diff --git a/third_party/blink/renderer/core/frame/navigator_device_memory.cc b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+--- a/third_party/blink/renderer/core/frame/navigator_device_memory.cc
++++ b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator_device_memory.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/public/common/device_memory/approximated_device_memory.h"
+ #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
+ #include "third_party/blink/renderer/core/dom/document.h"
+@@ -12,6 +13,14 @@
+ namespace blink {
+ 
+ float NavigatorDeviceMemory::deviceMemory() const {
++  // CAMOUWOLF: navigator.deviceMemory is quantized by spec to {0.25, 0.5, 1, 2, 4,
++  // 8}, so the launcher only ever writes one of those — an off-ladder value is
++  // itself the tell. It must also agree with the Device-Memory client hint and
++  // with the hardwareConcurrency the same identity claims; the launcher derives
++  // all three from one machine profile rather than drawing them independently.
++  if (const auto dm = base::CamouwolfConfig::Get().GetDouble("navigator.deviceMemory")) {
++    return static_cast<float>(*dm);
++  }
+   return ApproximatedDeviceMemory::GetApproximatedDeviceMemory();
+ }
+ 

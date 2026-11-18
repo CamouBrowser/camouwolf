@@ -1,0 +1,13 @@
+diff --git a/base/BUILD.gn b/base/BUILD.gn
+--- a/base/BUILD.gn
++++ b/base/BUILD.gn
+@@ -393,6 +393,9 @@
+     "json/json_common.h",
+     "json/json_reader.cc",
+     "json/json_reader.h",
++    "camouwolf_config.cc",
++    "camouwolf_config.h",
++    "camouwolf_farble.h",
+     "json/json_string_value_serializer.cc",
+     "json/json_string_value_serializer.h",
+     "json/json_value_converter.cc",

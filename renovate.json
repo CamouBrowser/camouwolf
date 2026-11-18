@@ -1,0 +1,70 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "description": "Grouped, weekly dependency updates for the launcher (src/, pnpm). GitHub Actions and the browser/ Firefox-fork build tooling are intentionally NOT managed here.",
+  "timezone": "America/New_York",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 0,
+  "rebaseWhen": "conflicted",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on monday"
+    ]
+  },
+  "enabledManagers": [
+    "npm"
+  ],
+  "npm": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "the launcher (@jobharvest/holo): group all non-major npm updates into one weekly PR.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "src/**",
+        "package.json"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "launcher deps (non-major)",
+      "commitMessageTopic": "launcher dependencies"
+    },
+    {
+      "description": "launcher major npm bumps: separate PR each (breaking; review individually).",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "src/**",
+        "package.json"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "commitMessageTopic": "{{depName}} (major)"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  }
+}

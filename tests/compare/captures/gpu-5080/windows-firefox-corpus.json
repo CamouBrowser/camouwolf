@@ -1,0 +1,634 @@
+{
+ "_source": "Holo tests/capture/gpu-re/results/win3d_cold.json (pixels there)",
+ "caps": {
+  "webgl": {
+   "contextAttributes": {
+    "alpha": true,
+    "antialias": true,
+    "depth": true,
+    "failIfMajorPerformanceCaveat": false,
+    "powerPreference": "default",
+    "premultipliedAlpha": true,
+    "preserveDrawingBuffer": false,
+    "stencil": false
+   },
+   "extensions": [
+    "ANGLE_instanced_arrays",
+    "EXT_blend_minmax",
+    "EXT_color_buffer_half_float",
+    "EXT_float_blend",
+    "EXT_frag_depth",
+    "EXT_sRGB",
+    "EXT_shader_texture_lod",
+    "EXT_texture_compression_bptc",
+    "EXT_texture_compression_rgtc",
+    "EXT_texture_filter_anisotropic",
+    "OES_element_index_uint",
+    "OES_fbo_render_mipmap",
+    "OES_standard_derivatives",
+    "OES_texture_float",
+    "OES_texture_float_linear",
+    "OES_texture_half_float",
+    "OES_texture_half_float_linear",
+    "OES_vertex_array_object",
+    "WEBGL_color_buffer_float",
+    "WEBGL_compressed_texture_s3tc",
+    "WEBGL_compressed_texture_s3tc_srgb",
+    "WEBGL_debug_renderer_info",
+    "WEBGL_debug_shaders",
+    "WEBGL_depth_texture",
+    "WEBGL_draw_buffers",
+    "WEBGL_lose_context",
+    "WEBGL_provoking_vertex"
+   ],
+   "params": {
+    "ALIASED_LINE_WIDTH_RANGE": [
+     1,
+     1
+    ],
+    "ALIASED_POINT_SIZE_RANGE": [
+     1,
+     1024
+    ],
+    "ALPHA_BITS": 8,
+    "BLUE_BITS": 8,
+    "DEPTH_BITS": 24,
+    "GREEN_BITS": 8,
+    "MAX_COMBINED_TEXTURE_IMAGE_UNITS": 32,
+    "MAX_CUBE_MAP_TEXTURE_SIZE": 16384,
+    "MAX_FRAGMENT_UNIFORM_VECTORS": 1024,
+    "MAX_RENDERBUFFER_SIZE": 16384,
+    "MAX_TEXTURE_IMAGE_UNITS": 16,
+    "MAX_TEXTURE_SIZE": 16384,
+    "MAX_VARYING_VECTORS": 30,
+    "MAX_VERTEX_ATTRIBS": 16,
+    "MAX_VERTEX_TEXTURE_IMAGE_UNITS": 16,
+    "MAX_VERTEX_UNIFORM_VECTORS": 4095,
+    "MAX_VIEWPORT_DIMS": [
+     32767,
+     32767
+    ],
+    "RED_BITS": 8,
+    "RENDERER": "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar",
+    "SHADING_LANGUAGE_VERSION": "WebGL GLSL ES 1.0",
+    "STENCIL_BITS": 0,
+    "SUBPIXEL_BITS": 4,
+    "VENDOR": "Mozilla",
+    "VERSION": "WebGL 1.0"
+   },
+   "precisions": {
+    "FRAGMENT_SHADER/HIGH_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "FRAGMENT_SHADER/HIGH_INT": [
+     31,
+     30,
+     0
+    ],
+    "FRAGMENT_SHADER/LOW_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "FRAGMENT_SHADER/LOW_INT": [
+     31,
+     30,
+     0
+    ],
+    "FRAGMENT_SHADER/MEDIUM_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "FRAGMENT_SHADER/MEDIUM_INT": [
+     31,
+     30,
+     0
+    ],
+    "VERTEX_SHADER/HIGH_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "VERTEX_SHADER/HIGH_INT": [
+     31,
+     30,
+     0
+    ],
+    "VERTEX_SHADER/LOW_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "VERTEX_SHADER/LOW_INT": [
+     31,
+     30,
+     0
+    ],
+    "VERTEX_SHADER/MEDIUM_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "VERTEX_SHADER/MEDIUM_INT": [
+     31,
+     30,
+     0
+    ]
+   },
+   "unmasked": {
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar",
+    "vendor": "Google Inc. (NVIDIA)"
+   }
+  },
+  "webgl2": {
+   "contextAttributes": {
+    "alpha": true,
+    "antialias": true,
+    "depth": true,
+    "failIfMajorPerformanceCaveat": false,
+    "powerPreference": "default",
+    "premultipliedAlpha": true,
+    "preserveDrawingBuffer": false,
+    "stencil": false
+   },
+   "extensions": [
+    "EXT_color_buffer_float",
+    "EXT_float_blend",
+    "EXT_texture_compression_bptc",
+    "EXT_texture_compression_rgtc",
+    "EXT_texture_filter_anisotropic",
+    "OES_draw_buffers_indexed",
+    "OES_texture_float_linear",
+    "OVR_multiview2",
+    "WEBGL_compressed_texture_s3tc",
+    "WEBGL_compressed_texture_s3tc_srgb",
+    "WEBGL_debug_renderer_info",
+    "WEBGL_debug_shaders",
+    "WEBGL_lose_context",
+    "WEBGL_provoking_vertex"
+   ],
+   "params": {
+    "ALIASED_LINE_WIDTH_RANGE": [
+     1,
+     1
+    ],
+    "ALIASED_POINT_SIZE_RANGE": [
+     1,
+     1024
+    ],
+    "ALPHA_BITS": 8,
+    "BLUE_BITS": 8,
+    "DEPTH_BITS": 24,
+    "GREEN_BITS": 8,
+    "MAX_3D_TEXTURE_SIZE": 2048,
+    "MAX_ARRAY_TEXTURE_LAYERS": 2048,
+    "MAX_COLOR_ATTACHMENTS": 8,
+    "MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS": 200704,
+    "MAX_COMBINED_TEXTURE_IMAGE_UNITS": 32,
+    "MAX_COMBINED_UNIFORM_BLOCKS": 24,
+    "MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS": 212988,
+    "MAX_CUBE_MAP_TEXTURE_SIZE": 16384,
+    "MAX_DRAW_BUFFERS": 8,
+    "MAX_ELEMENTS_INDICES": 2147483647,
+    "MAX_ELEMENTS_VERTICES": 2147483647,
+    "MAX_ELEMENT_INDEX": 4294967294,
+    "MAX_FRAGMENT_INPUT_COMPONENTS": 120,
+    "MAX_FRAGMENT_UNIFORM_BLOCKS": 12,
+    "MAX_FRAGMENT_UNIFORM_COMPONENTS": 4096,
+    "MAX_FRAGMENT_UNIFORM_VECTORS": 1024,
+    "MAX_PROGRAM_TEXEL_OFFSET": 7,
+    "MAX_RENDERBUFFER_SIZE": 16384,
+    "MAX_SAMPLES": 8,
+    "MAX_SERVER_WAIT_TIMEOUT": 0,
+    "MAX_TEXTURE_IMAGE_UNITS": 16,
+    "MAX_TEXTURE_LOD_BIAS": 2,
+    "MAX_TEXTURE_SIZE": 16384,
+    "MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS": 120,
+    "MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS": 4,
+    "MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS": 4,
+    "MAX_UNIFORM_BLOCK_SIZE": 65536,
+    "MAX_UNIFORM_BUFFER_BINDINGS": 24,
+    "MAX_VARYING_COMPONENTS": 120,
+    "MAX_VARYING_VECTORS": 30,
+    "MAX_VERTEX_ATTRIBS": 16,
+    "MAX_VERTEX_OUTPUT_COMPONENTS": 120,
+    "MAX_VERTEX_TEXTURE_IMAGE_UNITS": 16,
+    "MAX_VERTEX_UNIFORM_BLOCKS": 12,
+    "MAX_VERTEX_UNIFORM_COMPONENTS": 16380,
+    "MAX_VERTEX_UNIFORM_VECTORS": 4095,
+    "MAX_VIEWPORT_DIMS": [
+     32767,
+     32767
+    ],
+    "MIN_PROGRAM_TEXEL_OFFSET": -8,
+    "RED_BITS": 8,
+    "RENDERER": "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar",
+    "SHADING_LANGUAGE_VERSION": "WebGL GLSL ES 3.00",
+    "STENCIL_BITS": 0,
+    "SUBPIXEL_BITS": 4,
+    "UNIFORM_BUFFER_OFFSET_ALIGNMENT": 256,
+    "VENDOR": "Mozilla",
+    "VERSION": "WebGL 2.0"
+   },
+   "precisions": {
+    "FRAGMENT_SHADER/HIGH_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "FRAGMENT_SHADER/HIGH_INT": [
+     31,
+     30,
+     0
+    ],
+    "FRAGMENT_SHADER/LOW_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "FRAGMENT_SHADER/LOW_INT": [
+     31,
+     30,
+     0
+    ],
+    "FRAGMENT_SHADER/MEDIUM_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "FRAGMENT_SHADER/MEDIUM_INT": [
+     31,
+     30,
+     0
+    ],
+    "VERTEX_SHADER/HIGH_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "VERTEX_SHADER/HIGH_INT": [
+     31,
+     30,
+     0
+    ],
+    "VERTEX_SHADER/LOW_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "VERTEX_SHADER/LOW_INT": [
+     31,
+     30,
+     0
+    ],
+    "VERTEX_SHADER/MEDIUM_FLOAT": [
+     127,
+     127,
+     23
+    ],
+    "VERTEX_SHADER/MEDIUM_INT": [
+     31,
+     30,
+     0
+    ]
+   },
+   "unmasked": {
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 980 Direct3D11 vs_5_0 ps_5_0), or similar",
+    "vendor": "Google Inc. (NVIDIA)"
+   }
+  },
+  "webgpu": {
+   "present": false
+  }
+ },
+ "capturedOn": {
+  "bootState": {
+   "firefoxProcesses": "10",
+   "fontCache": "Running",
+   "uptimeSeconds": 53
+  },
+  "coldBoot": false,
+  "firefox": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0",
+  "headless": false,
+  "offline": false,
+  "side": "windows-vm"
+ },
+ "dpr": 1,
+ "hardwareConcurrency": 8,
+ "platform": "Win32",
+ "scenes": {
+  "blend-alpha": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "19a29889",
+   "w": 128
+  },
+  "blend-equations": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "083d9f00",
+   "w": 128
+  },
+  "canvas2d-clip-alpha": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "e54bcac8",
+   "w": 128
+  },
+  "canvas2d-composite": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "f362d00d",
+   "w": 128
+  },
+  "canvas2d-conic": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "ab6522fc",
+   "w": 128
+  },
+  "canvas2d-drawimage-scale": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "af7564f0",
+   "w": 128
+  },
+  "canvas2d-filter": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "a8560034",
+   "w": 128
+  },
+  "canvas2d-lines": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "7ac4f989",
+   "w": 128
+  },
+  "canvas2d-pattern": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "68096818",
+   "w": 128
+  },
+  "canvas2d-shadow": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "9aae1b0c",
+   "w": 128
+  },
+  "canvas2d-shapes": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "f5b9bf5d",
+   "w": 128
+  },
+  "canvas2d-text": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "bc31c5a4",
+   "w": 128
+  },
+  "depth-test": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "a26cf208",
+   "w": 128
+  },
+  "derivatives": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "ab2ba28c",
+   "w": 128
+  },
+  "fp-classic": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "22041734",
+   "w": 128
+  },
+  "fragcoord-facing": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "a55d34e0",
+   "w": 128
+  },
+  "instanced": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "789163e8",
+   "w": 128
+  },
+  "interp-perspective": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "532d7034",
+   "w": 128
+  },
+  "interp-qualifiers": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "e84d3478",
+   "w": 128
+  },
+  "interp-varying": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "af192aa8",
+   "w": 128
+  },
+  "numeric-bits": {
+   "exprs": 55,
+   "fmt": "rgba8ui-floatbits",
+   "h": 128,
+   "hash": "162ba354",
+   "w": 128
+  },
+  "numeric-bits-exact": {
+   "exprs": 42,
+   "fmt": "rgba8ui-floatbits",
+   "h": 128,
+   "hash": "906ee7a8",
+   "w": 128
+  },
+  "point-coord": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "a8ffc290",
+   "w": 128
+  },
+  "point-coord-bits": {
+   "fmt": "rgba8ui-pointcoordbits",
+   "h": 128,
+   "hash": "814f5ee8",
+   "w": 128
+  },
+  "point-size-ladder": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "f5bdf625",
+   "w": 128
+  },
+  "raster-lines": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "11f27a91",
+   "w": 128
+  },
+  "raster-points": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "9a1656c5",
+   "w": 128
+  },
+  "raster-tri-flat": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "ab0ddd28",
+   "w": 128
+  },
+  "raster-tri-msaa": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "a5a50f0d",
+   "w": 128
+  },
+  "shader-int-bits": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "7fb869f7",
+   "w": 128
+  },
+  "shader-mediump": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "f4ef9f14",
+   "w": 128
+  },
+  "stencil-ops": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "be79786c",
+   "w": 128
+  },
+  "tex-anisotropic": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "2d26f5a4",
+   "w": 128
+  },
+  "tex-array-3d": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "cb848c98",
+   "w": 128
+  },
+  "tex-bilinear": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "97dd1f40",
+   "w": 128
+  },
+  "tex-cube": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "e0b82440",
+   "w": 128
+  },
+  "tex-mip-generated": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "563844bc",
+   "w": 128
+  },
+  "tex-mipmap": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "1872e6b8",
+   "w": 128
+  },
+  "tex-nearest": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "e1b528c4",
+   "w": 128
+  },
+  "tex-srgb": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "cebe7b82",
+   "w": 128
+  },
+  "tex-wrap-modes": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "41ca3694",
+   "w": 128
+  },
+  "webgl-3d-scene": {
+   "fmt": "rgba8",
+   "h": 128,
+   "hash": "cb68cc60",
+   "w": 128
+  },
+  "webgpu-compute": {
+   "skipped": "no navigator.gpu"
+  },
+  "webgpu-render": {
+   "skipped": "no navigator.gpu"
+  }
+ },
+ "size": 128,
+ "summary": "win3d_cold 44 scenes",
+ "tag": "win3d_cold",
+ "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0",
+ "why": {
+  "blend-alpha": "src-over blend rounding when many translucent layers accumulate",
+  "blend-equations": "non-default blend equations: FUNC_SUBTRACT and the MIN/MAX path (EXT_blend_minmax)",
+  "canvas2d-clip-alpha": "clip-path antialiasing composed with layer alpha: two AA stages stacked",
+  "canvas2d-composite": "composite modes and shadows, which run through different GPU shaders",
+  "canvas2d-conic": "createConicGradient: Holo patches the conical-gradient sqrt for Windows, so this is the scene that checks it",
+  "canvas2d-drawimage-scale": "drawImage resampling and imageSmoothingQuality -- a filter choice with no spec",
+  "canvas2d-filter": "the CSS/canvas filter chain -- separable blur, colour matrices",
+  "canvas2d-lines": "joins, caps, miter limit and dash phase -- pure path geometry, no fill rule involved",
+  "canvas2d-pattern": "pattern tiling under a non-axis-aligned transform: sampling and wrap at tile seams",
+  "canvas2d-shadow": "shadowBlur: a separable Gaussian whose kernel and edge handling are implementation-defined",
+  "canvas2d-shapes": "GPU-accelerated path fill/stroke, gradients and arcs -- no text involved",
+  "canvas2d-text": "does DirectWrite glyph parity survive GPU-accelerated canvas?",
+  "depth-test": "depth compare, the 1/w->depth mapping, and polygon offset",
+  "derivatives": "dFdx/dFdy/fwidth: quad-level differencing, where the 2x2 layout and the coarse-vs-fine choice show",
+  "fp-classic": "the scene commodity fingerprinters actually hash",
+  "fragcoord-facing": "gl_FragCoord pixel-centre convention and gl_FrontFacing winding",
+  "instanced": "ANGLE_instanced_arrays: instance-id plumbing and divisor handling",
+  "interp-perspective": "perspective-correct interpolation: the 1/w divide",
+  "interp-qualifiers": "flat vs smooth vs centroid interpolation, which the two stacks lower differently",
+  "interp-varying": "barycentric interpolation of varyings across a large primitive",
+  "numeric-bits": "exact 32-bit result of every ESSL builtin: shader-compiler parity",
+  "numeric-bits-exact": "exact 32-bit shader results with inputs that are bit-identical BY CONSTRUCTION, so a divergence cannot be the probe's own input rounding",
+  "point-coord": "gl_PointCoord generation across a fixed footprint: same size everywhere, so only the COORD is measured",
+  "point-coord-bits": "exact 32 bits of gl_PointCoord: ANGLE emulates point sprites in shader code, Linux gets them from hardware, and 8-bit colour cannot resolve the difference",
+  "point-size-ladder": "gl_PointSize rounding in isolation: flat colour, so only the FOOTPRINT is measured",
+  "raster-lines": "line rasterisation rules differ most between D3D and GL",
+  "raster-points": "gl_PointSize rounding and point sprite coverage",
+  "raster-tri-flat": "fixed-function triangle coverage: fill rule and pixel-centre sampling",
+  "raster-tri-msaa": "MSAA sample positions and the resolve filter (a driver/HW table)",
+  "shader-int-bits": "integer and packing builtins: bit-exact by spec, so ANY difference here is a real bug or a real tell",
+  "shader-mediump": "mediump math: drivers may evaluate it at fp16, and D3D and GL disagree about when",
+  "stencil-ops": "stencil test and op rules (INCR/DECR wrap behaviour at the edges)",
+  "tex-anisotropic": "anisotropic filtering: a quality knob with no spec'd algorithm, so a prime driver tell",
+  "tex-array-3d": "2D-array and 3D texture sampling, including filtering across layers",
+  "tex-bilinear": "bilinear weight quantisation (fixed-point sub-texel precision)",
+  "tex-cube": "cube-map face selection and seam filtering",
+  "tex-mip-generated": "generateMipmap's own downsample filter -- a driver implementation, not a spec'd one",
+  "tex-mipmap": "LOD selection and trilinear blending across a minifying gradient",
+  "tex-nearest": "nearest sampling: texel-centre rounding at exact boundaries",
+  "tex-srgb": "sRGB decode on sample and encode on write -- a fixed conversion table that need not match",
+  "tex-wrap-modes": "REPEAT / MIRRORED_REPEAT / CLAMP_TO_EDGE sampling exactly at texel and edge boundaries",
+  "webgl-3d-scene": "real 3D: depth buffer, perspective divide, culling, lighting, mipmapped texture",
+  "webgpu-compute": "exact 32-bit result of every WGSL builtin: the WebGPU shader-compiler parity surface",
+  "webgpu-render": "WebGPU is a second GPU stack, enabled on Windows and off on a Linux release build"
+ }
+}

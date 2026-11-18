@@ -1,0 +1,79 @@
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -38,6 +38,9 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+ #include "base/notimplemented.h"
++#include "base/camouwolf_config.h"   // CAMOUWOLF
++#include "base/strings/string_number_conversions.h"  // CAMOUWOLF
++#include "base/camouwolf_farble.h"   // CAMOUWOLF
+ #include "base/numerics/checked_math.h"
+ #include "base/strings/stringprintf.h"
+ #include "base/synchronization/lock.h"
+@@ -3992,6 +3995,34 @@
+                                                     GLenum pname) {
+   if (isContextLost())
+     return ScriptValue::CreateNull(script_state->GetIsolate());
++  // CAMOUWOLF: numeric limit overrides, applied before the upstream switch.
++  //
++  // The unmasked vendor/renderer strings are not the whole GPU fingerprint.
++  // Detectors also read the numeric limits (MAX_TEXTURE_SIZE,
++  // MAX_VERTEX_UNIFORM_VECTORS, MAX_VIEWPORT_DIMS, ...) and cross-check them
++  // against the claimed adapter: a renderer string naming an RTX 4070 whose
++  // MAX_TEXTURE_SIZE is 8192 (SwiftShader's value, not the 16384 every modern
++  // discrete GPU reports) is a mismatch, and it is a check that costs the
++  // detector one extra call.
++  //
++  // The launcher writes this map as part of the same adapter record the
++  // vendor/renderer pair came from, so the limits are the ones that adapter
++  // really reports rather than a hand-picked set.
++  if (const base::Value* v = base::CamouwolfConfig::Get().GetNested(
++          "webGl:parameters", base::NumberToString(pname))) {
++    if (v->is_int()) {
++      return WebGLAny(script_state, v->GetInt());
++    }
++    if (v->is_double()) {
++      return WebGLAny(script_state, static_cast<float>(v->GetDouble()));
++    }
++    if (v->is_bool()) {
++      return WebGLAny(script_state, v->GetBool());
++    }
++    if (v->is_string()) {
++      return WebGLAny(script_state, String::FromUtf8(v->GetString()));
++    }
++  }
+   const int kIntZero = 0;
+   switch (pname) {
+     case GL_ACTIVE_TEXTURE:
+@@ -4201,6 +4232,19 @@
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        // CAMOUWOLF: the claimed GPU. This string is THE canonical GPU fingerprint —
++        // it is what every commercial detector reads first, and stock headless
++        // Chromium answers with "ANGLE (Google, Vulkan 1.3.0 (SwiftShader
++        // Device (Subzero)...))", which is a hard headless tell on its own.
++        //
++        // The launcher only ever writes a vendor/renderer PAIR drawn from a
++        // table of real, contemporaneous adapters, keyed to the persona's OS:
++        // an "ANGLE (NVIDIA, ... Direct3D11 ...)" renderer on a persona claiming
++        // macOS is a contradiction, as is a D3D11 renderer with a Linux UA.
++        if (const auto r =
++                base::CamouwolfConfig::Get().GetString("webGl:renderer")) {
++          return WebGLAny(script_state, String::FromUtf8(*r));
++        }
+         return WebGLAny(script_state,
+                         String(ContextGL()->GetString(GL_RENDERER)));
+       }
+@@ -4210,6 +4254,10 @@
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        // CAMOUWOLF: see kUnmaskedRendererWebgl. Written as a pair with it.
++        if (const auto v = base::CamouwolfConfig::Get().GetString("webGl:vendor")) {
++          return WebGLAny(script_state, String::FromUtf8(*v));
++        }
+         return WebGLAny(script_state,
+                         String(ContextGL()->GetString(GL_VENDOR)));
+       }

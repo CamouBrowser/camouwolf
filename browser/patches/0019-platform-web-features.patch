@@ -1,0 +1,37 @@
+diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.cc
+--- a/content/child/runtime_features.cc
++++ b/content/child/runtime_features.cc
+@@ -9,6 +9,7 @@
+ 
+ #include "base/base_switches.h"
+ #include "base/command_line.h"
++#include "base/camouwolf_config.h"
+ #include "base/feature_list.h"
+ #include "base/logging.h"
+ #include "base/memory/raw_ref.h"
+@@ -681,6 +682,25 @@
+     WebRuntimeFeatures::EnableXSLT(value == "true");
+   }
+ 
++  // CAMOUWOLF: a handful of web platform features ship per-OS, and their absence is
++  // as much a platform tell as navigator.platform is. Web Share is the loudest:
++  // Chrome has had it on Windows/macOS/ChromeOS/Android since 93 but never on
++  // desktop Linux, so a UA claiming Windows with no navigator.share is a
++  // one-line detection. The feature is compiled in on every platform and gated
++  // only by its json5 `status: "test"`, so a persona-conditional enable is
++  // enough — there is no missing implementation behind it.
++  //
++  // Keyed on navigator.platform rather than on a dedicated key so it cannot
++  // drift out of step with the identity the rest of the series serves. With no
++  // CamouwolfConfig present nothing below runs and the build keeps stock Chromium's
++  // per-platform feature set exactly.
++  if (const auto platform =
++          base::CamouwolfConfig::Get().GetString("navigator.platform")) {
++    if (*platform == "Win32" || *platform == "MacIntel") {
++      WebRuntimeFeatures::EnableWebShare(true);
++    }
++  }
++
+   ResolveInvalidConfigurations();
+ }
+ 

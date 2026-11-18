@@ -1,0 +1,63 @@
+# Camouwolf patch series — applied in this order by browser/scripts/apply-patches.sh.
+#
+# Order matters only for 0001 (it adds base/camouwolf_config.* to the build, which
+# every later patch's #include depends on). The rest are independent, single-
+# surface diffs; keep them that way. A patch that touches two unrelated surfaces
+# cannot be reverted on its own when a bump breaks it, and a bump WILL break
+# some of them.
+#
+# Blank lines and #-comments are ignored.
+
+# --- plumbing ----------------------------------------------------------------
+0001-camouwolf-config-plumbing.patch
+
+# --- identity ----------------------------------------------------------------
+0002-navigator-identity.patch
+0003-user-agent-client-hints.patch
+0004-screen-spoofing.patch
+0005-locale-languages.patch
+0006-timezone-spoofing.patch
+
+# --- graphics ----------------------------------------------------------------
+0007-webgl-spoofing.patch
+0008-webgpu-adapter-spoofing.patch
+0009-canvas-farbling.patch
+0010-text-metrics-quantization.patch
+
+# --- audio -------------------------------------------------------------------
+0011-audio-farbling.patch
+
+# --- devices -----------------------------------------------------------------
+0012-speech-voices-spoofing.patch
+0013-media-device-spoofing.patch
+0014-keyboard-layout-spoofing.patch
+0015-network-information.patch
+0016-storage-quota-spoofing.patch
+
+# --- automation --------------------------------------------------------------
+0017-automation-invisible.patch
+
+# --- host libm parity --------------------------------------------------------
+# Windows resolves the geometry sin/cos/atan2 that content can read back to
+# ucrtbase; Linux resolves them to glibc, which disagrees by 1 ULP often enough
+# to be a readable "not really Windows" tell. Gated on CAMOUWOLF_UCRT_MATH.
+0018-ucrt-math.patch
+
+# --- per-OS web platform features --------------------------------------------
+0019-platform-web-features.patch
+
+# --- system colors -----------------------------------------------------------
+0020-system-colors.patch
+
+# --- fonts --------------------------------------------------------------------
+# The installed-font SET is the highest-entropy signal a page can read without
+# a permission prompt, and the launcher already draws a per-identity subset into
+# config.fonts. Until this patch nothing read it, so every identity on a given
+# target OS reported the same bundled list — a fleet-wide clone marker.
+0021-font-list-spoofing.patch
+
+# --- the platform UI font -----------------------------------------------------
+# `system-ui` and the six CSS2 system-font keywords answer the same question
+# through two APIs, so they must agree — which is why they are one patch and not
+# the two Holo carries.
+0022-system-ui-font.patch

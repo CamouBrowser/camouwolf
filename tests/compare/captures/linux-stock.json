@@ -1,0 +1,1977 @@
+{
+	"__meta": {
+		"label": "linux-stock-chrome151",
+		"mode": "local",
+		"capturedBy": "capture-fingerprint.mjs",
+		"request": [
+			{
+				"url": "/",
+				"method": "GET",
+				"httpVersion": "1.1",
+				"rawHeaders": [
+					"Host",
+					"Connection",
+					"sec-ch-ua",
+					"sec-ch-ua-mobile",
+					"sec-ch-ua-platform",
+					"Upgrade-Insecure-Requests",
+					"User-Agent",
+					"Accept",
+					"Sec-Fetch-Site",
+					"Sec-Fetch-Mode",
+					"Sec-Fetch-User",
+					"Sec-Fetch-Dest",
+					"Accept-Encoding",
+					"Accept-Language"
+				],
+				"headers": {
+					"host": "127.0.0.1:8891",
+					"connection": "keep-alive",
+					"sec-ch-ua": "\"Chromium\";v=\"151\", \"Not=A?Brand\";v=\"99\"",
+					"sec-ch-ua-mobile": "?0",
+					"sec-ch-ua-platform": "\"Linux\"",
+					"upgrade-insecure-requests": "1",
+					"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+					"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+					"sec-fetch-site": "none",
+					"sec-fetch-mode": "navigate",
+					"sec-fetch-user": "?1",
+					"sec-fetch-dest": "document",
+					"accept-encoding": "gzip, deflate, br, zstd",
+					"accept-language": "en-US,en;q=0.9"
+				}
+			}
+		]
+	},
+	"navigator": {
+		"userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+		"appVersion": "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+		"platform": "Linux x86_64",
+		"vendor": "Google Inc.",
+		"vendorSub": "",
+		"product": "Gecko",
+		"productSub": "20030107",
+		"appName": "Netscape",
+		"appCodeName": "Mozilla",
+		"language": "en-US",
+		"languages": [
+			"en-US",
+			"en"
+		],
+		"hardwareConcurrency": 16,
+		"deviceMemory": 32,
+		"maxTouchPoints": 0,
+		"webdriver": true,
+		"pdfViewerEnabled": true,
+		"cookieEnabled": true,
+		"onLine": true,
+		"doNotTrack": null
+	},
+	"userAgentData": {
+		"brands": [
+			{
+				"brand": "Chromium",
+				"version": "151"
+			},
+			{
+				"brand": "Not=A?Brand",
+				"version": "99"
+			}
+		],
+		"mobile": false,
+		"platform": "Linux",
+		"architecture": "x86",
+		"bitness": "64",
+		"formFactors": [
+			"Desktop"
+		],
+		"fullVersionList": [
+			{
+				"brand": "Chromium",
+				"version": "151.0.7922.34"
+			},
+			{
+				"brand": "Not=A?Brand",
+				"version": "99.0.0.0"
+			}
+		],
+		"model": "",
+		"platformVersion": "",
+		"uaFullVersion": "151.0.7922.34",
+		"wow64": false
+	},
+	"screen": {
+		"width": 1920,
+		"height": 1080,
+		"availWidth": 1920,
+		"availHeight": 1080,
+		"availLeft": 0,
+		"availTop": 0,
+		"colorDepth": 24,
+		"pixelDepth": 24,
+		"isExtended": false,
+		"orientationType": "landscape-primary",
+		"orientationAngle": 0,
+		"devicePixelRatio": 1,
+		"chromeHeight": 112,
+		"chromeWidth": 24,
+		"screenAvailInset": [
+			0,
+			0
+		]
+	},
+	"systemColors": {
+		"AccentColor": "rgb(0, 117, 255)",
+		"AccentColorText": "rgb(255, 255, 255)",
+		"ActiveText": "rgb(255, 0, 0)",
+		"ButtonBorder": "rgb(0, 0, 0)",
+		"ButtonFace": "rgb(239, 239, 239)",
+		"ButtonText": "rgb(0, 0, 0)",
+		"Canvas": "rgb(255, 255, 255)",
+		"CanvasText": "rgb(0, 0, 0)",
+		"Field": "rgb(255, 255, 255)",
+		"FieldText": "rgb(0, 0, 0)",
+		"GrayText": "rgb(128, 128, 128)",
+		"Highlight": "rgba(0, 65, 198, 0.8)",
+		"HighlightText": "rgb(255, 255, 255)",
+		"LinkText": "rgb(0, 0, 238)",
+		"Mark": "rgb(255, 255, 0)",
+		"MarkText": "rgb(0, 0, 0)",
+		"SelectedItem": "rgb(195, 75, 33)",
+		"SelectedItemText": "rgb(255, 255, 255)",
+		"VisitedText": "rgb(85, 26, 139)",
+		"ActiveBorder": "rgb(0, 0, 0)",
+		"ActiveCaption": "rgb(255, 255, 255)",
+		"AppWorkspace": "rgb(255, 255, 255)",
+		"Background": "rgb(255, 255, 255)",
+		"ButtonHighlight": "rgb(239, 239, 239)",
+		"ButtonShadow": "rgb(239, 239, 239)",
+		"CaptionText": "rgb(0, 0, 0)",
+		"InactiveBorder": "rgb(0, 0, 0)",
+		"InactiveCaption": "rgb(255, 255, 255)",
+		"InactiveCaptionText": "rgb(128, 128, 128)",
+		"InfoBackground": "rgb(255, 255, 255)",
+		"InfoText": "rgb(0, 0, 0)",
+		"Menu": "rgb(255, 255, 255)",
+		"MenuText": "rgb(0, 0, 0)",
+		"Scrollbar": "rgb(255, 255, 255)",
+		"ThreeDDarkShadow": "rgb(0, 0, 0)",
+		"ThreeDFace": "rgb(239, 239, 239)",
+		"ThreeDHighlight": "rgb(0, 0, 0)",
+		"ThreeDLightShadow": "rgb(0, 0, 0)",
+		"ThreeDShadow": "rgb(0, 0, 0)",
+		"Window": "rgb(255, 255, 255)",
+		"WindowFrame": "rgb(0, 0, 0)",
+		"WindowText": "rgb(0, 0, 0)"
+	},
+	"systemFonts": {
+		"caption": {
+			"family": "Arial",
+			"size": "16px",
+			"weight": "400",
+			"style": "normal"
+		},
+		"icon": {
+			"family": "Arial",
+			"size": "16px",
+			"weight": "400",
+			"style": "normal"
+		},
+		"menu": {
+			"family": "Arial",
+			"size": "16px",
+			"weight": "400",
+			"style": "normal"
+		},
+		"message-box": {
+			"family": "Arial",
+			"size": "16px",
+			"weight": "400",
+			"style": "normal"
+		},
+		"small-caption": {
+			"family": "Arial",
+			"size": "16px",
+			"weight": "400",
+			"style": "normal"
+		},
+		"status-bar": {
+			"family": "Arial",
+			"size": "16px",
+			"weight": "400",
+			"style": "normal"
+		}
+	},
+	"fonts": {
+		"present": [
+			"Arial",
+			"Courier New",
+			"MS Gothic",
+			"SimSun",
+			"Times New Roman",
+			"DejaVu Sans",
+			"DejaVu Serif",
+			"DejaVu Sans Mono",
+			"Liberation Sans",
+			"Liberation Serif",
+			"Liberation Mono",
+			"Nimbus Roman",
+			"Nimbus Sans",
+			"Noto Sans",
+			"Noto Serif",
+			"Noto Color Emoji",
+			"Noto Sans CJK JP",
+			"Ubuntu",
+			"Ubuntu Mono",
+			"FreeSans",
+			"FreeSerif",
+			"URW Bookman",
+			"C059",
+			"P052",
+			"Z003",
+			"Helvetica"
+		],
+		"count": 26,
+		"baseline": {
+			"monospace": 953.6484375,
+			"serif": 986.30859375,
+			"sans-serif": 1044.984375
+		},
+		"widths": {
+			"Arial": [
+				1044.98,
+				1044.98,
+				1044.98
+			],
+			"Arial Black": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Arial Narrow": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Bahnschrift": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Calibri": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Cambria": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Cambria Math": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Candara": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Comic Sans MS": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Consolas": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Constantia": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Corbel": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Courier New": [
+				950.55,
+				950.55,
+				950.55
+			],
+			"Ebrima": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Franklin Gothic Medium": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Gabriola": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Gadugi": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Georgia": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"HoloLens MDL2 Assets": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Impact": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Ink Free": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Javanese Text": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Leelawadee UI": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Lucida Console": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Lucida Sans Unicode": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Malgun Gothic": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Marlett": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft Himalaya": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft JhengHei": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft New Tai Lue": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft PhagsPa": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft Sans Serif": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft Tai Le": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft YaHei": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Microsoft Yi Baiti": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"MingLiU-ExtB": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Mongolian Baiti": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"MS Gothic": [
+				792,
+				792,
+				792
+			],
+			"MV Boli": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Myanmar Text": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Nirmala UI": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Palatino Linotype": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe Fluent Icons": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe MDL2 Assets": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe Print": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe Script": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe UI": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe UI Emoji": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe UI Historic": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe UI Symbol": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Segoe UI Variable": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"SimSun": [
+				1163.81,
+				1163.81,
+				1163.81
+			],
+			"Sitka": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Sylfaen": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Symbol": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Tahoma": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Times New Roman": [
+				986.31,
+				986.31,
+				986.31
+			],
+			"Trebuchet MS": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Verdana": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Webdings": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Wingdings": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Yu Gothic": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Agency FB": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Bookman Old Style": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Bradley Hand ITC": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Century Gothic": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Garamond": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Lucida Handwriting": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Monotype Corsiva": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Papyrus": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Rockwell": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Script MT Bold": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Tw Cen MT": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"DejaVu Sans": [
+				1190.25,
+				1190.25,
+				1190.25
+			],
+			"DejaVu Serif": [
+				1185.86,
+				1185.86,
+				1185.86
+			],
+			"DejaVu Sans Mono": [
+				953.65,
+				953.65,
+				953.65
+			],
+			"Liberation Sans": [
+				1044.98,
+				1044.98,
+				1044.98
+			],
+			"Liberation Serif": [
+				986.31,
+				986.31,
+				986.31
+			],
+			"Liberation Mono": [
+				950.55,
+				950.55,
+				950.55
+			],
+			"Nimbus Roman": [
+				986.47,
+				986.47,
+				986.47
+			],
+			"Nimbus Sans": [
+				1044.94,
+				1044.94,
+				1044.94
+			],
+			"Noto Sans": [
+				1118.3,
+				1118.3,
+				1118.3
+			],
+			"Noto Serif": [
+				1140.19,
+				1140.19,
+				1140.19
+			],
+			"Noto Color Emoji": [
+				1233.56,
+				1346.31,
+				1384.8
+			],
+			"Noto Sans CJK JP": [
+				1103.76,
+				1103.76,
+				1103.76
+			],
+			"Ubuntu": [
+				1061.86,
+				1061.86,
+				1061.86
+			],
+			"Ubuntu Mono": [
+				887.04,
+				887.04,
+				887.04
+			],
+			"Cantarell": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"FreeSans": [
+				1014.55,
+				1014.55,
+				1014.55
+			],
+			"FreeSerif": [
+				978.77,
+				978.77,
+				978.77
+			],
+			"Bitstream Vera Sans": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"URW Bookman": [
+				1153.44,
+				1153.44,
+				1153.44
+			],
+			"C059": [
+				1087.99,
+				1087.99,
+				1087.99
+			],
+			"P052": [
+				1060.99,
+				1060.99,
+				1060.99
+			],
+			"Z003": [
+				813.6,
+				813.6,
+				813.6
+			],
+			"Helvetica": [
+				1044.98,
+				1044.98,
+				1044.98
+			],
+			"Helvetica Neue": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Lucida Grande": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Menlo": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Monaco": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"SF Pro Text": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Geneva": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Optima": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"Chalkboard": [
+				953.65,
+				986.31,
+				1044.98
+			],
+			"American Typewriter": [
+				953.65,
+				986.31,
+				1044.98
+			]
+		},
+		"checkSaysPresent": [
+			"Arial",
+			"Arial Black",
+			"Arial Narrow",
+			"Bahnschrift",
+			"Calibri",
+			"Cambria",
+			"Cambria Math",
+			"Candara",
+			"Comic Sans MS",
+			"Consolas",
+			"Constantia",
+			"Corbel",
+			"Courier New",
+			"Ebrima",
+			"Franklin Gothic Medium",
+			"Gabriola",
+			"Gadugi",
+			"Georgia",
+			"HoloLens MDL2 Assets",
+			"Impact",
+			"Ink Free",
+			"Javanese Text",
+			"Leelawadee UI",
+			"Lucida Console",
+			"Lucida Sans Unicode",
+			"Malgun Gothic",
+			"Marlett",
+			"Microsoft Himalaya",
+			"Microsoft JhengHei",
+			"Microsoft New Tai Lue",
+			"Microsoft PhagsPa",
+			"Microsoft Sans Serif",
+			"Microsoft Tai Le",
+			"Microsoft YaHei",
+			"Microsoft Yi Baiti",
+			"MingLiU-ExtB",
+			"Mongolian Baiti",
+			"MS Gothic",
+			"MV Boli",
+			"Myanmar Text",
+			"Nirmala UI",
+			"Palatino Linotype",
+			"Segoe Fluent Icons",
+			"Segoe MDL2 Assets",
+			"Segoe Print",
+			"Segoe Script",
+			"Segoe UI",
+			"Segoe UI Emoji",
+			"Segoe UI Historic",
+			"Segoe UI Symbol",
+			"Segoe UI Variable",
+			"SimSun",
+			"Sitka",
+			"Sylfaen",
+			"Symbol",
+			"Tahoma",
+			"Times New Roman",
+			"Trebuchet MS",
+			"Verdana",
+			"Webdings",
+			"Wingdings",
+			"Yu Gothic",
+			"Agency FB",
+			"Bookman Old Style",
+			"Bradley Hand ITC",
+			"Century Gothic",
+			"Garamond",
+			"Lucida Handwriting",
+			"Monotype Corsiva",
+			"Papyrus",
+			"Rockwell",
+			"Script MT Bold",
+			"Tw Cen MT",
+			"DejaVu Sans",
+			"DejaVu Serif",
+			"DejaVu Sans Mono",
+			"Liberation Sans",
+			"Liberation Serif",
+			"Liberation Mono",
+			"Nimbus Roman",
+			"Nimbus Sans",
+			"Noto Sans",
+			"Noto Serif",
+			"Noto Color Emoji",
+			"Noto Sans CJK JP",
+			"Ubuntu",
+			"Ubuntu Mono",
+			"Cantarell",
+			"FreeSans",
+			"FreeSerif",
+			"Bitstream Vera Sans",
+			"URW Bookman",
+			"C059",
+			"P052",
+			"Z003",
+			"Helvetica",
+			"Helvetica Neue",
+			"Lucida Grande",
+			"Menlo",
+			"Monaco",
+			"SF Pro Text",
+			"Geneva",
+			"Optima",
+			"Chalkboard",
+			"American Typewriter"
+		]
+	},
+	"textMetrics": {
+		"16px \"Arial\"": {
+			"width": 299.22113037109375,
+			"actualBoundingBoxLeft": 0,
+			"actualBoundingBoxRight": 299.2578125,
+			"actualBoundingBoxAscent": 15,
+			"actualBoundingBoxDescent": 4,
+			"fontBoundingBoxAscent": 14,
+			"fontBoundingBoxDescent": 3,
+			"alphabeticBaseline": 0,
+			"hangingBaseline": 11.199999809265137,
+			"ideographicBaseline": -3
+		},
+		"16px \"Segoe UI\"": {
+			"width": 278.14300537109375,
+			"actualBoundingBoxLeft": 0,
+			"actualBoundingBoxRight": 278.1796875,
+			"actualBoundingBoxAscent": 15,
+			"actualBoundingBoxDescent": 4,
+			"fontBoundingBoxAscent": 14,
+			"fontBoundingBoxDescent": 3,
+			"alphabeticBaseline": 0,
+			"hangingBaseline": 11.199999809265137,
+			"ideographicBaseline": -3
+		},
+		"16px monospace": {
+			"width": 376.37738037109375,
+			"actualBoundingBoxLeft": 0,
+			"actualBoundingBoxRight": 376.4140625,
+			"actualBoundingBoxAscent": 15,
+			"actualBoundingBoxDescent": 4,
+			"fontBoundingBoxAscent": 15,
+			"fontBoundingBoxDescent": 4,
+			"alphabeticBaseline": 0,
+			"hangingBaseline": 12,
+			"ideographicBaseline": -4
+		},
+		"48px \"Times New Roman\"": {
+			"width": 834.428955078125,
+			"actualBoundingBoxLeft": 0,
+			"actualBoundingBoxRight": 834.5390625,
+			"actualBoundingBoxAscent": 45,
+			"actualBoundingBoxDescent": 12,
+			"fontBoundingBoxAscent": 43,
+			"fontBoundingBoxDescent": 10,
+			"alphabeticBaseline": 0,
+			"hangingBaseline": 34.400001525878906,
+			"ideographicBaseline": -10
+		},
+		"domClientWidth": 274.8125
+	},
+	"canvas2d": {
+		"imageDataHash": "c8547eea0aaa4913118ac7fe1211921c49cbdb189bf04301f7f46903e8a098b8",
+		"stable": false,
+		"dataUrlHash": "45556b618601ae58959bd5845e96c0d862a108d93a9b2e48064873ce4e2828b1",
+		"geometryHash": "b998c8368e61970d4a33b1d750877c773122cf766ac7f32b0c67432aac46e091"
+	},
+	"webgl1": {
+		"vendor": "WebKit",
+		"renderer": "WebKit WebGL",
+		"version": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+		"shadingLanguageVersion": "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)",
+		"unmaskedVendor": "Google Inc. (NVIDIA Corporation)",
+		"unmaskedRenderer": "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL ES 3.2)",
+		"extensions": [
+			"ANGLE_instanced_arrays",
+			"EXT_blend_minmax",
+			"EXT_clip_control",
+			"EXT_color_buffer_half_float",
+			"EXT_depth_clamp",
+			"EXT_disjoint_timer_query",
+			"EXT_float_blend",
+			"EXT_frag_depth",
+			"EXT_polygon_offset_clamp",
+			"EXT_sRGB",
+			"EXT_shader_texture_lod",
+			"EXT_texture_compression_bptc",
+			"EXT_texture_compression_rgtc",
+			"EXT_texture_filter_anisotropic",
+			"EXT_texture_mirror_clamp_to_edge",
+			"KHR_parallel_shader_compile",
+			"OES_element_index_uint",
+			"OES_fbo_render_mipmap",
+			"OES_standard_derivatives",
+			"OES_texture_float",
+			"OES_texture_float_linear",
+			"OES_texture_half_float",
+			"OES_texture_half_float_linear",
+			"OES_vertex_array_object",
+			"WEBGL_blend_func_extended",
+			"WEBGL_color_buffer_float",
+			"WEBGL_compressed_texture_astc",
+			"WEBGL_compressed_texture_etc",
+			"WEBGL_compressed_texture_etc1",
+			"WEBGL_compressed_texture_s3tc",
+			"WEBGL_compressed_texture_s3tc_srgb",
+			"WEBGL_debug_renderer_info",
+			"WEBGL_debug_shaders",
+			"WEBGL_depth_texture",
+			"WEBGL_lose_context",
+			"WEBGL_multi_draw",
+			"WEBGL_polygon_mode"
+		],
+		"contextAttributes": {
+			"alpha": true,
+			"antialias": true,
+			"depth": true,
+			"desynchronized": false,
+			"failIfMajorPerformanceCaveat": false,
+			"powerPreference": "default",
+			"premultipliedAlpha": true,
+			"preserveDrawingBuffer": false,
+			"stencil": false,
+			"xrCompatible": false
+		},
+		"parameters": {
+			"BLEND_EQUATION": 32774,
+			"BLEND_EQUATION_RGB": 32774,
+			"BLEND_EQUATION_ALPHA": 32774,
+			"BLEND_DST_RGB": 0,
+			"BLEND_SRC_RGB": 1,
+			"BLEND_DST_ALPHA": 0,
+			"BLEND_SRC_ALPHA": 1,
+			"BLEND_COLOR": [
+				0,
+				0,
+				0,
+				0
+			],
+			"CULL_FACE": false,
+			"BLEND": false,
+			"DITHER": true,
+			"STENCIL_TEST": false,
+			"DEPTH_TEST": false,
+			"SCISSOR_TEST": false,
+			"POLYGON_OFFSET_FILL": false,
+			"SAMPLE_ALPHA_TO_COVERAGE": false,
+			"SAMPLE_COVERAGE": false,
+			"LINE_WIDTH": 1,
+			"ALIASED_POINT_SIZE_RANGE": [
+				1,
+				2047
+			],
+			"ALIASED_LINE_WIDTH_RANGE": [
+				1,
+				10
+			],
+			"CULL_FACE_MODE": 1029,
+			"FRONT_FACE": 2305,
+			"DEPTH_RANGE": [
+				0,
+				1
+			],
+			"DEPTH_WRITEMASK": true,
+			"DEPTH_CLEAR_VALUE": 1,
+			"DEPTH_FUNC": 513,
+			"STENCIL_CLEAR_VALUE": 0,
+			"STENCIL_FUNC": 519,
+			"STENCIL_FAIL": 7680,
+			"STENCIL_PASS_DEPTH_FAIL": 7680,
+			"STENCIL_PASS_DEPTH_PASS": 7680,
+			"STENCIL_REF": 0,
+			"STENCIL_VALUE_MASK": 4294967295,
+			"STENCIL_WRITEMASK": 4294967295,
+			"STENCIL_BACK_FUNC": 519,
+			"STENCIL_BACK_FAIL": 7680,
+			"STENCIL_BACK_PASS_DEPTH_FAIL": 7680,
+			"STENCIL_BACK_PASS_DEPTH_PASS": 7680,
+			"STENCIL_BACK_REF": 0,
+			"STENCIL_BACK_VALUE_MASK": 4294967295,
+			"STENCIL_BACK_WRITEMASK": 4294967295,
+			"VIEWPORT": [
+				0,
+				0,
+				64,
+				64
+			],
+			"SCISSOR_BOX": [
+				0,
+				0,
+				64,
+				64
+			],
+			"COLOR_CLEAR_VALUE": [
+				0,
+				0,
+				0,
+				0
+			],
+			"UNPACK_ALIGNMENT": 4,
+			"PACK_ALIGNMENT": 4,
+			"MAX_TEXTURE_SIZE": 32768,
+			"MAX_VIEWPORT_DIMS": [
+				32768,
+				32768
+			],
+			"SUBPIXEL_BITS": 4,
+			"RED_BITS": 8,
+			"GREEN_BITS": 8,
+			"BLUE_BITS": 8,
+			"ALPHA_BITS": 8,
+			"DEPTH_BITS": 24,
+			"STENCIL_BITS": 0,
+			"POLYGON_OFFSET_UNITS": 0,
+			"POLYGON_OFFSET_FACTOR": 0,
+			"SAMPLE_BUFFERS": 1,
+			"SAMPLES": 4,
+			"SAMPLE_COVERAGE_VALUE": 1,
+			"SAMPLE_COVERAGE_INVERT": false,
+			"COMPRESSED_TEXTURE_FORMATS": [],
+			"GENERATE_MIPMAP_HINT": 4352,
+			"MAX_VERTEX_ATTRIBS": 16,
+			"MAX_VERTEX_UNIFORM_VECTORS": 1024,
+			"MAX_VARYING_VECTORS": 31,
+			"MAX_COMBINED_TEXTURE_IMAGE_UNITS": 64,
+			"MAX_VERTEX_TEXTURE_IMAGE_UNITS": 32,
+			"MAX_TEXTURE_IMAGE_UNITS": 32,
+			"MAX_FRAGMENT_UNIFORM_VECTORS": 1024,
+			"SHADING_LANGUAGE_VERSION": "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)",
+			"VENDOR": "WebKit",
+			"RENDERER": "WebKit WebGL",
+			"VERSION": "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
+			"MAX_CUBE_MAP_TEXTURE_SIZE": 32768,
+			"ACTIVE_TEXTURE": 33984,
+			"IMPLEMENTATION_COLOR_READ_TYPE": 5121,
+			"IMPLEMENTATION_COLOR_READ_FORMAT": 6408,
+			"MAX_RENDERBUFFER_SIZE": 32768,
+			"UNPACK_FLIP_Y_WEBGL": false,
+			"UNPACK_PREMULTIPLY_ALPHA_WEBGL": false,
+			"UNPACK_COLORSPACE_CONVERSION_WEBGL": 37444
+		},
+		"shaderPrecisionFormats": {
+			"VERTEX_SHADER.LOW_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"VERTEX_SHADER.MEDIUM_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"VERTEX_SHADER.HIGH_FLOAT": [
+				127,
+				127,
+				23
+			],
+			"VERTEX_SHADER.LOW_INT": [
+				31,
+				30,
+				0
+			],
+			"VERTEX_SHADER.MEDIUM_INT": [
+				31,
+				30,
+				0
+			],
+			"VERTEX_SHADER.HIGH_INT": [
+				31,
+				30,
+				0
+			],
+			"FRAGMENT_SHADER.LOW_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"FRAGMENT_SHADER.MEDIUM_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"FRAGMENT_SHADER.HIGH_FLOAT": [
+				127,
+				127,
+				23
+			],
+			"FRAGMENT_SHADER.LOW_INT": [
+				31,
+				30,
+				0
+			],
+			"FRAGMENT_SHADER.MEDIUM_INT": [
+				31,
+				30,
+				0
+			],
+			"FRAGMENT_SHADER.HIGH_INT": [
+				31,
+				30,
+				0
+			]
+		}
+	},
+	"webgl2": {
+		"vendor": "WebKit",
+		"renderer": "WebKit WebGL",
+		"version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+		"shadingLanguageVersion": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)",
+		"unmaskedVendor": "Google Inc. (NVIDIA Corporation)",
+		"unmaskedRenderer": "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL ES 3.2)",
+		"extensions": [
+			"EXT_clip_control",
+			"EXT_color_buffer_float",
+			"EXT_color_buffer_half_float",
+			"EXT_conservative_depth",
+			"EXT_depth_clamp",
+			"EXT_disjoint_timer_query_webgl2",
+			"EXT_float_blend",
+			"EXT_polygon_offset_clamp",
+			"EXT_render_snorm",
+			"EXT_texture_compression_bptc",
+			"EXT_texture_compression_rgtc",
+			"EXT_texture_filter_anisotropic",
+			"EXT_texture_mirror_clamp_to_edge",
+			"EXT_texture_norm16",
+			"KHR_parallel_shader_compile",
+			"NV_shader_noperspective_interpolation",
+			"OES_draw_buffers_indexed",
+			"OES_sample_variables",
+			"OES_shader_multisample_interpolation",
+			"OES_texture_float_linear",
+			"WEBGL_blend_func_extended",
+			"WEBGL_clip_cull_distance",
+			"WEBGL_compressed_texture_astc",
+			"WEBGL_compressed_texture_etc",
+			"WEBGL_compressed_texture_etc1",
+			"WEBGL_compressed_texture_s3tc",
+			"WEBGL_compressed_texture_s3tc_srgb",
+			"WEBGL_debug_renderer_info",
+			"WEBGL_debug_shaders",
+			"WEBGL_lose_context",
+			"WEBGL_multi_draw",
+			"WEBGL_polygon_mode",
+			"WEBGL_stencil_texturing"
+		],
+		"contextAttributes": {
+			"alpha": true,
+			"antialias": true,
+			"depth": true,
+			"desynchronized": false,
+			"failIfMajorPerformanceCaveat": false,
+			"powerPreference": "default",
+			"premultipliedAlpha": true,
+			"preserveDrawingBuffer": false,
+			"stencil": false,
+			"xrCompatible": false
+		},
+		"parameters": {
+			"BLEND_EQUATION": 32774,
+			"BLEND_EQUATION_RGB": 32774,
+			"BLEND_EQUATION_ALPHA": 32774,
+			"BLEND_DST_RGB": 0,
+			"BLEND_SRC_RGB": 1,
+			"BLEND_DST_ALPHA": 0,
+			"BLEND_SRC_ALPHA": 1,
+			"BLEND_COLOR": [
+				0,
+				0,
+				0,
+				0
+			],
+			"CULL_FACE": false,
+			"BLEND": false,
+			"DITHER": true,
+			"STENCIL_TEST": false,
+			"DEPTH_TEST": false,
+			"SCISSOR_TEST": false,
+			"POLYGON_OFFSET_FILL": false,
+			"SAMPLE_ALPHA_TO_COVERAGE": false,
+			"SAMPLE_COVERAGE": false,
+			"LINE_WIDTH": 1,
+			"ALIASED_POINT_SIZE_RANGE": [
+				1,
+				2047
+			],
+			"ALIASED_LINE_WIDTH_RANGE": [
+				1,
+				10
+			],
+			"CULL_FACE_MODE": 1029,
+			"FRONT_FACE": 2305,
+			"DEPTH_RANGE": [
+				0,
+				1
+			],
+			"DEPTH_WRITEMASK": true,
+			"DEPTH_CLEAR_VALUE": 1,
+			"DEPTH_FUNC": 513,
+			"STENCIL_CLEAR_VALUE": 0,
+			"STENCIL_FUNC": 519,
+			"STENCIL_FAIL": 7680,
+			"STENCIL_PASS_DEPTH_FAIL": 7680,
+			"STENCIL_PASS_DEPTH_PASS": 7680,
+			"STENCIL_REF": 0,
+			"STENCIL_VALUE_MASK": 4294967295,
+			"STENCIL_WRITEMASK": 4294967295,
+			"STENCIL_BACK_FUNC": 519,
+			"STENCIL_BACK_FAIL": 7680,
+			"STENCIL_BACK_PASS_DEPTH_FAIL": 7680,
+			"STENCIL_BACK_PASS_DEPTH_PASS": 7680,
+			"STENCIL_BACK_REF": 0,
+			"STENCIL_BACK_VALUE_MASK": 4294967295,
+			"STENCIL_BACK_WRITEMASK": 4294967295,
+			"VIEWPORT": [
+				0,
+				0,
+				64,
+				64
+			],
+			"SCISSOR_BOX": [
+				0,
+				0,
+				64,
+				64
+			],
+			"COLOR_CLEAR_VALUE": [
+				0,
+				0,
+				0,
+				0
+			],
+			"UNPACK_ALIGNMENT": 4,
+			"PACK_ALIGNMENT": 4,
+			"MAX_TEXTURE_SIZE": 32768,
+			"MAX_VIEWPORT_DIMS": [
+				32768,
+				32768
+			],
+			"SUBPIXEL_BITS": 4,
+			"RED_BITS": 8,
+			"GREEN_BITS": 8,
+			"BLUE_BITS": 8,
+			"ALPHA_BITS": 8,
+			"DEPTH_BITS": 24,
+			"STENCIL_BITS": 0,
+			"POLYGON_OFFSET_UNITS": 0,
+			"POLYGON_OFFSET_FACTOR": 0,
+			"SAMPLE_BUFFERS": 1,
+			"SAMPLES": 4,
+			"SAMPLE_COVERAGE_VALUE": 1,
+			"SAMPLE_COVERAGE_INVERT": false,
+			"COMPRESSED_TEXTURE_FORMATS": [],
+			"GENERATE_MIPMAP_HINT": 4352,
+			"MAX_VERTEX_ATTRIBS": 16,
+			"MAX_VERTEX_UNIFORM_VECTORS": 1024,
+			"MAX_VARYING_VECTORS": 31,
+			"MAX_COMBINED_TEXTURE_IMAGE_UNITS": 64,
+			"MAX_VERTEX_TEXTURE_IMAGE_UNITS": 32,
+			"MAX_TEXTURE_IMAGE_UNITS": 32,
+			"MAX_FRAGMENT_UNIFORM_VECTORS": 1024,
+			"SHADING_LANGUAGE_VERSION": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)",
+			"VENDOR": "WebKit",
+			"RENDERER": "WebKit WebGL",
+			"VERSION": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+			"MAX_CUBE_MAP_TEXTURE_SIZE": 32768,
+			"ACTIVE_TEXTURE": 33984,
+			"IMPLEMENTATION_COLOR_READ_TYPE": 5121,
+			"IMPLEMENTATION_COLOR_READ_FORMAT": 6408,
+			"MAX_RENDERBUFFER_SIZE": 32768,
+			"UNPACK_FLIP_Y_WEBGL": false,
+			"UNPACK_PREMULTIPLY_ALPHA_WEBGL": false,
+			"UNPACK_COLORSPACE_CONVERSION_WEBGL": 37444,
+			"READ_BUFFER": 1029,
+			"UNPACK_ROW_LENGTH": 0,
+			"UNPACK_SKIP_ROWS": 0,
+			"UNPACK_SKIP_PIXELS": 0,
+			"PACK_ROW_LENGTH": 0,
+			"PACK_SKIP_ROWS": 0,
+			"PACK_SKIP_PIXELS": 0,
+			"UNPACK_SKIP_IMAGES": 0,
+			"UNPACK_IMAGE_HEIGHT": 0,
+			"MAX_3D_TEXTURE_SIZE": 16384,
+			"MAX_ELEMENTS_VERTICES": 1048576,
+			"MAX_ELEMENTS_INDICES": 1048576,
+			"MAX_TEXTURE_LOD_BIAS": 15,
+			"MAX_DRAW_BUFFERS": 8,
+			"DRAW_BUFFER0": 1029,
+			"DRAW_BUFFER1": 1029,
+			"DRAW_BUFFER2": 1029,
+			"DRAW_BUFFER3": 1029,
+			"DRAW_BUFFER4": 1029,
+			"DRAW_BUFFER5": 1029,
+			"DRAW_BUFFER6": 1029,
+			"DRAW_BUFFER7": 1029,
+			"MAX_FRAGMENT_UNIFORM_COMPONENTS": 4096,
+			"MAX_VERTEX_UNIFORM_COMPONENTS": 4096,
+			"FRAGMENT_SHADER_DERIVATIVE_HINT": 4352,
+			"MAX_ARRAY_TEXTURE_LAYERS": 2048,
+			"MIN_PROGRAM_TEXEL_OFFSET": -8,
+			"MAX_PROGRAM_TEXEL_OFFSET": 7,
+			"MAX_VARYING_COMPONENTS": 124,
+			"MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS": 4,
+			"RASTERIZER_DISCARD": false,
+			"MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS": 128,
+			"MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS": 4,
+			"MAX_COLOR_ATTACHMENTS": 8,
+			"MAX_SAMPLES": 8,
+			"MAX_VERTEX_UNIFORM_BLOCKS": 14,
+			"MAX_FRAGMENT_UNIFORM_BLOCKS": 14,
+			"MAX_COMBINED_UNIFORM_BLOCKS": 42,
+			"MAX_UNIFORM_BUFFER_BINDINGS": 72,
+			"MAX_UNIFORM_BLOCK_SIZE": 65536,
+			"MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS": 233472,
+			"MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS": 233472,
+			"UNIFORM_BUFFER_OFFSET_ALIGNMENT": 256,
+			"MAX_VERTEX_OUTPUT_COMPONENTS": 128,
+			"MAX_FRAGMENT_INPUT_COMPONENTS": 128,
+			"MAX_SERVER_WAIT_TIMEOUT": 0,
+			"TRANSFORM_FEEDBACK_PAUSED": false,
+			"TRANSFORM_FEEDBACK_ACTIVE": false,
+			"MAX_ELEMENT_INDEX": 4294967294,
+			"MAX_CLIENT_WAIT_TIMEOUT_WEBGL": 0
+		},
+		"shaderPrecisionFormats": {
+			"VERTEX_SHADER.LOW_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"VERTEX_SHADER.MEDIUM_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"VERTEX_SHADER.HIGH_FLOAT": [
+				127,
+				127,
+				23
+			],
+			"VERTEX_SHADER.LOW_INT": [
+				31,
+				30,
+				0
+			],
+			"VERTEX_SHADER.MEDIUM_INT": [
+				31,
+				30,
+				0
+			],
+			"VERTEX_SHADER.HIGH_INT": [
+				31,
+				30,
+				0
+			],
+			"FRAGMENT_SHADER.LOW_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"FRAGMENT_SHADER.MEDIUM_FLOAT": [
+				15,
+				15,
+				10
+			],
+			"FRAGMENT_SHADER.HIGH_FLOAT": [
+				127,
+				127,
+				23
+			],
+			"FRAGMENT_SHADER.LOW_INT": [
+				31,
+				30,
+				0
+			],
+			"FRAGMENT_SHADER.MEDIUM_INT": [
+				31,
+				30,
+				0
+			],
+			"FRAGMENT_SHADER.HIGH_INT": [
+				31,
+				30,
+				0
+			]
+		}
+	},
+	"webglRender": {
+		"readPixelsHash": "3c0af820ef257d35bdf00d060f84bd9858412d00b5d935f4a8ade9f498135fcb",
+		"stable": true,
+		"toDataURLHash": "ffa32283130c5094e131198f2b95936e20ab67973228baa99c587c35b1dc55a5"
+	},
+	"webgpu": {
+		"info": {
+			"vendor": "nvidia",
+			"architecture": "blackwell",
+			"device": "",
+			"description": "",
+			"subgroupMinSize": 32,
+			"subgroupMaxSize": 32
+		},
+		"features": [
+			"bgra8unorm-storage",
+			"clip-distances",
+			"core-features-and-limits",
+			"depth-clip-control",
+			"depth32float-stencil8",
+			"dual-source-blending",
+			"float32-blendable",
+			"float32-filterable",
+			"indirect-first-instance",
+			"primitive-index",
+			"rg11b10ufloat-renderable",
+			"subgroups",
+			"texture-component-swizzle",
+			"texture-compression-bc",
+			"texture-compression-bc-sliced-3d",
+			"texture-formats-tier1",
+			"texture-formats-tier2",
+			"timestamp-query"
+		],
+		"limits": {
+			"maxTextureDimension1D": 16384,
+			"maxTextureDimension2D": 16384,
+			"maxTextureDimension3D": 2048,
+			"maxTextureArrayLayers": 2048,
+			"maxBindGroups": 4,
+			"maxBindGroupsPlusVertexBuffers": 24,
+			"maxBindingsPerBindGroup": 1000,
+			"maxDynamicUniformBuffersPerPipelineLayout": 10,
+			"maxDynamicStorageBuffersPerPipelineLayout": 8,
+			"maxSampledTexturesPerShaderStage": 48,
+			"maxSamplersPerShaderStage": 16,
+			"maxStorageBuffersPerShaderStage": 16,
+			"maxStorageTexturesPerShaderStage": 8,
+			"maxUniformBuffersPerShaderStage": 12,
+			"maxUniformBufferBindingSize": 65536,
+			"maxStorageBufferBindingSize": 2147483644,
+			"minUniformBufferOffsetAlignment": 256,
+			"minStorageBufferOffsetAlignment": 256,
+			"maxVertexBuffers": 8,
+			"maxBufferSize": 4294967292,
+			"maxVertexAttributes": 30,
+			"maxVertexBufferArrayStride": 2048,
+			"maxInterStageShaderVariables": 28,
+			"maxColorAttachments": 8,
+			"maxColorAttachmentBytesPerSample": 128,
+			"maxComputeWorkgroupStorageSize": 49152,
+			"maxComputeInvocationsPerWorkgroup": 1024,
+			"maxComputeWorkgroupSizeX": 1024,
+			"maxComputeWorkgroupSizeY": 1024,
+			"maxComputeWorkgroupSizeZ": 64,
+			"maxComputeWorkgroupsPerDimension": 65535,
+			"maxImmediateSize": 64,
+			"maxStorageBuffersInFragmentStage": 16,
+			"maxStorageTexturesInFragmentStage": 8,
+			"maxStorageBuffersInVertexStage": 16,
+			"maxStorageTexturesInVertexStage": 8
+		},
+		"preferredCanvasFormat": "rgba8unorm"
+	},
+	"audio": {
+		"live": {
+			"sampleRate": 48000,
+			"baseLatency": 0.010666666666666666,
+			"outputLatency": 0,
+			"state": "running",
+			"maxChannelCount": 2,
+			"channelCount": 2,
+			"numberOfInputs": 1
+		},
+		"offline": {
+			"sum": 124.04347527516074,
+			"hash": "1fc8981f83fe7970e26e93d57a46262b1b98742fb84b11b08252d1e6d19b13f9",
+			"sample": -0.10808052122592926
+		},
+		"offlineStable": true
+	},
+	"intl": {
+		"resolvedTimeZone": "America/Denver",
+		"resolvedLocale": "en-US",
+		"calendar": "gregory",
+		"numberingSystem": "latn",
+		"offsetJan": 420,
+		"offsetJul": 360,
+		"dateStringJan": "Thu Jan 15 2026 05:00:00 GMT-0700 (Mountain Standard Time)",
+		"dateStringJul": "Wed Jul 15 2026 06:00:00 GMT-0600 (Mountain Daylight Time)",
+		"toLocaleString": "1/15/2026, 5:00:00 AM",
+		"toLocaleDateString": "1/15/2026",
+		"toLocaleTimeString": "5:00:00 AM",
+		"numberFormat": "1,234,567.891",
+		"currency": "$1,234.50",
+		"relative": "1 day ago",
+		"collatorLocale": "en-US",
+		"timeZoneCount": 418,
+		"currencyCount": 159,
+		"longTZ": "1/15/2026, Mountain Standard Time",
+		"firstDayOfWeek": 7
+	},
+	"media": {
+		"canPlayType": {
+			"video/mp4; codecs=\"avc1.42E01E\"": "probably",
+			"video/mp4; codecs=\"avc1.640028\"": "probably",
+			"video/mp4; codecs=\"hev1.1.6.L93.B0\"": "",
+			"video/mp4; codecs=\"hvc1.1.6.L93.B0\"": "",
+			"video/mp4; codecs=\"av01.0.08M.08\"": "probably",
+			"video/mp4; codecs=\"vp09.00.10.08\"": "probably",
+			"video/mp4; codecs=\"dvh1.05.07\"": "",
+			"video/webm; codecs=\"vp8\"": "probably",
+			"video/webm; codecs=\"vp9\"": "probably",
+			"video/webm; codecs=\"av01.0.08M.08\"": "probably",
+			"video/ogg; codecs=\"theora\"": "",
+			"audio/mp4; codecs=\"mp4a.40.2\"": "probably",
+			"audio/mp4; codecs=\"ac-3\"": "",
+			"audio/mp4; codecs=\"ec-3\"": "",
+			"audio/mp4; codecs=\"mha1.2.01\"": "",
+			"audio/mpeg": "probably",
+			"audio/webm; codecs=\"opus\"": "probably",
+			"audio/webm; codecs=\"vorbis\"": "probably",
+			"audio/ogg; codecs=\"flac\"": "probably",
+			"audio/wav; codecs=\"1\"": "probably"
+		},
+		"mediaSource": {
+			"video/mp4; codecs=\"avc1.42E01E\"": true,
+			"video/mp4; codecs=\"avc1.640028\"": true,
+			"video/mp4; codecs=\"hev1.1.6.L93.B0\"": false,
+			"video/mp4; codecs=\"hvc1.1.6.L93.B0\"": false,
+			"video/mp4; codecs=\"av01.0.08M.08\"": true,
+			"video/mp4; codecs=\"vp09.00.10.08\"": true,
+			"video/mp4; codecs=\"dvh1.05.07\"": false,
+			"video/webm; codecs=\"vp8\"": true,
+			"video/webm; codecs=\"vp9\"": true,
+			"video/webm; codecs=\"av01.0.08M.08\"": true,
+			"video/ogg; codecs=\"theora\"": false,
+			"audio/mp4; codecs=\"mp4a.40.2\"": true,
+			"audio/mp4; codecs=\"ac-3\"": false,
+			"audio/mp4; codecs=\"ec-3\"": false,
+			"audio/mp4; codecs=\"mha1.2.01\"": false,
+			"audio/mpeg": true,
+			"audio/webm; codecs=\"opus\"": true,
+			"audio/webm; codecs=\"vorbis\"": true,
+			"audio/ogg; codecs=\"flac\"": false,
+			"audio/wav; codecs=\"1\"": false
+		},
+		"mediaRecorder": {
+			"video/mp4; codecs=\"avc1.42E01E\"": true,
+			"video/mp4; codecs=\"avc1.640028\"": true,
+			"video/mp4; codecs=\"hev1.1.6.L93.B0\"": false,
+			"video/mp4; codecs=\"hvc1.1.6.L93.B0\"": false,
+			"video/mp4; codecs=\"av01.0.08M.08\"": true,
+			"video/mp4; codecs=\"vp09.00.10.08\"": false,
+			"video/mp4; codecs=\"dvh1.05.07\"": false,
+			"video/webm; codecs=\"vp8\"": true,
+			"video/webm; codecs=\"vp9\"": true,
+			"video/webm; codecs=\"av01.0.08M.08\"": true,
+			"video/ogg; codecs=\"theora\"": false,
+			"audio/mp4; codecs=\"mp4a.40.2\"": false,
+			"audio/mp4; codecs=\"ac-3\"": false,
+			"audio/mp4; codecs=\"ec-3\"": false,
+			"audio/mp4; codecs=\"mha1.2.01\"": false,
+			"audio/mpeg": false,
+			"audio/webm; codecs=\"opus\"": true,
+			"audio/webm; codecs=\"vorbis\"": false,
+			"audio/ogg; codecs=\"flac\"": false,
+			"audio/wav; codecs=\"1\"": false
+		},
+		"devices": [
+			{
+				"kind": "audioinput",
+				"hasLabel": false,
+				"idLen": 0,
+				"groupLen": 0
+			},
+			{
+				"kind": "audiooutput",
+				"hasLabel": false,
+				"idLen": 0,
+				"groupLen": 0
+			}
+		],
+		"decodingInfo": {
+			"powerEfficient": false,
+			"smooth": true,
+			"supported": true,
+			"keySystemAccess": null
+		}
+	},
+	"voices": {
+		"count": 0,
+		"voices": []
+	},
+	"plugins": {
+		"plugins": [
+			{
+				"name": "PDF Viewer",
+				"filename": "internal-pdf-viewer",
+				"description": "Portable Document Format",
+				"mimes": [
+					"application/pdf",
+					"text/pdf"
+				]
+			},
+			{
+				"name": "Chrome PDF Viewer",
+				"filename": "internal-pdf-viewer",
+				"description": "Portable Document Format",
+				"mimes": [
+					"application/pdf",
+					"text/pdf"
+				]
+			},
+			{
+				"name": "Chromium PDF Viewer",
+				"filename": "internal-pdf-viewer",
+				"description": "Portable Document Format",
+				"mimes": [
+					"application/pdf",
+					"text/pdf"
+				]
+			},
+			{
+				"name": "Microsoft Edge PDF Viewer",
+				"filename": "internal-pdf-viewer",
+				"description": "Portable Document Format",
+				"mimes": [
+					"application/pdf",
+					"text/pdf"
+				]
+			},
+			{
+				"name": "WebKit built-in PDF",
+				"filename": "internal-pdf-viewer",
+				"description": "Portable Document Format",
+				"mimes": [
+					"application/pdf",
+					"text/pdf"
+				]
+			}
+		],
+		"mimeTypes": [
+			"application/pdf",
+			"text/pdf"
+		]
+	},
+	"permissions": {
+		"geolocation": "prompt",
+		"notifications": "prompt",
+		"camera": "prompt",
+		"microphone": "prompt",
+		"midi": "prompt",
+		"background-sync": "granted",
+		"persistent-storage": "prompt",
+		"clipboard-read": "prompt",
+		"clipboard-write": "granted",
+		"payment-handler": "granted",
+		"screen-wake-lock": "granted",
+		"accelerometer": "granted",
+		"gyroscope": "granted",
+		"magnetometer": "granted",
+		"ambient-light-sensor": "throw:TypeError",
+		"storage-access": "granted",
+		"local-fonts": "prompt",
+		"window-management": "prompt",
+		"top-level-storage-access": "throw:TypeError",
+		"captured-surface-control": "prompt",
+		"__notificationPermission": "default"
+	},
+	"storage": {
+		"quota": 10737418240,
+		"usage": 0,
+		"quotaGiB": 10
+	},
+	"connection": {
+		"effectiveType": "4g",
+		"rtt": 50,
+		"downlink": 1.5,
+		"saveData": false
+	},
+	"keyboard": {
+		"KeyA": "a",
+		"KeyQ": "q",
+		"KeyW": "w",
+		"KeyY": "y",
+		"KeyZ": "z",
+		"Semicolon": ";",
+		"Quote": "'",
+		"Backquote": "`",
+		"Backslash": "\\",
+		"BracketLeft": "[",
+		"Comma": ",",
+		"Period": ".",
+		"Slash": "/",
+		"Minus": "-",
+		"Equal": "=",
+		"IntlBackslash": "<",
+		"IntlRo": null,
+		"IntlYen": null,
+		"Digit1": "1",
+		"Digit2": "2",
+		"__size": 48
+	},
+	"mediaQueries": {
+		"(pointer: fine)": true,
+		"(pointer: coarse)": false,
+		"(pointer: none)": false,
+		"(any-pointer: fine)": true,
+		"(any-pointer: coarse)": false,
+		"(hover: hover)": true,
+		"(hover: none)": false,
+		"(any-hover: hover)": true,
+		"(prefers-color-scheme: dark)": false,
+		"(prefers-color-scheme: light)": true,
+		"(prefers-reduced-motion: reduce)": false,
+		"(prefers-reduced-transparency: reduce)": false,
+		"(prefers-contrast: more)": false,
+		"(prefers-contrast: no-preference)": true,
+		"(forced-colors: active)": false,
+		"(inverted-colors: inverted)": false,
+		"(color-gamut: srgb)": true,
+		"(color-gamut: p3)": false,
+		"(color-gamut: rec2020)": false,
+		"(dynamic-range: high)": false,
+		"(video-dynamic-range: high)": false,
+		"(display-mode: browser)": true,
+		"(scripting: enabled)": true,
+		"(update: fast)": true,
+		"(update: slow)": false,
+		"(monochrome: 0)": true,
+		"(orientation: landscape)": false,
+		"(-webkit-device-pixel-ratio: 1)": true,
+		"(-webkit-device-pixel-ratio: 2)": false
+	},
+	"features": {
+		"window.showOpenFilePicker": "function",
+		"window.showSaveFilePicker": "function",
+		"window.showDirectoryPicker": "function",
+		"window.launchQueue": "object",
+		"window.DocumentPictureInPicture": "function",
+		"window.documentPictureInPicture": "object",
+		"window.EyeDropper": false,
+		"window.Ink": "function",
+		"navigator.ink": false,
+		"navigator.virtualKeyboard": false,
+		"navigator.windowControlsOverlay": false,
+		"navigator.keyboard": false,
+		"navigator.usb": false,
+		"navigator.serial": false,
+		"navigator.hid": false,
+		"navigator.bluetooth": false,
+		"navigator.xr": false,
+		"navigator.gpu": false,
+		"navigator.getBattery": false,
+		"navigator.connection": false,
+		"navigator.setAppBadge": false,
+		"navigator.managed": false,
+		"navigator.deviceMemory": false,
+		"navigator.scheduling": false,
+		"navigator.userActivation": false,
+		"navigator.wakeLock": false,
+		"navigator.presentation": false,
+		"navigator.mediaSession": false,
+		"navigator.credentials": false,
+		"navigator.storageBuckets": false,
+		"window.chrome": "object",
+		"window.chrome.runtime": false,
+		"window.chrome.loadTimes": "function",
+		"window.chrome.csi": "function",
+		"window.chrome.app": "object",
+		"window.external": "object",
+		"window.PressureObserver": "function",
+		"window.NavigationActivation": "function",
+		"window.CSSStyleSheet": "function",
+		"window.SharedWorker": "function",
+		"window.speechSynthesis": "object",
+		"window.Notification": "function",
+		"window.PaymentRequest": "function",
+		"window.Serial": "function",
+		"window.RTCRtpScriptTransform": "function",
+		"window.HTMLVideoElement.prototype.requestVideoFrameCallback": "function",
+		"window.OffscreenCanvas": "function",
+		"window.queryLocalFonts": "function",
+		"window.FileSystemHandle": "function",
+		"window.CaptureController": "function",
+		"window.Sanitizer": "function",
+		"window.AudioData": "function",
+		"window.VideoEncoder": "function",
+		"window.ImageDecoder": "function",
+		"window.WebTransport": "function",
+		"window.CookieStore": "function",
+		"window.IdleDetector": "function",
+		"window.ContactsManager": false,
+		"window.BarcodeDetector": false,
+		"window.FaceDetector": false
+	},
+	"math": {
+		"sin(1e+300)": "-0.8178819121159085",
+		"sin(0.5)": "0.479425538604203",
+		"cos(1e+300)": "-0.5753861119575491",
+		"cos(0.5)": "0.8775825618903728",
+		"tan(-1e+308)": "0.5086861259107568",
+		"tan(0.5)": "0.5463024898437905",
+		"asin(0.5)": "0.5235987755982989",
+		"acos(0.5)": "1.0471975511965979",
+		"atan(0.5)": "0.4636476090008061",
+		"asinh(1e+308)": "709.889355822726",
+		"acosh(1e+308)": "709.889355822726",
+		"atanh(0.5)": "0.5493061443340549",
+		"sinh(1)": "1.1752011936438014",
+		"cosh(1)": "1.5430806348152437",
+		"tanh(1)": "0.7615941559557649",
+		"exp(1)": "2.718281828459045",
+		"expm1(1)": "1.7182818284590453",
+		"log(1e+308)": "709.1962086421661",
+		"log1p(10)": "2.3978952727983707",
+		"log2(10)": "3.321928094887362",
+		"log10(10)": "1",
+		"cbrt(100)": "4.641588833612779",
+		"pow(39)": "1.9275814160560206e-50",
+		"hypot(1)": "3.741657386773941",
+		"__bits": "85e310b0162ceabf83e656202847e03f6957148b0abf054044beeb92e1b6f13fece895661d2f8640"
+	},
+	"shape": {
+		"typeError": {
+			"name": "TypeError",
+			"message": "Cannot read properties of null (reading 'f')",
+			"lines": 5
+		},
+		"navPlatform": {
+			"get": "function get platform() { [native code] }",
+			"value": "undefined",
+			"enumerable": true,
+			"configurable": true
+		},
+		"navWebdriver": {
+			"get": "function get webdriver() { [native code] }",
+			"value": "undefined",
+			"enumerable": true,
+			"configurable": true
+		},
+		"navHwc": {
+			"get": "function get hardwareConcurrency() { [native code] }",
+			"value": "undefined",
+			"enumerable": true,
+			"configurable": true
+		},
+		"screenWidth": {
+			"get": "function get width() { [native code] }",
+			"value": "undefined",
+			"enumerable": true,
+			"configurable": true
+		},
+		"toStringTag": "[object Navigator]",
+		"automationResidue": [],
+		"functionToString": "function toString() { [native code] }",
+		"errorStackTraceLimit": 10,
+		"v8Version": "v8"
+	},
+	"performance": {
+		"resolutionMedian": 0.09999999403953552,
+		"resolutionMin": 0.09999999403953552,
+		"memory": {
+			"jsHeapSizeLimit": 4395630592
+		},
+		"timeOriginIsFinite": true
+	},
+	"battery": {
+		"charging": true,
+		"level": 1,
+		"chargingTimeFinite": true,
+		"dischargingTimeFinite": false
+	},
+	"webrtc": {
+		"sdpFingerprintLines": 3,
+		"extmaps": [
+			"a=extmap-allow-mixed"
+		],
+		"hashAlgo": "a=fingerprint:sha-256",
+		"msidSemantic": "a=msid-semantic: WMS",
+		"candidates": [
+			{
+				"typ": "host",
+				"proto": "udp",
+				"addressKind": "mdns",
+				"address": "2113937151:8c783707-1621-47fe-967c-8af9b0a49ec6.local"
+			}
+		]
+	},
+	"worker": {
+		"platform": "Linux x86_64",
+		"userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+		"hardwareConcurrency": 16,
+		"deviceMemory": 32,
+		"languages": "en-US,en",
+		"tz": "America/Denver",
+		"uaPlatform": "Linux",
+		"uaBrands": "[{\"brand\":\"Chromium\",\"version\":\"151\"},{\"brand\":\"Not=A?Brand\",\"version\":\"99\"}]",
+		"gl": {
+			"vendor": "WebKit",
+			"renderer": "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5080/PCIe/SSE2, OpenGL ES 3.2)",
+			"exts": 37
+		}
+	},
+	"iframe": {
+		"platform": "Linux x86_64",
+		"userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+		"hardwareConcurrency": 16,
+		"webdriver": true,
+		"tz": "America/Denver",
+		"screenWidth": 1920,
+		"screenHeight": 1080,
+		"uaPlatform": "Linux"
+	}
+}

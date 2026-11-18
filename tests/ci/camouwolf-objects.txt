@@ -1,0 +1,30 @@
+# The object files produced by Camouwolf-patched sources, as gn/ninja actually name
+# them. Queried from `ninja -t targets all`, not guessed.
+#
+# Matching by BASENAME is wrong and actively misleading: Chromium contains
+# several files sharing a name with one we patch. `audio_buffer.o` alone exists
+# as WebRTC's third_party/webrtc/modules/audio_processing/... and as Blink's
+# modules/webaudio/... — a basename match reported "our audio patch compiled"
+# when what had actually built was WebRTC's unrelated file.
+#
+# Regenerate after a Chromium bump (target dir names can change):
+#   ninja -C out/Camouwolf -t targets all | grep -oE '^obj/[^:]*\.o' | grep -E '<names>'
+obj/base/base/camouwolf_config.o
+obj/components/embedder_support/user_agent/user_agent_utils.o
+obj/third_party/blink/renderer/core/core/navigator.o
+obj/third_party/blink/renderer/core/core/navigator_base.o
+obj/third_party/blink/renderer/core/core/navigator_language.o
+obj/third_party/blink/renderer/core/core/screen.o
+obj/third_party/blink/renderer/core/core/text_metrics.o
+obj/third_party/blink/renderer/core/core/timezone_controller.o
+obj/third_party/blink/renderer/modules/canvas/canvas/base_rendering_context_2d.o
+obj/third_party/blink/renderer/modules/keyboard/keyboard/keyboard_layout.o
+obj/third_party/blink/renderer/modules/mediastream/mediastream/media_devices.o
+obj/third_party/blink/renderer/modules/netinfo/netinfo/network_information.o
+obj/third_party/blink/renderer/modules/quota/quota/storage_manager.o
+obj/third_party/blink/renderer/modules/speech/speech/speech_synthesis.o
+obj/third_party/blink/renderer/modules/webaudio/webaudio/audio_buffer.o
+obj/third_party/blink/renderer/modules/webaudio/webaudio/realtime_analyser.o
+obj/third_party/blink/renderer/modules/webgl/webgl/webgl_rendering_context_base.o
+obj/third_party/blink/renderer/modules/webgpu/webgpu/gpu_adapter_info.o
+obj/third_party/blink/renderer/platform/platform/image_data_buffer.o

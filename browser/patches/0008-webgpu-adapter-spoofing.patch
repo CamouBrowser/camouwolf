@@ -1,0 +1,44 @@
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_adapter_info.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/renderer/modules/webgpu/gpu_memory_heap_info.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_subgroup_matrix_config.h"
+ 
+@@ -34,7 +35,31 @@
+       type_(type),
+       d3d_shader_model_(d3d_shader_model),
+       vk_driver_version_(vk_driver_version),
+-      power_preference_(power_preference) {}
++      power_preference_(power_preference) {
++  // CAMOUWOLF: WebGPU adapter identity.
++  //
++  // GPUAdapterInfo is the WebGPU twin of WEBGL_debug_renderer_info, and a
++  // detector that reads BOTH catches a browser that only patched WebGL: the two
++  // APIs would name different GPUs on the same machine. The launcher writes
++  // these from the same adapter record that produced webGl:vendor and
++  // webGl:renderer, so the two APIs cannot disagree.
++  //
++  // Overridden here rather than in the accessors because those return
++  // `const String&`: a getter cannot return a reference to a value it builds,
++  // and caching one in a function-local static would pin the FIRST adapter's
++  // value for the life of the process. Assigning the members costs nothing and
++  // has no lifetime question.
++  const base::CamouwolfConfig& kcfg = base::CamouwolfConfig::Get();
++  if (const auto v = kcfg.GetString("webGpu:vendor")) {
++    vendor_ = String::FromUtf8(*v);
++  }
++  if (const auto v = kcfg.GetString("webGpu:architecture")) {
++    architecture_ = String::FromUtf8(*v);
++  }
++  if (const auto v = kcfg.GetString("webGpu:device")) {
++    device_ = String::FromUtf8(*v);
++  }
++}
+ 
+ void GPUAdapterInfo::AppendMemoryHeapInfo(GPUMemoryHeapInfo* info) {
+   memory_heaps_.push_back(info);

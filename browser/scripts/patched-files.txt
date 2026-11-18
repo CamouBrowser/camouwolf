@@ -1,0 +1,67 @@
+# Every upstream Chromium file the Camouwolf patch series touches, one per line.
+# Consumed by fetch-sources.sh (patch authoring) and check-dead-patches.py
+# (post-bump reconciliation). Keep in sync with browser/patches/series.
+
+# --- config plumbing ---------------------------------------------------------
+base/BUILD.gn
+
+# --- navigator identity ------------------------------------------------------
+third_party/blink/renderer/core/frame/navigator.cc
+third_party/blink/renderer/core/execution_context/navigator_base.cc
+third_party/blink/renderer/core/frame/navigator_id.cc
+third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+third_party/blink/renderer/core/frame/navigator_device_memory.cc
+third_party/blink/renderer/core/frame/navigator_language.cc
+components/embedder_support/user_agent_utils.cc
+
+# --- display / locale --------------------------------------------------------
+third_party/blink/renderer/core/frame/screen.cc
+third_party/blink/renderer/core/timezone/timezone_controller.cc
+
+# --- graphics ----------------------------------------------------------------
+third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+third_party/blink/renderer/platform/graphics/image_data_buffer.cc
+third_party/blink/renderer/core/html/canvas/text_metrics.cc
+
+# --- audio -------------------------------------------------------------------
+third_party/blink/renderer/modules/webaudio/audio_buffer.cc
+third_party/blink/renderer/modules/webaudio/audio_buffer.h
+third_party/blink/renderer/modules/webaudio/realtime_analyser.cc
+
+# --- devices -----------------------------------------------------------------
+third_party/blink/renderer/modules/mediastream/media_devices.cc
+third_party/blink/renderer/modules/speech/speech_synthesis.cc
+third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
+third_party/blink/renderer/modules/netinfo/network_information.cc
+third_party/blink/renderer/modules/quota/storage_manager.cc
+
+# --- automation invisibility -------------------------------------------------
+third_party/blink/renderer/platform/runtime_enabled_features.json5
+
+# --- platform-conditional web platform features ------------------------------
+content/child/runtime_features.cc
+
+# --- canvas 2D readback ---
+third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+
+# --- ucrt math (Windows libm parity) -----------------------------------------
+# Every call site that reaches the HOST libm and hands the result to content.
+# On Windows these resolve to ucrtbase; on Linux to glibc, which disagrees by
+# 1 ULP often enough to read as "not really Windows".
+ui/gfx/geometry/sin_cos_degrees.h
+third_party/blink/renderer/core/geometry/dom_matrix.cc
+third_party/blink/renderer/platform/transforms/affine_transform.cc
+
+# --- system colors (headless palette leak) -----------------------------------
+third_party/blink/renderer/core/layout/layout_theme.cc
+
+# --- font availability (reported == renderable) -------------------------------
+third_party/blink/renderer/core/css/css_font_selector_base.h
+third_party/blink/renderer/core/css/css_font_selector_base.cc
+third_party/blink/renderer/core/css/css_font_selector.cc
+third_party/blink/renderer/core/css/offscreen_font_selector.cc
+
+# --- the platform UI font (system-ui + the CSS2 keywords) --------------------
+third_party/blink/renderer/platform/fonts/font_cache.cc
+third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc

@@ -1,0 +1,171 @@
+name: CI
+
+# Validates the TypeScript launcher and the patch series' applicability.
+#
+# Runs on GitHub-hosted runners. The heavy browser BUILD lives in ci-heavy.yml
+# and release.yml, which need a self-hosted runner (~100 GB disk, hours of CPU)
+# and cannot run here.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launcher:
+    name: TypeScript (lint · typecheck · unit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm via corepack
+        run: corepack enable
+
+      # Node >= 22 is REQUIRED. Node 20 hits an ESM crash that presents as a
+      # browser bug; fail loudly rather than debugging that again.
+      - name: Assert Node >= 22
+        run: node -e "process.exit(+process.versions.node.split('.')[0] >= 22 ? 0 : 1)"
+
+      - name: Configure npm auth (private @jobharvest deps)
+        run: |
+          printf '@jobharvest:registry=https://registry.npmjs.org\n//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome check
+        run: pnpm run check
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Unit tests (vitest)
+        run: pnpm run test:vitest
+
+  patches:
+    name: Patch series applies to the pinned Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Mirrors only the ~24 files the series touches (a few hundred KB), not
+      # the 100 GB tree. Enough to prove every hunk still anchors where it
+      # thinks it does — which is the check that matters after a version bump.
+      - name: Mirror the patched upstream files
+        run: bash browser/scripts/fetch-sources.sh
+
+      # DEAD/CORRUPT/MISSFILE all fail the job. CORRUPT is the important one: a
+      # hunk that applies forward AND reverse is not anchored uniquely, so GNU
+      # patch may land it somewhere harmless-looking and the surface silently
+      # goes unspoofed.
+      - name: check-dead-patches
+        run: python3 scripts/check-dead-patches.py
+
+      # Applying is not compiling. Catches renamed APIs (String::FromUTF8),
+      # forbidden ones (span(ptr, count) is UNSAFE_BUFFER_USAGE), and include
+      # paths that do not resolve at the pinned tag.
+      - name: check-patch-apis
+        run: python3 scripts/check-patch-apis.py
+
+      # The launcher and the browser are joined by a string. This catches a
+      # config key the launcher computes and serializes that no CamouwolfConfig
+      # accessor reads back — the failure mode that left `fonts` dead long
+      # enough for every Windows persona to report an identical font list.
+      - name: check-config-keys
+        run: python3 scripts/check-config-keys.py
+
+      # The bundled fontconfig personas decide what a persona can render, and
+      # they fail silently: a bare '--' in a comment makes the file unparseable
+      # and fontconfig drops back to the HOST's fonts for every family.
+      - name: check-bundle-fontconfig
+        run: python3 scripts/check-bundle-fontconfig.py
+
+      # The branding art is generated, committed, and consumed by two unrelated
+      # pipelines (grit for the in-binary icons, the XDG icon theme for the
+      # launcher). Nothing fails when the logo is updated and the rasters are
+      # not — the icons just quietly stay stale, which is how Holo's launcher
+      # icon drifted a full release behind its logo.
+      #
+      # Versions are pinned because this compares pixels: the check tolerates a
+      # few units of rasteriser drift, but not an arbitrarily different cairosvg.
+      - name: Install branding toolchain
+        run: |
+          # cairosvg dlopens libcairo.so.2 through cffi; it is not a pip dep.
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libcairo2
+          pip install "cairosvg==2.9.0" "pillow==12.1.1" "numpy==2.3.5" "potracer==0.0.4"
+
+      - name: Logo vector matches the source art
+        run: python3 browser/scripts/vectorize-logo.py --check
+
+      - name: Branding icons match the logo vector
+        run: python3 browser/scripts/generate-branding.py --check
+
+  functionality:
+    name: Functionality gate (upstream Playwright suite)
+    runs-on: ubuntu-latest
+    needs: [launcher, patches]
+    env:
+      CAMOUWOLF_BROWSER_EXE: ${{ vars.CAMOUWOLF_BROWSER_EXE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm via corepack
+        run: corepack enable
+
+      - name: Configure npm auth
+        run: |
+          printf '@jobharvest:registry=https://registry.npmjs.org\n//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve browser binary
+        id: browser
+        run: |
+          EXE="${CAMOUWOLF_BROWSER_EXE:-}"
+          if [ -z "$EXE" ]; then
+            EXE="$(find "$GITHUB_WORKSPACE/browser-cache" -maxdepth 3 -name camouwolf -type f 2>/dev/null | head -1)"
+          fi
+          if [ -z "$EXE" ] || [ ! -x "$EXE" ]; then
+            echo "No browser binary (set repo variable CAMOUWOLF_BROWSER_EXE)." >&2
+            echo "found=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "exe=$EXE" >> "$GITHUB_OUTPUT"
+            echo "found=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upstream Playwright suite
+        if: steps.browser.outputs.found == '1'
+        run: |
+          xvfb-run -a bash tests/launcher/run-tests.sh \
+            --upstream-only --executable-path "${{ steps.browser.outputs.exe }}"
+
+      - name: Skipped (no browser binary)
+        if: steps.browser.outputs.found != '1'
+        run: echo "::warning::Functionality gate skipped — no prebuilt browser on this runner."

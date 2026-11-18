@@ -1,0 +1,49 @@
+diff --git a/third_party/blink/renderer/core/frame/navigator_language.cc b/third_party/blink/renderer/core/frame/navigator_language.cc
+--- a/third_party/blink/renderer/core/frame/navigator_language.cc
++++ b/third_party/blink/renderer/core/frame/navigator_language.cc
+@@ -5,6 +5,7 @@
+ #include "third_party/blink/renderer/core/frame/navigator_language.h"
+ 
+ #include "base/command_line.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "services/network/public/cpp/features.h"
+ #include "third_party/blink/public/common/switches.h"
+ #include "third_party/blink/renderer/core/frame/web_feature.h"
+@@ -69,6 +70,37 @@
+ }
+ 
+ void NavigatorLanguage::EnsureUpdatedLanguage() {
++  // CAMOUWOLF: navigator.languages / navigator.language.
++  //
++  // Installed BEFORE the CDP ApplyAcceptLanguageOverride probe, so a detector
++  // holding a CDP session cannot read the host list back, and before the
++  // ReduceAcceptLanguage truncation below, so the configured list survives
++  // intact. That last part matters: a real Chrome with the reduction active
++  // sends ONE language in the Accept-Language header while still exposing the
++  // full list to JS. The launcher models both halves — it writes the JS list
++  // here and sets the header list separately — because a browser whose
++  // navigator.languages has exactly one entry AND whose header has one entry
++  // is a shape stock Chrome does not produce.
++  //
++  // The rebuild is gated on languages_dirty_, so the std::vector round-trip
++  // happens once per invalidation, not once per property read.
++  const base::CamouwolfConfig& kcfg = base::CamouwolfConfig::Get();
++  if (kcfg.Has("navigator.languages")) {
++    if (languages_dirty_ || languages_.empty()) {
++      Vector<String> configured;
++      for (const std::string& tag : kcfg.GetStringList("navigator.languages")) {
++        configured.push_back(String::FromUtf8(tag));
++      }
++      if (!configured.empty()) {
++        languages_ = std::move(configured);
++        languages_dirty_ = false;
++      }
++    }
++    if (!languages_.empty()) {
++      return;
++    }
++  }
++
+   String accept_languages_override;
+   probe::ApplyAcceptLanguageOverride(execution_context_,
+                                      &accept_languages_override);

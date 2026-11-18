@@ -1,0 +1,53 @@
+diff --git a/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc b/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
+--- a/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
++++ b/third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/renderer/modules/keyboard/keyboard_layout.h"
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ 
+ #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -56,6 +58,40 @@
+   if (!layout_map_property_) {
+     layout_map_property_ = MakeGarbageCollected<LayoutMapProperty>(
+         ExecutionContext::From(script_state));
++  }
++
++  // CAMOUWOLF: navigator.keyboard.getLayoutMap().
++  //
++  // The layout map names the PHYSICAL keyboard: a US layout answers "q" for
++  // KeyQ, a French AZERTY answers "a", a German QWERTZ swaps y/z. It is a
++  // direct read of the host's input configuration and has nothing to do with
++  // navigator.language — which is exactly why it is checked: an identity
++  // claiming fr-FR with a US layout, or (more commonly) a headless Linux server
++  // answering with whatever the container's default is, contradicts its own
++  // locale. The launcher derives the layout from the persona's locale+platform.
++  //
++  // Resolved locally, without touching the mojo service, so the browser process
++  // is never asked for the host layout at all.
++  const std::vector<std::string> layout =
++      base::CamouwolfConfig::Get().GetStringList("keyboard.layoutMap");
++  if (!layout.empty()) {
++    HashMap<String, String> spoofed;
++    for (const std::string& entry : layout) {
++      // "KeyQ=q"
++      const size_t split = entry.find('=');
++      if (split == std::string::npos) {
++        continue;
++      }
++      spoofed.insert(String::FromUtf8(entry.substr(0, split)),
++                     String::FromUtf8(entry.substr(split + 1)));
++    }
++    if (!spoofed.empty()) {
++      layout_map_property_->Resolve(
++          MakeGarbageCollected<KeyboardLayoutMap>(spoofed));
++      auto spoofed_promise = layout_map_property_->Promise(script_state->World());
++      layout_map_property_ = nullptr;
++      return spoofed_promise;
++    }
+   }
+ 
+   auto promise = layout_map_property_->Promise(script_state->World());
