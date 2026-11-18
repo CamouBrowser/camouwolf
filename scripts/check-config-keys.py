@@ -1,176 +1,244 @@
 #!/usr/bin/env python3
-"""Fail when the launcher writes a CAMOU_CONFIG key nothing consumes.
+"""Cross-check the config keys of the browser, the schema and the launcher.
 
-Every entry in docs/HOLO-PARITY.md section 1 was this bug: `src/` computed a
-value, serialized it into CAMOU_CONFIG, and no `CamouwolfConfig::Get*()` call
-anywhere read it back. The launcher believed it had landed an identity it had
-not. `fonts` sat dead long enough that every Camouwolf browser claiming Windows
-reported a byte-identical font list.
+The launcher and the browser are joined by strings: the launcher serializes an
+identity into CAMOU_CONFIG_1..N, and C++ reads keys back out of it. Nothing
+compiles the two against each other, so a key one side writes and the other
+never reads is silent: the browser starts, the launch succeeds, and the surface
+is stock. This script joins the three places a key lives:
 
-Nothing caught it because the two halves live in different languages and are
-joined by a string. This joins them again.
+  READ      keys the C++ reads through CamouwolfConfig, in browser/patches
+            (added lines only) and browser/additions
+  SCHEMA    browser/settings/properties.json, the list the launcher validates a
+            config against; python/src/camouwolf/data/properties.json must be
+            byte-identical to it. An entry marked "carriedBy": "launcher" is
+            not a browser key: the launcher turns it into a switch or a context
+            option.
+  WRITTEN   keys the launcher names: python/src/camouwolf/{fpgen.yml,
+            clienthints.py, fingerprints.py, utils.py, locales.py, webgl.py}
 
-A key is CONSUMED if any of these is true:
-  * a patch or addition reads it through CamouwolfConfig (any Get* accessor, or
-    GetNested with it as the domain);
-  * it is listed in CARRIED_BY_LAUNCHER below, meaning the launcher delivers it
-    some other way and the C++ side is not expected to read it.
+and fails on:
+
+  * the two properties.json copies differing
+  * a browser key in SCHEMA that no C++ reads (the launcher would send it and
+    nothing would happen)
+  * a key C++ reads that SCHEMA does not list (the launcher refuses to send it,
+    so the reader is dead code)
+  * a launcher-carried key that C++ reads, or that the launcher never names
+  * a key the launcher names that is in neither SCHEMA nor LAUNCHER_INTERNAL
+
+A browser key the launcher never names is reported, not failed: it is settable
+through `config=` only.
 
 Run:  python3 scripts/check-config-keys.py [--list]
 """
 
 from __future__ import annotations
 
+import ast
+import json
 import pathlib
 import re
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
-SRC = REPO / "src"
 BROWSER = REPO / "browser"
+LAUNCHER = REPO / "python" / "src" / "camouwolf"
+SCHEMA = BROWSER / "settings" / "properties.json"
+SCHEMA_COPY = LAUNCHER / "data" / "properties.json"
+LAUNCHER_FILES = ("fpgen.yml", "clienthints.py", "fingerprints.py", "utils.py", "locales.py", "webgl.py")
 
-# Keys the launcher writes and the browser is NOT expected to read, each with
-# the mechanism that actually delivers them. Anything not here and not read by
-# a patch is a bug, not a style choice.
-CARRIED_BY_LAUNCHER = {
-    # Resolved into navigator.languages, the Accept-Language header, and the
-    # font/voice draws. Never read as a key.
-    "locale:all": "launcher-internal: drives navigator.languages + fonts/voices",
-    "locale:language": "launcher-internal: font and voice selection",
-    "locale:region": "launcher-internal: font and voice selection",
-    "locale:script": "launcher-internal: locale normalization",
-    # Delivered through Playwright's context geolocation + permission grant.
-    # See applyGeolocationDefaults in src/utils.ts.
-    "geolocation:latitude": "Playwright context geolocation",
-    "geolocation:longitude": "Playwright context geolocation",
-    "geolocation:accuracy": "Playwright context geolocation",
-    # The real window is sized and positioned from these (--window-size /
-    # --window-position), so Chromium derives the getters from the real rect.
-    "window.outerWidth": "--window-size",
-    "window.outerHeight": "--window-size",
-    "window.innerWidth": "derived from the real window",
-    "window.innerHeight": "derived from the real window",
-    "window.screenX": "--window-position",
-    "window.screenY": "--window-position",
+# Keys the launcher uses between its own modules and removes before the config
+# is sent. Each names where it is consumed. Anything the launcher names that is
+# neither here nor in the schema is a bug, not a style choice.
+LAUNCHER_INTERNAL = {
+    "locale:all": "locales.py -> utils.py: becomes navigator.languages and --lang",
+    "locale:language": "locales.py -> utils.py: becomes navigator.languages and --lang",
+    "locale:region": "locales.py -> utils.py: becomes navigator.languages and --lang",
+    "locale:script": "locales.py -> utils.py: locale normalization",
+    "window.innerWidth": "fingerprints.py: clamped beside outerWidth, dropped before the config is sent",
+    "window.innerHeight": "fingerprints.py: clamped beside outerHeight, dropped before the config is sent",
 }
 
-# Keys written by the launcher that are known-dead and not yet fixed. Listing
-# one here is a deliberate, reviewed decision with a reason — it is not a place
-# to silence a new orphan.
-KNOWN_DEAD = {
-    "battery:charging": "no reader; a headless Linux box already reports the plugged-in-desktop shape",
-    "battery:chargingTime": "see battery:charging",
-    "battery:dischargingTime": "see battery:charging",
-    "navigator.globalPrivacyControl": "no reader",
-    "screen.pageXOffset": "no reader",
-    "screen.pageYOffset": "no reader",
-    "fonts:spacing_seed": "no reader; 0010 covers glyph metrics via the visual seed instead",
-    "webrtc:ipv4": "no reader; block_webrtc is the only WebRTC control today",
-}
-
-WRITE_RE = re.compile(r"""config\[\s*["']([^"']+)["']\s*\]""")
-MAP_RE = re.compile(r"""["']([a-zA-Z][a-zA-Z0-9_]*[.:][a-zA-Z0-9_.:]+)["']\s*,?\s*$""")
-# A config key always sits in one of these domains. Without this the mapping
-# scan below also picks up data rows that merely LOOK like keys — the voice
-# manifests are full of "Tamil:ta:local" records, which are values, not keys.
-CONFIG_DOMAIN_RE = re.compile(
-    r"^(navigator|screen|window|userAgentData|connection|storage|keyboard)\.|"
-    r"^(locale|geolocation|battery|canvas|fonts|webGl|webGl2|webGpu|webrtc|"
-    r"mediaDevices|voices|AudioContext):"
+# What a config key looks like: a dotted or colon-separated name in one of the
+# schema's domains. Without the domain test the scan also picks up data that
+# merely resembles a key ("Tamil:ta:local" in a voice list).
+_DOTTED = ("navigator", "screen", "window", "userAgentData", "connection", "storage", "keyboard")
+_COLONED = (
+    "locale", "geolocation", "canvas", "fonts", "webGl", "webGl2", "webGpu", "webrtc",
+    "mediaDevices", "voices", "AudioContext", "battery",
 )
+_HEAD = r"(?:(?:%s)\.|(?:%s):)" % ("|".join(_DOTTED), "|".join(_COLONED))
+KEY_RE = re.compile(r"^%s[A-Za-z][A-Za-z0-9_]*$" % _HEAD)
+# The literal head of an f-string that builds a key: f"screen.avail{axis}".
+PREFIX_RE = re.compile(r"^%s[A-Za-z0-9_]*$" % _HEAD)
+
+# Every accessor of CamouwolfConfig (browser/additions/camouwolfcfg/camouwolf_config.h).
 READ_RE = re.compile(
-    r"""Get(?:String|Int|Uint32|Double|Bool|StringList|StringListLower|IntRect|Nested|List|Dict)\(\s*"([^"]+)"""
+    r"\b(?:Get(?:String|Int|Uint32|Double|Bool|StringList|StringListLower|IntRect|Nested|List|Dict)"
+    r"|Has)\(\s*\"([^\"]+)\""
 )
-HAS_RE = re.compile(r'(?:Has|CheckBool)\(\s*"([^"]+)"')
 
 
-def written_keys() -> dict[str, set[str]]:
-    """Keys src/ assigns into a config object, with the files that do it."""
+def schema() -> tuple[set[str], set[str]]:
+    """(browser keys, launcher-carried keys) from properties.json."""
+    entries = json.loads(SCHEMA.read_text())
+    carried = {e["property"] for e in entries if e.get("carriedBy") == "launcher"}
+    return {e["property"] for e in entries} - carried, carried
+
+
+def read_keys() -> dict[str, set[str]]:
+    """Keys the browser reads through CamouwolfConfig, with the files that do."""
     found: dict[str, set[str]] = {}
-    for path in sorted(SRC.rglob("*.ts")):
-        text = path.read_text()
-        rel = str(path.relative_to(REPO))
-        for match in WRITE_RE.finditer(text):
-            found.setdefault(match.group(1), set()).add(rel)
-        # mappings/*.config.ts express the same thing as a value in a table:
-        #     charging: "battery:charging",
-        if path.name == "browserforge.config.ts":
-            for line in text.splitlines():
-                m = MAP_RE.search(line.strip())
-                if m and CONFIG_DOMAIN_RE.search(m.group(1)):
-                    found.setdefault(m.group(1), set()).add(rel)
+
+    def scan(text: str, rel: str) -> None:
+        for key in READ_RE.findall(text):
+            found.setdefault(key, set()).add(rel)
+
+    for path in sorted((BROWSER / "patches").glob("*.patch")):
+        # Added lines only: a line a patch removes, or its context, is not code
+        # this build runs.
+        added = "\n".join(
+            line[1:] for line in path.read_text(errors="replace").splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        )
+        scan(added, str(path.relative_to(REPO)))
+    for path in sorted((BROWSER / "additions").rglob("*")):
+        if path.is_file() and path.suffix in (".cc", ".h", ".mm", ".cpp"):
+            scan(path.read_text(errors="replace"), str(path.relative_to(REPO)))
+    # The accessor's own name for the environment variable, not a key.
+    found.pop("CAMOU_CONFIG", None)
     return found
 
 
-def read_keys() -> set[str]:
-    """Keys the browser side reads back through CamouwolfConfig."""
-    found: set[str] = set()
-    for root in (BROWSER / "patches", BROWSER / "additions"):
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            text = path.read_text(errors="replace")
-            found.update(READ_RE.findall(text))
-            found.update(HAS_RE.findall(text))
+def _literals(tree: ast.AST):
+    """(string, is_prefix) for every string literal and f-string head in a module."""
+    inside_fstring = {
+        id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if id(node) not in inside_fstring:
+                yield node.value, False
+        elif isinstance(node, ast.JoinedStr) and len(node.values) > 1:
+            head = node.values[0]
+            if isinstance(head, ast.Constant) and isinstance(head.value, str):
+                yield head.value, True
+
+
+def written_keys(known: set[str]) -> dict[str, set[str]]:
+    """Keys the launcher names, with the files that do.
+
+    A plain string counts when it is a known key or has a key's shape. An
+    f-string (`f'screen.avail{axis}'`) counts for every known key it can
+    produce, and as itself, with a `*`, when it can produce none.
+    """
+    found: dict[str, set[str]] = {}
+    for name in LAUNCHER_FILES:
+        path = LAUNCHER / name
+        rel = str(path.relative_to(REPO))
+        if name.endswith(".yml"):
+            # Mapping values, without a YAML dependency: `  field: some.key`.
+            for line in path.read_text().splitlines():
+                value = line.split("#", 1)[0].partition(":")[2].strip().strip("'\"")
+                if value in known or KEY_RE.match(value):
+                    found.setdefault(value, set()).add(rel)
+            continue
+        for text, is_prefix in _literals(ast.parse(path.read_text())):
+            if is_prefix:
+                if not PREFIX_RE.match(text):
+                    continue
+                produced = [k for k in known if k.startswith(text)]
+                for key in produced or [text + "*"]:
+                    found.setdefault(key, set()).add(rel)
+            elif text in known or KEY_RE.match(text):
+                found.setdefault(text, set()).add(rel)
     return found
 
 
 def main() -> int:
-    written = written_keys()
+    browser_keys, carried = schema()
     read = read_keys()
+    written = written_keys(browser_keys | carried | set(LAUNCHER_INTERNAL))
 
     if "--list" in sys.argv:
-        for key in sorted(written):
+        for key in sorted(browser_keys | carried | set(read) | set(written)):
             state = (
-                "read"
-                if key in read
-                else "launcher"
-                if key in CARRIED_BY_LAUNCHER
-                else "DEAD"
-                if key in KNOWN_DEAD
-                else "ORPHAN"
+                "carried" if key in carried
+                else "internal" if key in LAUNCHER_INTERNAL
+                else "browser" if key in browser_keys
+                else "UNKNOWN"
             )
-            print(f"  {state:9} {key}")
+            print(f"  {state:8} {'read' if key in read else '    '} "
+                  f"{'written' if key in written else '       '}  {key}")
         return 0
 
-    orphans = {
-        key: files
-        for key, files in written.items()
-        if key not in read
-        and key not in CARRIED_BY_LAUNCHER
-        and key not in KNOWN_DEAD
-    }
+    problems: list[tuple[str, list[str]]] = []
 
-    # A key listed as dead that someone has since implemented should be moved
-    # out of the list, so the list keeps meaning something.
-    resurrected = sorted(k for k in KNOWN_DEAD if k in read)
+    if SCHEMA.read_bytes() != SCHEMA_COPY.read_bytes():
+        problems.append((
+            "the two properties.json copies differ",
+            [f"{SCHEMA.relative_to(REPO)} != {SCHEMA_COPY.relative_to(REPO)}",
+             "The launcher validates against its copy and the build ships the other."],
+        ))
 
-    print(f"== config keys: {len(written)} written, {len(read)} read by the browser")
-    print(f"   {len(KNOWN_DEAD)} known-dead, {len(CARRIED_BY_LAUNCHER)} carried by the launcher")
+    unread = sorted(browser_keys - set(read))
+    if unread:
+        problems.append((
+            "in properties.json, read by no C++ (the launcher sends it and nothing happens)",
+            unread + ["Give it a reader in browser/patches, mark it \"carriedBy\": \"launcher\", "
+                      "or remove it from the schema."],
+        ))
 
-    if resurrected:
-        print("\n-- now read, but still listed in KNOWN_DEAD:", file=sys.stderr)
-        for key in resurrected:
-            print(f"   {key}", file=sys.stderr)
-        print("   Remove them from KNOWN_DEAD in scripts/check-config-keys.py.", file=sys.stderr)
+    undeclared = sorted(set(read) - browser_keys - carried)
+    if undeclared:
+        problems.append((
+            "read by C++, not in properties.json (the launcher refuses to send it)",
+            [f"{key}  ({', '.join(sorted(read[key]))})" for key in undeclared],
+        ))
 
-    if orphans:
-        print("\n-- ORPHANED: written by the launcher, read by nothing", file=sys.stderr)
-        for key, files in sorted(orphans.items()):
-            print(f"   {key}", file=sys.stderr)
-            for f in sorted(files):
-                print(f"       written in {f}", file=sys.stderr)
-        print(
-            "\n   Either give it a reader in browser/patches, deliver it another way\n"
-            "   and record that in CARRIED_BY_LAUNCHER, or stop writing it. Do not\n"
-            "   add it to KNOWN_DEAD to make this pass — that list is for reviewed\n"
-            "   decisions, not for new orphans.",
-            file=sys.stderr,
-        )
+    carried_read = sorted(carried & set(read))
+    if carried_read:
+        problems.append((
+            "marked \"carriedBy\": \"launcher\" but read by C++",
+            [f"{key}  ({', '.join(sorted(read[key]))})" for key in carried_read],
+        ))
 
-    if orphans or resurrected:
+    carried_unnamed = sorted(carried - set(written))
+    if carried_unnamed:
+        problems.append((
+            "marked \"carriedBy\": \"launcher\" but the launcher never names it",
+            carried_unnamed,
+        ))
+
+    unknown = sorted(set(written) - browser_keys - carried - set(LAUNCHER_INTERNAL))
+    if unknown:
+        problems.append((
+            "named by the launcher, in neither properties.json nor LAUNCHER_INTERNAL",
+            [f"{key}  ({', '.join(sorted(written[key]))})" for key in unknown],
+        ))
+
+    stale = sorted(k for k in LAUNCHER_INTERNAL if k not in written)
+    if stale:
+        problems.append((
+            "listed in LAUNCHER_INTERNAL but the launcher no longer names it",
+            stale + ["Remove it from LAUNCHER_INTERNAL in scripts/check-config-keys.py."],
+        ))
+
+    config_only = sorted(browser_keys - set(written))
+    print(f"== config keys: {len(read)} read by the browser, {len(browser_keys)} browser keys and "
+          f"{len(carried)} launcher-carried in the schema, {len(written)} named by the launcher")
+    if config_only:
+        print(f"   {len(config_only)} browser key(s) the launcher never names (config= only): "
+              + ", ".join(config_only))
+
+    for title, lines in problems:
+        print(f"\n-- {title}", file=sys.stderr)
+        for line in lines:
+            print(f"   {line}", file=sys.stderr)
+    if problems:
         return 1
-    print("\nAll written keys are accounted for.")
+    print("\nEvery key is accounted for.")
     return 0
 
 

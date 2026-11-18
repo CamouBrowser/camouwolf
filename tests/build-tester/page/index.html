@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>build-tester</title>
+<body>
+<p id="status">running</p>
+<script src="/checks.js"></script>
+<script>
+// The page runs its own checks on load, with no call from the driver, so what
+// they see is what an ordinary page script sees. The driver reads the result
+// out of the DOM once it is there.
+(async () => {
+  let result;
+  try {
+    result = { checks: await buildTester.selfChecks(), collected: await buildTester.collect() };
+  } catch (error) {
+    result = { error: String(error && error.stack || error) };
+  }
+  const node = document.createElement("script");
+  node.type = "application/json";
+  node.id = "result";
+  node.textContent = JSON.stringify(result);
+  document.body.appendChild(node);
+  document.getElementById("status").textContent = "done";
+})();
+</script>
+</body>

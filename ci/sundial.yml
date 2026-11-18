@@ -1,0 +1,47 @@
+# Scope and thresholds for the stealth check (ci/run_sundial.py).
+#
+# Sundial is engine-neutral: it is a web page that probes whatever browser
+# opens it, so the stage is the same one Camoufox runs, launched through this
+# tree's launcher. Nothing in this file is secret. What is secret is the report
+# sundial returns, and that never leaves ci/run_sundial.py::redact() intact.
+
+schema: 1
+
+# Whether CI may run the stealth check at all.
+#
+# OFF. While it is false the job is not scheduled, the credential never reaches
+# a runner, and `python -m ci.run_sundial` refuses to contact the deployment by
+# hand. Two things have to be true before turning it on:
+#
+#   1. SUNDIAL_AUTOMATION_KEY is set as a secret on this repository (a `guest`
+#      key, or `ci` once that role exists: one that cannot be served the vectors).
+#   2. A first run against a current build has been read with `--explain`, and
+#      the two lists below have been decided for Chromium. They are Camoufox's
+#      lists, carried over unchanged; a category Camouwolf does not claim yet
+#      belongs under ungated_categories, with the reason, before this gates.
+#
+# A local sundial checkout can be scanned without any of that:
+#   python -m ci.run_sundial --binary <path> --local-url http://127.0.0.1:<port>
+enabled: false
+
+url: https://sundial.daijro.dev
+
+# Only gate on categories Camouwolf claims to implement. A vector outside this
+# list is still measured and counted, but cannot fail a build.
+gated_categories:
+  - Identity
+  - Security
+  - JS Engine
+  - Display
+  - Locale
+  - Network
+
+# Measured and counted, never gated: these depend on the host's hardware
+# (rasterizer, audio stack, CPU), which a spoofed identity does not replace.
+ungated_categories:
+  - Graphics
+  - Audio
+  - CPU
+
+# Share of gated checks that must pass.
+min_pass_rate: 0.90

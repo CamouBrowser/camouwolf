@@ -8,9 +8,9 @@ review:
   * A run of `--` anywhere inside an XML comment makes the whole file
     unparseable. fontconfig does not error -- it falls back to the host's
     defaults for EVERY family, so the persona renders with the build machine's
-    fonts and the leak looks like nothing at all. (Cost Holo a build; cost this
+    fonts and the leak looks like nothing at all. (Cost one build; cost this
     checker's author two.)
-  * `generateFontconfig` (src/utils.ts) rewrites one exact literal to point the
+  * `generate_fontconfig` (python/src/camouwolf/utils.py) rewrites one exact literal to point the
     persona at an absolute font directory. Reflow that line and the rewrite
     silently no-ops, leaving `prefix="cwd"` to resolve against whatever the
     launcher's working directory happened to be.
@@ -41,7 +41,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 FONTCONFIG = REPO / "browser" / "bundle" / "fontconfig"
 PERSONAS = ("linux", "macos", "windows")
 
-# The literal generateFontconfig() replaces. Must match byte for byte.
+# The literal generate_fontconfig() replaces. Must match byte for byte.
 DIR_LITERAL = '<dir prefix="cwd">fonts</dir>'
 
 # What a Linux Chromium build asks fontconfig for, whatever persona it wears:
@@ -130,7 +130,7 @@ def main() -> int:
         if DIR_LITERAL not in raw:
             problems.append(
                 f"{label}: missing the exact literal {DIR_LITERAL!r} that "
-                "generateFontconfig rewrites"
+                "generate_fontconfig rewrites"
             )
         else:
             notes.append("dir literal ok")

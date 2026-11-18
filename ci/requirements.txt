@@ -1,0 +1,10 @@
+# The CI pipeline itself. The Playwright suite installs its own dependencies:
+# ci/suite.py builds a venv from the fetched checkout's pins plus the launcher's.
+PyYAML>=6.0
+pytest>=8.0
+pytest-timeout>=2.3
+pytest-asyncio>=0.21
+psutil>=5.9
+# browser/scripts/generate-branding.py --check (the branding patch guard)
+cairosvg>=2.7
+Pillow>=10
