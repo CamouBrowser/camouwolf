@@ -544,3 +544,66 @@ keys as Camoufox's `audio-context-spoofing.patch`.
 Not covered: `baseLatency` (derived from the real callback buffer, and it does
 move when the rate is resampled) and the values a page gets from
 `enumerateDevices()`/`getUserMedia` capabilities.
+
+## Not yet patched
+
+Surfaces that were looked at against 158.0.8127.36 and deliberately left alone,
+with where the hook would go. Nothing here is a guess at an API — these are the
+functions read at the tag.
+
+### WebRTC local address (`webrtc:ipv4`, `webrtc:ipv6`)
+
+No patch, because there is no single place in Chromium where the address a page
+sees can be changed without also changing the address the socket binds.
+
+What a page can read, and where each comes from:
+
+- **Host candidates.** The renderer's interface list arrives in
+  `IpcNetworkManager::OnNetworkListChanged()`
+  (`third_party/blink/renderer/platform/p2p/ipc_network_manager.cc`), which
+  turns each `net::NetworkInterface` into a `webrtc::Network` (`AddIP`,
+  `set_default_local_addresses`). This looks like the hook and is not: the
+  port allocator binds its UDP/TCP sockets to those same addresses through
+  `IpcPacketSocketFactory` (`ipc_socket_factory.cc`), so a substituted address
+  that is not on the host fails to bind and the connection gathers nothing.
+- **mDNS obfuscation.** Without camera/microphone permission a stock Chrome
+  never shows the address at all: `FilteringNetworkManager`
+  (`filtering_network_manager.cc`, `GetNetworks()` / `GetMdnsResponder()`)
+  exposes only the default route, and the candidate's address is replaced by a
+  `<uuid>.local` name from `MdnsResponderAdapter` (`mdns_responder_adapter.cc`).
+  For that case — every page that has not been granted media — the unpatched
+  build already shows what Chrome shows, and there is nothing to spoof.
+- **Server-reflexive candidates.** The address is whatever the STUN server saw.
+  It can be made right only by routing (the proxy), never by a renderer patch.
+
+So the only readers of a real local address are pages holding media
+permission, and for them the value appears in three places that would each need
+the same rewrite, at the boundary to script rather than in the ICE stack:
+
+1. `RTCPeerConnectionHandler::OnIceCandidate()` → `OnIceCandidateImpl()` →
+   `DidGenerateICECandidate()` (`modules/peerconnection/rtc_peer_connection_handler.cc`)
+   — the `icecandidate` event;
+2. `RTCPeerConnectionHandler::OnSessionDescriptionsUpdated()` (same file) — the
+   `a=candidate` and `c=` lines of `localDescription`;
+3. the `local-candidate` entries of `getStats()` (`RTCPeerConnectionHandler::GetStats()`
+   and the report conversion under `modules/peerconnection/`).
+
+That is what Camoufox's `webrtc-ip-spoofing.patch` does on Gecko (rewrite SDP,
+candidates and stats; fabricate a host candidate when none was gathered). A
+Chromium port is three hooks plus the remote side's view: the peer still
+receives the rewritten candidate and will try to connect to it, so the
+rewritten address has to be unroutable-but-plausible or connectivity checks
+change shape. It should be written against a build that can run a loopback
+`RTCPeerConnection` test, not blind.
+
+Until then the launcher's `block_webrtc`, or
+`--force-webrtc-ip-handling-policy=disable_non_proxied_udp` with a proxy, are
+the controls; `webrtc:ipv4` stays in `KNOWN_DEAD` in `check-config-keys.py`.
+
+### WebGL context attributes, `:blockIfNotDefined`
+
+See 0007. Camoufox removed both; nothing to port.
+
+### `navigator.gpu.wgslLanguageFeatures`
+
+See 0008. Follows the build, not the identity.
