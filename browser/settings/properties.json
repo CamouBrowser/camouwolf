@@ -65,11 +65,11 @@
   },
   {
     "property": "userAgentData.brands",
-    "type": "array"
+    "type": "array", "items": "brand"
   },
   {
     "property": "userAgentData.fullVersionList",
-    "type": "array"
+    "type": "array", "items": "brand"
   },
   {
     "property": "screen.width",

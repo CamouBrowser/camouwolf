@@ -253,7 +253,18 @@ def validate_config(config_map: Dict[str, Any], path: Optional[Union[str, Path]]
             raise InvalidPropertyType(
                 f"Invalid type for property {key}. Expected {expected_type}, got {type(value).__name__}"
             )
-        if expected_type == 'array' and not all(isinstance(item, str) for item in value):
+        if expected_type == 'array' and entry.get('items') == 'brand':
+            # A UA-CH brand list: [{"brand": ..., "version": ...}, ...], in order.
+            if not all(
+                isinstance(item, dict)
+                and set(item) == {'brand', 'version'}
+                and all(isinstance(v, str) for v in item.values())
+                for item in value
+            ):
+                raise InvalidPropertyType(
+                    f'Invalid type for property {key}. Expected an array of {{"brand", "version"}} objects.'
+                )
+        elif expected_type == 'array' and not all(isinstance(item, str) for item in value):
             raise InvalidPropertyType(f'Invalid type for property {key}. Expected an array of strings.')
         if key == 'webGl:parameters':
             validate_webgl_parameters(value)

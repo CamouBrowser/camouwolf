@@ -168,6 +168,11 @@ def fill_client_hints(config: Dict[str, Any], target_os: OsKey, full_version: st
     for key, value in client_hint_config(identity).items():
         if key not in ('navigator.userAgent', 'navigator.platform'):
             config.setdefault(key, value)
+    # The brand lists (Sec-CH-UA, Sec-CH-UA-Full-Version-List and
+    # navigator.userAgentData). Without them the browser sends its own list,
+    # which has no "Google Chrome" brand.
+    config.setdefault('userAgentData.brands', build_brand_list(identity))
+    config.setdefault('userAgentData.fullVersionList', build_brand_list(identity, full=True))
 
 
 def assert_coherent(config: Dict[str, Any]) -> List[str]:

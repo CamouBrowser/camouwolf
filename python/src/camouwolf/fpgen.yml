@@ -13,7 +13,7 @@ navigator:
   hardwareConcurrency: navigator.hardwareConcurrency
   deviceMemory: navigator.deviceMemory
   # languages/language are not mapped: the locale comes from `locale` or geoip.
-  # maxTouchPoints is not mapped: the browser has no key for it.
+  maxTouchPoints: navigator.maxTouchPoints
 
 screen:
   availLeft: screen.availLeft
@@ -23,7 +23,7 @@ screen:
   height: screen.height
   width: screen.width
   colorDepth: screen.colorDepth
-  # pixelDepth is not mapped: the browser answers it from colorDepth.
+  pixelDepth: screen.pixelDepth
 
 window:
   # Carried by the launcher as --window-size / --window-position.
