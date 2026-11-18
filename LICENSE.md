@@ -1,6 +1,6 @@
 BSD 3-Clause License
 
-Copyright (c) 2026, JobHarvest
+Copyright (c) 2026, The Camouwolf Authors
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

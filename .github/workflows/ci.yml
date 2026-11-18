@@ -112,10 +112,7 @@ jobs:
         run: |
           # cairosvg dlopens libcairo.so.2 through cffi; it is not a pip dep.
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libcairo2
-          pip install "cairosvg==2.9.0" "pillow==12.1.1" "numpy==2.3.5" "potracer==0.0.4"
-
-      - name: Logo vector matches the source art
-        run: python3 browser/scripts/vectorize-logo.py --check
+          pip install "cairosvg==2.9.0" "pillow==12.1.1" "numpy==2.3.5"
 
       - name: Branding icons match the logo vector
         run: python3 browser/scripts/generate-branding.py --check

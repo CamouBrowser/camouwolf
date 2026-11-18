@@ -61,3 +61,10 @@
 # through two APIs, so they must agree — which is why they are one patch and not
 # the two Holo carries.
 0022-system-ui-font.patch
+
+# --- the product name --------------------------------------------------------
+# The application calls itself Camouwolf in its own UI: window titles, the
+# About page, the task switcher. No web API returns the product name of a
+# Chromium-branded build (the UA says "Chrome/", and the UA-CH brand list is
+# built from the identity), so this is a local name only, like the icons.
+0023-product-name.patch

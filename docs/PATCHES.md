@@ -1,6 +1,6 @@
 # The patch series
 
-22 diffs in `browser/patches/`, applied in `series` order against the Chromium
+23 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:

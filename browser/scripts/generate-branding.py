@@ -3,7 +3,7 @@
 
 Single source of truth:
 
-    browser/assets/CamouwolfLogo.svg     (written by vectorize-logo.py)
+    browser/assets/CamouwolfLogo.svg     (drawn by hand; edit it directly)
 
 Two destinations, both committed:
 
@@ -62,10 +62,9 @@ SOURCE_SVG = BROWSER_DIR / "assets" / "CamouwolfLogo.svg"
 BRANDING_DIR = BROWSER_DIR / "branding"
 DESKTOP_ICON_DIR = BROWSER_DIR / "settings" / "linux-desktop" / "icons"
 
-# Fraction of each edge left empty. The mark is portrait (923x1004), so fitting
-# it by height into a square already leaves ~4% of side margin from the aspect
-# alone; this is the top/bottom breathing room on top of that. Enough that the
-# hair spikes do not touch the edge, small enough that the mark still reads at
+# Fraction of each edge left empty. The mark's viewBox is square and the wolf
+# nearly fills it, so this is the only breathing room there is. Enough that the
+# ear tips do not touch the edge, small enough that the mark still reads at
 # 32px.
 MARGIN = 0.03
 
@@ -79,9 +78,9 @@ ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 # the tree still #includes it, but a drop-in replacement should stay drop-in.
 XPM_SYMBOL = "linux_icon_chromium_32_xpm"
 
-# The flat fill, mirrored from vectorize-logo.py. Asserted against the SVG at
-# run time rather than trusted, so the two files cannot drift apart silently.
-FLAT_FILL = "#AFBBD7"
+# The mark's one flat fill. Asserted against the SVG at run time rather than
+# trusted, so a recoloured logo cannot leave the XPM and mono icons behind.
+FLAT_FILL = "#7A8CB4"
 
 # Every PNG in the branding tree, as {path relative to chrome/app/theme/: size}.
 BRANDING_PNGS = {
@@ -126,8 +125,8 @@ def _square_png(size: int) -> bytes:
     from PIL import Image
 
     box = max(1, int(round(size * (1 - 2 * MARGIN))))
-    # Height-fit: the mark is portrait, so height is the binding dimension and
-    # cairosvg preserves the aspect from the viewBox.
+    # The viewBox is square, so fitting by height also fits by width; cairosvg
+    # preserves the aspect from the viewBox.
     raw = cairosvg.svg2png(url=str(SOURCE_SVG), output_height=box)
     mark = Image.open(io.BytesIO(raw)).convert("RGBA")
 
@@ -156,7 +155,7 @@ def _square_svg(extent: int) -> bytes:
     """Wrap the mark in a square viewBox, centred with the same margin.
 
     Consumers of product_logo.svg (and of the hicolor scalable icon) assume a
-    square canvas, so re-frame rather than hand them the tight portrait mark.
+    square canvas with the same margin the PNGs have.
     """
     import re
 
@@ -169,7 +168,7 @@ def _square_svg(extent: int) -> bytes:
     if FLAT_FILL.lower() not in source.lower():
         raise SystemExit(
             f"ERROR: {SOURCE_SVG.name} is not filled with {FLAT_FILL}. "
-            "generate-branding.py and vectorize-logo.py have drifted apart."
+            "Set FLAT_FILL in generate-branding.py to the logo's fill."
         )
 
     body = re.search(r"<path\b.*?/>", source, re.S)
@@ -321,7 +320,6 @@ def main() -> int:
 
     if not SOURCE_SVG.is_file():
         print(f"ERROR: canonical vector not found: {SOURCE_SVG}", file=sys.stderr)
-        print("Run: python3 browser/scripts/vectorize-logo.py", file=sys.stderr)
         return 2
 
     try:
