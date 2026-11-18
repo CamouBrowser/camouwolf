@@ -25,8 +25,8 @@ diff --git a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc b/third
 +
  #include <memory>
  
- #include "base/compiler_specific.h"
-@@ -221,6 +223,34 @@
+ #include "base/check_op.h"
+@@ -220,6 +222,34 @@
      return NotShared<DOMFloat32Array>(nullptr);
    }
  
@@ -73,7 +73,7 @@ diff --git a/third_party/blink/renderer/modules/webaudio/realtime_analyser.cc b/
  #include <limits.h>
  
  #include <algorithm>
-@@ -113,11 +115,29 @@
+@@ -124,11 +126,29 @@
    const size_t source_length = magnitude_buffer_.size();
    const size_t len = std::min(source_length, destination_array->length());
    if (len > 0) {

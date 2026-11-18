@@ -39,13 +39,13 @@ diff --git a/third_party/blink/renderer/core/geometry/dom_matrix.cc b/third_part
 +#include "base/camouwolf/camouwolf_ucrt_math.h"
  #include "third_party/blink/renderer/core/geometry/dom_matrix.h"
  
- #include "third_party/blink/renderer/bindings/core/v8/v8_dom_matrix_init.h"
+ #include "base/numerics/angle_conversions.h"
 @@ -242,7 +243,7 @@
  }
  
  DOMMatrix* DOMMatrix::rotateFromVectorSelf(double x, double y) {
--  matrix_.Rotate(Rad2deg(atan2(y, x)));
-+  matrix_.Rotate(Rad2deg(camouwolf::UcrtOrHostAtan2(y, x)));
+-  matrix_.Rotate(base::RadToDeg(atan2(y, x)));
++  matrix_.Rotate(base::RadToDeg(camouwolf::UcrtOrHostAtan2(y, x)));
    return this;
  }
  
@@ -59,8 +59,8 @@ diff --git a/third_party/blink/renderer/platform/transforms/affine_transform.cc 
 +#include "base/camouwolf/camouwolf_ucrt_math.h"
  #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
  
- #include "third_party/blink/renderer/platform/wtf/math_extras.h"
-@@ -128,8 +129,8 @@
+ #include "base/numerics/angle_conversions.h"
+@@ -130,8 +131,8 @@
  }
  
  AffineTransform& AffineTransform::RotateRadians(double a) {
@@ -71,7 +71,7 @@ diff --git a/third_party/blink/renderer/platform/transforms/affine_transform.cc 
    AffineTransform rot(cos_angle, sin_angle, -sin_angle, cos_angle, 0, 0);
  
    PreConcat(rot);
-@@ -160,7 +161,7 @@
+@@ -162,7 +163,7 @@
  }
  
  AffineTransform& AffineTransform::RotateFromVector(double x, double y) {

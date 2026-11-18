@@ -10,10 +10,10 @@ diff --git a/third_party/blink/renderer/core/layout/layout_theme.cc b/third_part
  
  #include "build/build_config.h"
  #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
-@@ -621,6 +623,34 @@
-                                mojom::blink::ColorScheme color_scheme,
-                                const ui::ColorProvider* color_provider,
-                                bool can_expose_accent_color) const {
+@@ -632,6 +634,34 @@
+ 
+ Color LayoutTheme::SystemColor(CSSValueID css_value_id,
+                                const ColorThemeInfo& theme_info) const {
 +  // CAMOUWOLF: CSS system-color spoof. This is the single shared resolver every
 +  // web-exposed system color passes through. On a headless Linux host the
 +  // renderer has no ui::ColorProvider, so resolution falls to
@@ -32,7 +32,7 @@ diff --git a/third_party/blink/renderer/core/layout/layout_theme.cc b/third_part
 +  // and for a dark scheme (whose values were not captured), this is a no-op and
 +  // resolution proceeds exactly as upstream — so lin->lin and an unconfigured
 +  // binary keep the real behavior untouched.
-+  if (color_scheme != mojom::blink::ColorScheme::kDark) {
++  if (theme_info.color_scheme != mojom::blink::ColorScheme::kDark) {
 +    if (const base::Value* v = base::CamouwolfConfig::Get().GetNested(
 +            "systemColors", GetCSSValueName(css_value_id))) {
 +      if (v->is_int()) {
@@ -42,6 +42,6 @@ diff --git a/third_party/blink/renderer/core/layout/layout_theme.cc b/third_part
 +    }
 +  }
 +
-   if (color_provider && !WebTestSupport::IsRunningWebTest()) {
-     return SystemColorFromColorProvider(
-         css_value_id, color_scheme, color_provider, can_expose_accent_color);
+   if (theme_info.color_provider && !WebTestSupport::IsRunningWebTest()) {
+     return SystemColorFromColorProvider(css_value_id, theme_info);
+   }

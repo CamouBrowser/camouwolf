@@ -1,15 +1,15 @@
 diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
 --- a/components/embedder_support/user_agent_utils.cc
 +++ b/components/embedder_support/user_agent_utils.cc
-@@ -16,6 +16,7 @@
+@@ -15,6 +15,7 @@
+ 
+ #include "base/android/device_info.h"
  #include "base/command_line.h"
- #include "base/compiler_specific.h"
- #include "base/feature_list.h"
 +#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/feature_list.h"
  #include "base/logging.h"
  #include "base/no_destructor.h"
- #include "base/strings/strcat.h"
-@@ -463,6 +464,20 @@
+@@ -483,6 +484,20 @@
  }
  
  std::string GetUserAgent() {
@@ -30,7 +30,7 @@ diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedd
    std::optional<std::string> custom_ua = GetUserAgentFromCommandLine();
    if (custom_ua.has_value()) {
      return custom_ua.value();
-@@ -614,6 +629,12 @@
+@@ -601,6 +616,12 @@
  }
  
  std::string GetPlatformForUAMetadata() {
@@ -43,10 +43,11 @@ diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedd
  #if BUILDFLAG(IS_ANDROID)
    if (base::android::device_info::is_desktop() ||
        base::android::device_info::is_xr()) {
-@@ -654,6 +675,17 @@
+@@ -640,6 +661,17 @@
+       GetUserAgentBrandMajorVersionListInternal(std::nullopt);
    metadata.mobile = GetMobileBitForUAMetadata();
    metadata.platform = GetPlatformForUAMetadata();
- 
++
 +  // CAMOUWOLF: override the low-entropy hints from config before the command-line
 +  // early-return below, so they are coherent on every path.
 +  //
@@ -57,11 +58,10 @@ diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedd
 +  if (const auto mobile = kcfg.GetBool("userAgentData.mobile")) {
 +    metadata.mobile = *mobile;
 +  }
-+
+ 
    // For users providing a valid user-agent override via the command line:
    // If kUACHOverrideBlank is enabled, set user-agent metadata with the
-   // default blank values, otherwise return the default UserAgentMetadata values
-@@ -681,6 +713,44 @@
+@@ -668,6 +700,44 @@
    metadata.bitness = GetCpuBitness();
    metadata.wow64 = IsWoW64();
    metadata.platform_version = GetPlatformVersion();

@@ -78,7 +78,7 @@ hardware.
 
 ### 0002 — navigator identity
 
-`navigator.cc`, `navigator_base.cc`, `navigator_concurrent_hardware.cc`,
+`navigator.cc`, `navigator_id.cc`, `navigator_base.cc`, `navigator_concurrent_hardware.cc`,
 `navigator_device_memory.cc`.
 
 - **`navigator.webdriver` is hard-`false`.** Upstream returns `true` under either

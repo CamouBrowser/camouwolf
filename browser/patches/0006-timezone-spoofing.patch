@@ -1,16 +1,15 @@
 diff --git a/third_party/blink/renderer/core/timezone/timezone_controller.cc b/third_party/blink/renderer/core/timezone/timezone_controller.cc
 --- a/third_party/blink/renderer/core/timezone/timezone_controller.cc
 +++ b/third_party/blink/renderer/core/timezone/timezone_controller.cc
-@@ -3,6 +3,8 @@
- // found in the LICENSE file.
+@@ -4,6 +4,7 @@
  
  #include "third_party/blink/renderer/core/timezone/timezone_controller.h"
-+
-+#include "base/camouwolf_config.h"  // CAMOUWOLF
  
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
  #include "base/feature_list.h"
  #include "mojo/public/cpp/bindings/pending_remote.h"
-@@ -60,6 +62,24 @@
+@@ -63,6 +64,24 @@
  }
  
  String GetCurrentTimezoneId() {
@@ -35,7 +34,7 @@ diff --git a/third_party/blink/renderer/core/timezone/timezone_controller.cc b/t
    std::unique_ptr<icu::TimeZone> timezone(icu::TimeZone::createDefault());
    CHECK(timezone);
    return GetTimezoneId(*timezone.get());
-@@ -93,6 +113,30 @@
+@@ -96,6 +115,30 @@
  
  TimeZoneController::TimeZoneController() {
    DCHECK(IsMainThread());

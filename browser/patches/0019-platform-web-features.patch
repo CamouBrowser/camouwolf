@@ -1,15 +1,15 @@
 diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.cc
 --- a/content/child/runtime_features.cc
 +++ b/content/child/runtime_features.cc
-@@ -9,6 +9,7 @@
+@@ -8,6 +8,7 @@
+ #include <vector>
  
  #include "base/base_switches.h"
- #include "base/command_line.h"
 +#include "base/camouwolf_config.h"
+ #include "base/command_line.h"
  #include "base/feature_list.h"
  #include "base/logging.h"
- #include "base/memory/raw_ref.h"
-@@ -681,6 +682,25 @@
+@@ -605,6 +606,25 @@
      WebRuntimeFeatures::EnableXSLT(value == "true");
    }
  
