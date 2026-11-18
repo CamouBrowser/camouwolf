@@ -81,7 +81,7 @@ CONFIG_DOMAIN_RE = re.compile(
     r"mediaDevices|voices|AudioContext):"
 )
 READ_RE = re.compile(
-    r"""Get(?:String|Int|Uint32|Double|Bool|StringList|StringListLower|IntRect|Nested)\(\s*"([^"]+)"""
+    r"""Get(?:String|Int|Uint32|Double|Bool|StringList|StringListLower|IntRect|Nested|List|Dict)\(\s*"([^"]+)"""
 )
 HAS_RE = re.compile(r'(?:Has|CheckBool)\(\s*"([^"]+)"')
 

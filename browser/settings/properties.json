@@ -56,6 +56,14 @@
     "type": "bool"
   },
   {
+    "property": "userAgentData.brands",
+    "type": "array"
+  },
+  {
+    "property": "userAgentData.fullVersionList",
+    "type": "array"
+  },
+  {
     "property": "screen.width",
     "type": "int"
   },

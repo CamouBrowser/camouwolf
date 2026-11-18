@@ -154,6 +154,14 @@ const Value* CamouwolfConfig::GetNested(std::string_view domain,
   return nested->Find(key);
 }
 
+const ListValue* CamouwolfConfig::GetList(std::string_view key) const {
+  return dict_.FindList(key);
+}
+
+const DictValue* CamouwolfConfig::GetDict(std::string_view key) const {
+  return dict_.FindDict(key);
+}
+
 std::optional<std::array<int, 4>> CamouwolfConfig::GetIntRect(
     std::string_view key) const {
   const ListValue* list = dict_.FindList(key);
