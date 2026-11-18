@@ -1,0 +1,67 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "camouwolf"
+version = "0.1.0"
+description = "Wrapper around Playwright to help launch Camouwolf"
+# Camouwolf's launcher is derived from the Camoufox Python launcher (MIT, daijro
+# and the Camoufox contributors); see LICENSE.
+authors = ["JWriter20", "daijro <daijro.dev@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/JWriter20/Camouwolf"
+readme = "README.md"
+keywords = [
+    "client",
+    "fingerprint",
+    "browser",
+    "scraping",
+    "injector",
+    "chromium",
+    "playwright",
+]
+classifiers = [
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[tool.poetry.dependencies]
+# 3.11: myuri (humanize) and its cursory need it, and 3.10 reached end of life
+# in October 2026.
+python = "^3.11"
+rich-click = "*"
+rich = "*"
+requests = "*"
+orjson = "*"
+fpgen = "^1.3.0"
+# Keep a ceiling. camouwolf.switches restates the --disable-features list of
+# Playwright's Chromium launch (Chromium reads only the last one), and
+# camouwolf.server imports playwright._impl._driver, a private API with no
+# compat guarantee. Bump deliberately, checking chromiumSwitches against
+# switches.PLAYWRIGHT_DISABLED_FEATURES.
+playwright = "<1.63"
+pyyaml = "*"
+platformdirs = "*"
+numpy = "*"
+typing_extensions = "*"
+screeninfo = "*"
+language-tags = "*"
+# requests needs it to look up the exit IP through a socks proxy (geoip=True).
+pysocks = "*"
+inquirer = "*"
+# humanize's default engine. Pinned: a seed must plan the same input in Python and
+# TypeScript, and in every install of one camouwolf release.
+myuri = "4.0.0"
+maxminddb = {version = "*", optional = true}
+
+[tool.poetry.extras]
+geoip = ["maxminddb"]
+
+[tool.poetry.scripts]
+camouwolf = "camouwolf.__main__:cli"
+
+[tool.pytest.ini_options]
+# Test the in-tree package, whatever camouwolf is installed.
+pythonpath = ["src"]

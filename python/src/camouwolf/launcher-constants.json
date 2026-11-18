@@ -1,0 +1,9 @@
+{
+  "plausibleCoreCounts": [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32],
+  "taskbarHeight": {"win": 40, "mac": 25, "lin": 27},
+  "essentialFonts": {
+    "win": ["Arial", "Calibri", "Cambria", "Cambria Math", "Consolas", "Courier New", "Georgia", "Microsoft Sans Serif", "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"],
+    "mac": ["Arial", "Courier", "Courier New", "Geneva", "Georgia", "Helvetica", "Helvetica Neue", "Menlo", "Monaco", "Apple Color Emoji", "Times", "Times New Roman", "Trebuchet MS", "Verdana"],
+    "lin": ["DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif", "Liberation Mono", "Liberation Sans", "Liberation Serif", "Noto Color Emoji", "Noto Sans", "Noto Serif"]
+  }
+}

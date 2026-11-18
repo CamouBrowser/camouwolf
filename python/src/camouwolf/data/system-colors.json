@@ -1,0 +1,35 @@
+{
+  "windows": {
+    "accentcolor": 30207,
+    "accentcolortext": 16777215,
+    "activetext": 26316,
+    "buttonface": 15790320,
+    "canvas": 16777215,
+    "canvastext": 0,
+    "field": 16777215,
+    "graytext": 7171437,
+    "highlight": 30935,
+    "highlighttext": 16777215,
+    "linktext": 26316,
+    "mark": 16776960,
+    "selecteditem": 1664978,
+    "selecteditemtext": 16777215,
+    "visitedtext": 26316,
+    "activecaption": 16777215,
+    "appworkspace": 16777215,
+    "background": 16777215,
+    "buttonhighlight": 15790320,
+    "buttonshadow": 15790320,
+    "inactivecaption": 16777215,
+    "inactivecaptiontext": 8421504,
+    "infobackground": 16777215,
+    "menu": 16777215,
+    "scrollbar": 16777215,
+    "threedface": 15790320,
+    "window": 16777215,
+    "windowtext": 0
+  },
+  "linux": {
+    "activetext": 238
+  }
+}
