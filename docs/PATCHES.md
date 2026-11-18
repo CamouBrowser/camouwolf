@@ -1,6 +1,6 @@
 # The patch series
 
-26 diffs in `browser/patches/`, applied in `series` order against the Chromium
+27 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:
@@ -491,3 +491,25 @@ It outranks CDP's `Emulation.setLocaleOverride` (Playwright's `locale`
 option), which funnels through the same function: with the key set that
 override is accepted and has no effect, so the two must not be set to
 different values.
+
+### 0027 — AudioContext device properties
+
+`audio_context.cc`, `realtime_audio_destination_handler.cc`. The same three
+keys as Camoufox's `audio-context-spoofing.patch`.
+
+- **`AudioContext:sampleRate`** — the default rate of `new AudioContext()`.
+  Injected in `AudioContext::Create` as though the page had passed
+  `{sampleRate}`, not by overriding the getter: the rate decides how the graph
+  renders, and the audio fingerprint hashes rendered output. Upstream's
+  explicit-rate path renders at the claimed rate and resamples to the device.
+  A page's own `sampleRate` option still wins. `OfflineAudioContext` always
+  names its rate and is untouched.
+- **`AudioContext:outputLatency`** — seconds, served from
+  `AudioContext::outputLatency()` through upstream's quantization.
+- **`AudioContext:maxChannelCount`** — `destination.maxChannelCount` for
+  realtime contexts only (an offline destination has no device), and with it
+  the bound on `destination.channelCount`.
+
+Not covered: `baseLatency` (derived from the real callback buffer, and it does
+move when the rate is resampled) and the values a page gets from
+`enumerateDevices()`/`getUserMedia` capabilities.

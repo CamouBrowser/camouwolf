@@ -30,6 +30,9 @@
 
 # --- audio -------------------------------------------------------------------
 0011-audio-farbling.patch
+# 0027 is the device half of the audio surface: what the output device IS
+# (sample rate, latency, channel count), where 0011 is what it renders.
+0027-audio-context.patch
 
 # --- devices -----------------------------------------------------------------
 0012-speech-voices-spoofing.patch

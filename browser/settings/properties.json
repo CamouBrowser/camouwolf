@@ -168,6 +168,18 @@
     "type": "bool"
   },
   {
+    "property": "AudioContext:sampleRate",
+    "type": "uint"
+  },
+  {
+    "property": "AudioContext:outputLatency",
+    "type": "double"
+  },
+  {
+    "property": "AudioContext:maxChannelCount",
+    "type": "uint"
+  },
+  {
     "property": "connection.rtt",
     "type": "uint"
   },
