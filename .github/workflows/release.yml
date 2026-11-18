@@ -1,48 +1,286 @@
-name: Release browser
+name: Release
 
-# Manual only. Builds the Camouwolf browser and publishes a GitHub Release with a
-# platform zip. Self-hosted for the same reason ci-heavy is.
+# Every release of the browser, the Python package and the npm package, from
+# one workflow, started by hand:
 #
-# Manual rather than on-tag on purpose: a Chromium build is hours of a shared
-# machine, so starting one is a decision, not a side effect of pushing.
+#   channel = prerelease   the browser archive goes to a GitHub prerelease, and
+#                          the launchers go out as X.Y.Z.devN on PyPI (pip
+#                          ignores it without --pre) and X.Y.Z-dev.N on npm
+#                          under the `dev` dist-tag.
+#   channel = stable       the checked-in X.Y.Z goes to PyPI and to npm
+#                          `latest`. Refused if either registry already has it.
+#
+# Nothing is released that was not tested: the run starts by calling tests.yml
+# on the dispatched commit, and the browser archive that is published is the
+# very file tests.yml built, installed and ran the suites against (the
+# `browser-linux` artifact of this run) -- it is not rebuilt.
+#
+# Versions, the tag, the archive names and the target list come from
+# `python -m ci.release` and `python -m ci.targets`; this file holds no version
+# arithmetic. Only linux x86_64 is released; `python -m ci.targets` prints the
+# other targets and the reason each is disabled, and the `plan` job puts that
+# list in the run summary.
+#
+# PyPI and npm both use trusted publishing (OIDC): no token is stored, and each
+# registry accepts uploads only from this file in this repository, as the
+# top-level workflow -- so the publish jobs cannot move into a reusable
+# workflow. Both packages are built once, in build-library, and the publish
+# jobs upload exactly those files. A failed publish is retried with "Re-run
+# failed jobs": `plan` runs once per run, so a re-run publishes the same
+# versions.
+#
+# Before the first release, each registry needs this workflow registered as a
+# trusted publisher for the package `camouwolf` (a "pending publisher" on PyPI);
+# see ci/README.md. Nothing has been published yet.
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: "linux | macos | windows"
+      channel:
+        description: "prerelease or stable"
         required: true
-        default: linux
-      skip_build:
-        description: "Package an existing out/ tree instead of rebuilding"
+        default: prerelease
+        type: choice
+        options: [prerelease, stable]
+      browser:
+        description: "Publish the browser archive"
+        required: true
+        default: true
         type: boolean
-        default: false
-      no_release:
-        description: "Build and package, but do not publish"
+      library:
+        description: "Publish the Python and npm packages"
+        required: true
+        default: true
         type: boolean
-        default: false
 
+permissions: {}
+
+# Prerelease numbers are allocated in `plan` from what the registries hold, so
+# two releases must never overlap.
 concurrency:
-  group: camouwolf-heavy
+  group: release
   cancel-in-progress: false
 
+env:
+  PYTHON_VERSION: "3.12"
+
+# A job with no status function in its `if` gets an implicit success(), which is
+# false when any job upstream of it was skipped. A run may skip the browser or
+# the library half, so every job downstream starts its `if` with !cancelled()
+# and checks the results it actually depends on.
 jobs:
-  release:
-    runs-on: [self-hosted, camouwolf-ci]
-    timeout-minutes: 600
+  # ---------------------------------------------------------------------------
+  tests:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/tests.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit
+
+  # ---------------------------------------------------------------------------
+  plan:
+    name: Plan
+    needs: tests
+    if: needs.tests.outputs.verdict == 'pass'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.browser.outputs.tag }}
+      browser_prerelease: ${{ steps.browser.outputs.prerelease }}
+      matrix: ${{ steps.browser.outputs.matrix }}
+      py_version: ${{ steps.library.outputs.py_version }}
+      npm_version: ${{ steps.library.outputs.npm_version }}
+      npm_dist_tag: ${{ steps.library.outputs.npm_dist_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python3 -m pip install -q -r ci/requirements.txt
+      - run: python3 -m ci.release check
+      - name: Targets
+        run: |
+          { echo '### Targets'; echo '```'; python3 -m ci.targets; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - id: browser
+        run: python3 -m ci.release browser-plan
+      - id: library
+        if: inputs.library
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: python3 -m ci.release lib-plan --channel "$CHANNEL"
+
+  # ---------------------------------------------------------------------------
+  publish-browser:
+    name: Publish the browser (${{ matrix.target }})
+    needs: [tests, plan]
+    # A browser that was not built and tested in this run is not released.
+    if: >-
+      !cancelled() && needs.plan.result == 'success' && inputs.browser &&
+      needs.tests.outputs.browser_tested == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # the release
+      id-token: write # build provenance
+      attestations: write
+    strategy:
+      fail-fast: false
+      # Enabled targets only (ci/targets.py). windows and macos are disabled
+      # there, each with its reason.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: browser-${{ matrix.target }}
+          path: dist
+      - name: The archive is the one that was tested
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          cd dist
+          test -f "$ARCHIVE" || { echo "::error::$ARCHIVE is not in this run's artifacts"; exit 1; }
+          sha256sum -c "$ARCHIVE.sha256"
+      # `gh attestation verify <zip> --repo <this repository>` proves a download
+      # was built by this workflow from this commit.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/${{ matrix.archive }}
+      - name: Create or extend the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PRERELEASE: ${{ needs.plan.outputs.browser_prerelease }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            flags=()
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "$TAG" --generate-notes "${flags[@]}"
+          fi
+          # No --clobber: an asset that is already there is a release that
+          # already happened, and its bytes must not change under its name.
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "dist/$ARCHIVE" "dist/$ARCHIVE.sha256"
+
+  # ---------------------------------------------------------------------------
+  build-library:
+    name: Build the packages
+    # Built and checked once, before anything is published; the publish jobs
+    # upload exactly these files.
+    needs: plan
+    if: "!cancelled() && needs.plan.result == 'success' && inputs.library"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: typescript/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Stamp the planned versions
+        env:
+          PY_VERSION: ${{ needs.plan.outputs.py_version }}
+          NPM_VERSION: ${{ needs.plan.outputs.npm_version }}
+        run: |
+          python3 -m pip install -q -r ci/requirements.txt build twine
+          python3 -m ci.release stamp --py-version "$PY_VERSION" --npm-version "$NPM_VERSION"
+
+      - name: Build the Python package
+        run: |
+          python3 -m build python --outdir python/dist
+          python3 -m twine check --strict python/dist/*
+
+      - name: Build the npm package
+        working-directory: typescript
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          node scripts/check-pack.mjs
+          mkdir ../npm-dist
+          npm pack --ignore-scripts --pack-destination ../npm-dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: python/dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-dist
+          path: npm-dist/
+
+  # ---------------------------------------------------------------------------
+  publish-pypi:
+    name: Publish to PyPI
+    # After the browser when both are released, so the launcher never ships
+    # ahead of the build it was tested with.
+    needs: [plan, build-library, publish-browser]
+    if: >-
+      !cancelled() && needs.build-library.result == 'success' &&
+      (needs.publish-browser.result == 'success' || needs.publish-browser.result == 'skipped')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # trusted publishing and attestations
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  publish-npm:
+    name: Publish to npm
+    # After PyPI, so a failed PyPI upload stops the release before npm has a
+    # version PyPI does not.
+    needs: [plan, build-library, publish-pypi]
+    if: "!cancelled() && needs.build-library.result == 'success' && needs.publish-pypi.result == 'success'"
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # trusted publishing and provenance
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          # Trusted publishing needs npm >= 11.5.1, which Node 24 ships.
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-dist
+          path: npm-dist
+      # `./` keeps npm from reading `npm-dist/<file>.tgz` as a GitHub owner/repo.
+      - env:
+          DIST_TAG: ${{ needs.plan.outputs.npm_dist_tag }}
+        run: npm publish ./npm-dist/*.tgz --access public --tag "$DIST_TAG"
+
+  # ---------------------------------------------------------------------------
+  tag-library:
+    name: Tag the library version
+    needs: [plan, publish-pypi, publish-npm]
+    if: "!cancelled() && needs.publish-pypi.result == 'success' && needs.publish-npm.result == 'success'"
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: corepack enable
-      - name: Build + release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          bash scripts/release-camouwolf.sh \
-            --target "${{ inputs.target }}" \
-            ${{ inputs.skip_build && '--skip-build' || '' }} \
-            ${{ inputs.no_release && '--no-release' || '' }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.py_version }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/lib-v$VERSION" -f sha="$GITHUB_SHA"
