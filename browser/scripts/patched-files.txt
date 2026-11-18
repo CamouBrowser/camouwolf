@@ -75,3 +75,6 @@ third_party/blink/renderer/core/events/navigator_events.cc
 
 # --- device scale factor (window.devicePixelRatio) ---------------------------
 ui/display/display.cc
+
+# --- ICU default locale (Intl, toLocaleString) -------------------------------
+base/i18n/icubridge/default_icu_locale.cc

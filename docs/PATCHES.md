@@ -1,6 +1,6 @@
 # The patch series
 
-25 diffs in `browser/patches/`, applied in `series` order against the Chromium
+26 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:
@@ -396,3 +396,33 @@ instead of going through `display::Display` does not see the key. That set
 has not been audited (it needs a full checkout: `git grep kForceDeviceScaleFactor`);
 on the first real build, compare `devicePixelRatio`, a `resolution` media query
 and a screenshot's pixel size against a run with the switch.
+
+### 0026 — ICU default locale
+
+`base/i18n/icubridge/default_icu_locale.cc`. Key **`locale:all`** (Camoufox's
+name for the same thing), a BCP 47 tag.
+
+`SetDefaultIcuLocale()` is the only function that can move ICU's default locale
+— upstream guards it with a pass-key — and ICU's default is what V8 reports
+from `Intl.DateTimeFormat().resolvedOptions().locale` and formats
+`toLocaleString()` with, in the window and in workers. The configured tag
+replaces whatever the caller resolved.
+
+What the callers resolve is the **UI** locale: `--lang=de-DE` is mapped onto
+the nearest locale the build ships a `.pak` for and arrives as `de`. The patch
+sits below that mapping, so the resource bundle still loads a locale that
+exists while ICU gets the tag the identity names.
+
+A separate key rather than reusing `navigator.languages[0]`, deliberately. The
+two are not the same value in real Chrome: a German Chrome reports
+`navigator.language === "de-DE"` and an Intl default of `"de"`, because Chrome
+itself feeds ICU the UI locale; `en-US`, `en-GB`, `pt-BR`, `es-419`, `zh-CN`
+keep their region because those are UI locales. So the launcher should write
+the tag *real Chrome's UI would resolve* for the identity, not blindly
+`languages[0]` — a key of its own lets it. Unset, upstream's mapping of
+`--lang` applies, which is already Chrome's.
+
+It outranks CDP's `Emulation.setLocaleOverride` (Playwright's `locale`
+option), which funnels through the same function: with the key set that
+override is accepted and has no effect, so the two must not be set to
+different values.

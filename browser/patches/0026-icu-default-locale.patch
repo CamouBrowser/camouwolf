@@ -1,0 +1,57 @@
+diff --git a/base/i18n/icubridge/default_icu_locale.cc b/base/i18n/icubridge/default_icu_locale.cc
+--- a/base/i18n/icubridge/default_icu_locale.cc
++++ b/base/i18n/icubridge/default_icu_locale.cc
+@@ -4,12 +4,17 @@
+ 
+ #include "base/i18n/icubridge/default_icu_locale.h"
+ 
++#include <optional>
++#include <string>
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check.h"
+ #include "base/i18n/icu4c_tag_converter.h"  // nogncheck
+ #include "base/i18n/language_tag.h"
+ #include "base/i18n/locale_holder.h"
+ #include "base/logging.h"
+ #include "base/no_destructor.h"
++#include "base/i18n/tag_converters.h"  // CAMOUWOLF
+ #include "build/build_config.h"
+ #include "third_party/icu/source/common/unicode/locid.h"
+ #include "third_party/icu/source/common/unicode/utypes.h"
+@@ -43,7 +48,34 @@
+ }
+ 
+ void SetDefaultIcuLocale(DefaultIcuLocaleSetterKey key,
+-                         const LanguageTag& language_tag) {
++                         const LanguageTag& requested_tag) {
++  // CAMOUWOLF: the configured locale stands in for whatever the caller resolved.
++  //
++  // This is the one function that can move ICU's default locale (the pass-key
++  // above exists to guarantee that), and ICU's default is what V8 reports as
++  // Intl's default locale and formats toLocaleString() with — in the window
++  // and in every worker, since they share the process.
++  //
++  // Upstream's callers hand it the UI locale: l10n_util::GetApplicationLocale()
++  // maps --lang onto the nearest locale the build ships a .pak for, so
++  // --lang=de-DE arrives here as "de" and --lang=en-AU as "en-GB". That
++  // mapping is a property of which translations exist, not of the identity,
++  // and it leaves Intl naming a different locale than navigator.language.
++  // Taking the value here rather than at each caller covers the browser, the
++  // zygote and every child, and leaves the resource-bundle choice (which
++  // really does have to be a shipped locale) alone.
++  //
++  // It also outranks CDP's Emulation.setLocaleOverride, which funnels through
++  // here too — the same stance 0002 takes on the CDP navigator overrides. A
++  // tag ICU's converter rejects falls through to the caller's.
++  LanguageTag language_tag = requested_tag;
++  if (const std::optional<std::string> configured =
++          CamouwolfConfig::Get().GetString("locale:all")) {
++    if (std::optional<LanguageTag> configured_tag =
++            GetLanguageTagFromString(*configured)) {
++      language_tag = *configured_tag;
++    }
++  }
+   GetLocaleHolder().SetLocale(language_tag);
+ #if BUILDFLAG(IS_IOS)
+   static base::debug::CrashKeyString* crash_key_locale =

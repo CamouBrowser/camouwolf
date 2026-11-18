@@ -28,6 +28,10 @@
     "type": "array"
   },
   {
+    "property": "locale:all",
+    "type": "str"
+  },
+  {
     "property": "userAgentData.platform",
     "type": "str"
   },

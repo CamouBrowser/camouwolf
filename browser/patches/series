@@ -16,6 +16,10 @@
 0003-user-agent-client-hints.patch
 0004-screen-spoofing.patch
 0005-locale-languages.patch
+# 0026 is the other half of 0005: navigator.languages is the JS list, this is
+# the ICU default locale behind Intl and toLocaleString(). Numbered by when it
+# was written; it is independent of the rest and applies anywhere after 0001.
+0026-icu-default-locale.patch
 0006-timezone-spoofing.patch
 
 # --- graphics ----------------------------------------------------------------
