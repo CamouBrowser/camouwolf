@@ -45,7 +45,7 @@ is_chrome_branded = false
 # No PGO profile: Google's profile data ships with src-internal. Building
 # without it costs some speed and, more relevantly, produces slightly different
 # codegen than stock Chrome — a residual difference this project accepts and
-# the numeric-parity gate measures (tests/compare/numeric-fp.mjs).
+# the numeric-parity gate measures.
 chrome_pgo_phase = 0
 
 # --------------------------------------------------------------- attack surface

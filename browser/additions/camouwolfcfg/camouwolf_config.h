@@ -3,8 +3,8 @@
 //
 // CamouwolfConfig — the single reader for the per-launch identity.
 //
-// This is the Chromium twin of Holo's `MaskConfig.hpp`. The launcher
-// (`@jobharvest/camouwolf`) serializes one JSON object of spoof keys and hands it to
+// This is the Chromium twin of Camoufox's `MaskConfig.hpp`. The launcher
+// (the `camouwolf` package) serializes one JSON object of spoof keys and hands it to
 // the browser through the environment as CAMOU_CONFIG_1..N (chunked, because
 // Windows caps a single environment variable at 32767 chars and a shell at
 // 2047). Every Chromium process — browser, renderer, GPU, utility — inherits
@@ -15,7 +15,7 @@
 //   A switch-borne persona is world-readable at /proc/<pid>/cmdline, shows in
 //   `ps`, and — for the values Chromium already forwards to renderers — appears
 //   verbatim in the renderer's own command line, which a compromised renderer
-//   can read back. Holo has always used the environment for exactly this
+//   can read back. Camoufox has always used the environment for exactly this
 //   reason; Camouwolf keeps that property. Only the handful of switches Chromium
 //   itself must see before this config is live (e.g. --lang) are passed as
 //   switches, and the launcher keeps those coherent with the config.

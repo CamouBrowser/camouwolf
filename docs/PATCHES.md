@@ -103,7 +103,7 @@ either blanks the client-hint metadata or leaves it describing the real host. So
 `--user-agent` produces a browser whose UA says Windows and whose
 `Sec-CH-UA-Platform` says Linux — checkable server-side, on the first request,
 before any JS runs. This patch drives the UA **and** the full hint set from one
-config, and `src/switches.ts` refuses `--user-agent` outright.
+config, and `python/src/camouwolf/switches.py` refuses `--user-agent` outright.
 
 Covers the low-entropy hints (`platform`, `mobile`) before the command-line
 early-return, and the high-entropy ones (`architecture`, `bitness`, `model`,
@@ -348,8 +348,8 @@ future upstream consumer of the flag landing unnoticed.
 
 **This only covers layer C.** The CDP-side tells (`Runtime.enable`'s
 `executionContextCreated` leak, init-script residue, the isolated-world seam)
-are the driver's responsibility, handled in `src/switches.ts` and verified by
-`tests/compare/cdp-leak.mjs`. No browser patch can fix a driver that announces
+are the driver's responsibility, handled in `python/src/camouwolf/switches.py` and verified by
+the build-tester (`ci/run_build_tester.py`). No browser patch can fix a driver that announces
 itself.
 
 ### 0018 — ucrt math
@@ -366,7 +366,7 @@ and before any config plumbing exists.
 
 Note what is deliberately *not* here: JavaScript's `Math.sin`/`cos`/`tan`. V8
 ships its own fdlibm port, so those are already identical on every platform.
-Holo needs `ucrt-trig-sin-cos-tan.patch` only because SpiderMonkey reaches the
+Camoufox needs `ucrt-trig-sin-cos-tan.patch` only because SpiderMonkey reaches the
 host libm.
 
 ### 0019 — per-OS web platform features
@@ -422,7 +422,7 @@ it came from a CSS generic keyword or from a name the page chose:
   built without a selector — form controls and other non-DOM paths — which are
   not page-readable and would break visibly if filtered.
 
-Holo does this by pruning the platform font list behind
+Camoufox does this by pruning the platform font list behind
 `kFontSystemWhitelistPref`. Chromium has no such pref, so the gate goes on the
 selector instead.
 
@@ -431,7 +431,7 @@ selector instead.
 `font_cache.cc` (the `system-ui` generic) and
 `layout_theme_font_provider_default.cc` (the CSS2 system-font keywords).
 
-One patch, not the two Holo carries, because these are the same question asked
+One patch, not the two Camoufox carries, because these are the same question asked
 through two APIs: *what is this platform's UI font?* A page that gets Segoe UI
 from `system-ui` and Arial from `font: menu` has found a machine that does not
 exist. CreepJS's headless detector probes all six CSS2 keywords —  `caption`,

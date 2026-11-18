@@ -5,7 +5,7 @@
 #
 # Idempotent-ish: it refuses to run twice on the same tree unless you pass
 # --force, because GNU patch will happily apply a series on top of itself and
-# leave a tree that compiles but is silently double-patched. (Holo lost a build
+# leave a tree that compiles but is silently double-patched. (Camoufox lost a build
 # to exactly that; the guard is cheap.)
 set -euo pipefail
 

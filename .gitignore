@@ -22,7 +22,6 @@
 !/browser/bundle/fonts/restore-fonts.sh
 
 # --- test artifacts --------------------------------------------------------
-/tests/launcher/.upstream-cache/
 /tests/**/__pycache__/
 *.pyc
 /tmp/

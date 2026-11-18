@@ -66,7 +66,7 @@
 # --- the platform UI font -----------------------------------------------------
 # `system-ui` and the six CSS2 system-font keywords answer the same question
 # through two APIs, so they must agree — which is why they are one patch and not
-# the two Holo carries.
+# the two Camoufox carries.
 0022-system-ui-font.patch
 
 # --- the product name --------------------------------------------------------

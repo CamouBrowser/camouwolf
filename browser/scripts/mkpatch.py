@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Emit a Camouwolf patch from the pristine/work mirror pair.
 
-Patch authoring flow (see browser/README.md):
+Patch authoring flow (see docs/PATCHES.md):
 
     bash browser/scripts/fetch-sources.sh          # mirror the pinned tag
     cp -r browser/.pristine/$version browser/.work # work tree
@@ -103,7 +103,7 @@ def main(argv: list[str]) -> int:
     # Self-check: the patch must reverse-apply against the work tree, which is
     # the cheapest proof it is internally consistent. A mis-counted @@ header is
     # silently dropped by GNU patch with no .rej — the exact failure mode that
-    # cost Holo two bad builds — and this catches it at authoring time.
+    # cost Camoufox two bad builds — and this catches it at authoring time.
     check = subprocess.run(
         ["git", "apply", "--check", "--reverse", "-p1", str(out)],
         cwd=work_root,

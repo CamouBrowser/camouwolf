@@ -6,7 +6,7 @@
 # Why it exists: a patch is only as good as its context lines. Authoring against
 # a mirror of the exact tag means `git apply` on the real checkout either applies
 # cleanly or fails loudly — never lands a hunk in the wrong place, which is the
-# failure mode Holo's patch-assertions were built to catch.
+# failure mode Camoufox's patch-assertions were built to catch.
 #
 # Usage:  bash browser/scripts/fetch-sources.sh [dest]
 #           dest defaults to browser/.pristine/<version>

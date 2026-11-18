@@ -12,14 +12,14 @@
 // not a conservative default — it is the measured-correct posture, and turning
 // one on makes Camouwolf MORE identifiable, not less.
 //
-// Holo (the Firefox counterpart) reached the same conclusion the expensive way
+// Camoufox (the Firefox counterpart) reached the same conclusion the expensive way
 // and deleted its audio farbling patch outright, then pref-gated its WebGL
 // readback randomization off in beta.31 after measuring the un-noised output
 // against real Windows Firefox on the same RTX 5080: 10 of 12 WebGL scenes were
 // byte-identical, `fp-classic` — the scene commodity fingerprinters actually
 // hash — among them. There was nothing left for the noise to hide.
 //
-// CAMOUWOLF'S CASE IS STRICTLY STRONGER THAN HOLO'S. Holo had to KEEP one
+// CAMOUWOLF'S CASE IS STRICTLY STRONGER THAN HOLO'S. Camoufox had to KEEP one
 // randomizer: stock Firefox 152 perturbs the encode path (toDataURL/toBlob)
 // itself under baseline EfficientCanvasRandomization, so removing that would
 // have been a tell in the other direction. Stock Chrome randomizes NOTHING.
@@ -34,7 +34,7 @@
 //   2. CROSS-ORIGIN. If the key is per-first-party, the same scene drawn by the
 //      same GPU in one session hashes differently depending on who asked. No
 //      hardware does that, and a third-party iframe reads it straight off.
-//      tests/compare/noise-origin-check.mjs is the gate for exactly this.
+//      the build-tester noise checks (ci/run_build_tester.py) are the gate for exactly this.
 //
 // And measurement says the noise does not even buy what it was meant to buy:
 //   * docs/WINDOWS-DIVERGENCE.md §2.1 — the Linux canvas first-read instability
@@ -47,7 +47,7 @@
 //     matches no real reference.
 //
 // So these switches exist to MEASURE the old posture without a rebuild, the way
-// Holo kept `webgl.holo-randomize-readback`. They are not a product feature.
+// Camoufox kept `its WebGL readback noise pref`. They are not a product feature.
 //
 // WHAT IS NOT FARBLED (this header used to claim otherwise):
 //   WebGL `readPixels` is NOT perturbed. Patch 0009 touches

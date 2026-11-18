@@ -19,7 +19,7 @@ Two destinations, both committed:
                                      what GNOME/KDE show for the launcher and
                                      the dock.
 
-Both are generated here, together, for the reason Holo learned the hard way:
+Both are generated here, together, for the reason Camoufox learned the hard way:
 they are consumed by completely different machinery (grit vs. the XDG icon
 theme), so nothing fails when one of them is refreshed and the other is not --
 the launcher icon just quietly stays a crop of last year's logo. Single-sourcing
