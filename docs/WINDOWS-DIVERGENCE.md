@@ -4,9 +4,10 @@ A direct A/B of every fingerprint surface a page can read, measured on real
 Google Chrome on Windows 11 and on stock Chromium on this Linux box, both
 windowed on a real display.
 
-Harness: `tests/compare/capture-fingerprint.mjs` (one probe, three modes),
-`tests/compare/diff-fingerprints.mjs`, captures in
-`tests/compare/captures/`.
+This is a record of one measurement, taken against the Chromium 152 build the
+patch series was ported from. The probe and the capture files it produced were
+not carried into this repository; the numbers below are what they showed. The
+section numbers are cited from `browser/`, so they are kept as they were.
 
 ## What was measured, and what was not
 
@@ -97,8 +98,8 @@ Extension lists also disagree, in both directions:
 Of the numeric parameters, **20 differ in WebGL2** and Camouwolf spoofs **10**
 (`webGl:parameters`). Those 10 are correct — see §3.
 
-This is the capture data `docs/HOLO-PARITY.md` §8 recorded as blocked: leg A is
-a complete real-Windows-D3D11 record and unblocks it.
+Leg A is a complete real-Windows-D3D11 record, which is what the WebGL backend
+signatures needed.
 
 ### 2.3 WebGPU
 
@@ -175,7 +176,7 @@ both. Splitting the 44100-sample buffer into 45 chunks of 1000, **exactly one
 chunk differs — samples 16000–16999**; the other 44 match exactly, as do the
 first and last samples.
 
-This confirms and sharpens `docs/HOLO-PARITY.md` §9. The residue is a ULP-scale
+The residue is a ULP-scale
 platform-math difference in a narrow window, not a per-device signal — so it is
 the same *kind* of problem as `0018`, and per-identity noise (`0011`) would make
 it strictly worse. `0011` is currently inert (`canvas:seed` defaults to 0);
@@ -232,7 +233,7 @@ route through the patched `AffineTransform::Rotate` is likewise unverified.
 
 | item | Camouwolf | reality |
 | --- | --- | --- |
-| `Sec-CH-UA-Platform-Version` ladder | `["10.0.0","13.0.0","14.0.0","15.0.0"]` (`src/clienthints.ts:89`) | Win 11 build 26200 reports **`19.0.0`** |
+| `Sec-CH-UA-Platform-Version` ladder | `["10.0.0","13.0.0","14.0.0","15.0.0"]` | Win 11 build 26200 reports **`19.0.0`** |
 | UA Chrome version | `152.0.0.0` (pin `152.0.7977.42`, `release=alpha.1`) | stable is **151** |
 | `deviceMemory` | presets emit `8` | Chrome 151 reported **32** on both boxes — the old cap of 8 has moved |
 
@@ -283,5 +284,5 @@ first-request tell.
 4. `keyboard.layoutMap` and `mediaDevices:enumerated` — patches exist, nothing
    drives them.
 5. WebGL backend signatures + `preferredCanvasFormat` — leg A now provides the
-   real D3D11 record `HOLO-PARITY` §8 was waiting on.
+   real D3D11 record they were waiting on.
 6. EyeDropper (and Web Bluetooth, with the caveat) in `0019`.

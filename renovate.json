@@ -1,70 +1,25 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommitTypeAll(chore)"
-  ],
-  "description": "Grouped, weekly dependency updates for the launcher (src/, pnpm). GitHub Actions and the browser/ Firefox-fork build tooling are intentionally NOT managed here.",
-  "timezone": "America/New_York",
-  "schedule": [
-    "before 6am on monday"
-  ],
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommitTypeAll(chore)"],
+  "description": "Weekly, grouped dependency updates for the npm launcher (typescript/). The Python launcher's ranges, GitHub Actions pins and the Chromium pin in browser/upstream.sh are changed by hand: each of them moves what the test pipeline runs against.",
+  "schedule": ["before 6am on monday"],
   "prConcurrentLimit": 5,
-  "prHourlyLimit": 0,
   "rebaseWhen": "conflicted",
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": [
-      "before 6am on monday"
-    ]
-  },
-  "enabledManagers": [
-    "npm"
-  ],
-  "npm": {
-    "enabled": true
-  },
+  "enabledManagers": ["npm"],
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on monday"] },
   "packageRules": [
     {
-      "description": "the launcher (@jobharvest/holo): group all non-major npm updates into one weekly PR.",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchFileNames": [
-        "src/**",
-        "package.json"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "pin",
-        "digest"
-      ],
-      "groupName": "launcher deps (non-major)",
-      "commitMessageTopic": "launcher dependencies"
+      "description": "Non-major npm updates: one pull request a week.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["typescript/**"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "typescript launcher deps (non-major)"
     },
     {
-      "description": "launcher major npm bumps: separate PR each (breaking; review individually).",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchFileNames": [
-        "src/**",
-        "package.json"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "commitMessageTopic": "{{depName}} (major)"
+      "description": "Playwright decides which upstream suite the pipeline runs; it is bumped by hand, with ci/versions.py and python/pyproject.toml.",
+      "matchPackageNames": ["playwright", "playwright-core", "@playwright/test"],
+      "enabled": false
     }
   ],
-  "vulnerabilityAlerts": {
-    "labels": [
-      "security"
-    ],
-    "schedule": [
-      "at any time"
-    ]
-  }
+  "vulnerabilityAlerts": { "labels": ["security"], "schedule": ["at any time"] }
 }
