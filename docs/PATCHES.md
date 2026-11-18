@@ -229,9 +229,40 @@ does).
 
 ### 0008 — WebGPU
 
-`gpu_adapter_info.cc`. The WebGPU twin of `WEBGL_debug_renderer_info`. A
-detector reading both catches a browser that patched only WebGL, since the two
-APIs would name different GPUs on one machine.
+`gpu_adapter_info.cc`, `gpu_adapter.cc`, `gpu_supported_limits.{h,cc}`,
+`gpu.cc`.
+
+**Adapter info** (`webGpu:vendor`, `webGpu:architecture`, `webGpu:device`) —
+the WebGPU twin of `WEBGL_debug_renderer_info`. A detector reading both catches
+a browser that patched only WebGL, since the two APIs would name different GPUs
+on one machine.
+
+**`webGpu:features`** — a list of feature names, applied where the adapter's
+set is built (`MakeFeatureNameSet`). `requestDevice()` validates
+`requiredFeatures` against the same set, so a hidden feature is refused the way
+an adapter without it refuses. Hide-only, like the WebGL extension list.
+
+**`webGpu:limits`** — a map of IDL limit name to number, applied to the
+adapter's limits in the `GPUAdapter` constructor. Tighten-only: a `max…` limit
+becomes `min(host, claimed)`, a `min…Alignment` limit `max(host, claimed)`.
+Dawn checks `requiredLimits` against the real adapter, so advertising more
+than the host has would be refused on use. Consequence worth knowing: on a
+software adapter (`maxTextureDimension2D` 8192) a desktop identity's 16384
+cannot be claimed; that needs a real GPU behind the build, not a patch.
+
+**`webGpu:preferredCanvasFormat`** — `"bgra8unorm"` or `"rgba8unorm"`. An OS
+tell rather than a GPU one: upstream decides it with `#if`, `rgba8unorm` on
+Linux/Android and `bgra8unorm` on Windows/macOS, so a Linux host claiming
+Windows gives itself away from `navigator.gpu` alone. Only the script-visible
+value changes; the swap chain keeps the host's format.
+
+Not patched: **`navigator.gpu.wgslLanguageFeatures`**. It is a property of the
+Dawn/Tint revision in the build, not of the GPU or the OS — every Chrome 158
+reports the same set — so the unconfigured answer is already the right one and
+a key could only make it wrong. (Hook, if a bump ever changes that:
+`GatherWGSLLanguageFeatures()` in `gpu.cc`, which fills the set in the `GPU`
+constructor.) Camoufox has no
+`webGpu:*` keys to mirror; these names are Camouwolf's own.
 
 ### 0009 — canvas farbling
 

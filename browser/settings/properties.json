@@ -152,6 +152,18 @@
     "type": "str"
   },
   {
+    "property": "webGpu:features",
+    "type": "array"
+  },
+  {
+    "property": "webGpu:limits",
+    "type": "dict"
+  },
+  {
+    "property": "webGpu:preferredCanvasFormat",
+    "type": "str"
+  },
+  {
     "property": "canvas:seed",
     "type": "uint"
   },
