@@ -61,11 +61,9 @@ KNOWN_DEAD = {
     "battery:charging": "no reader; a headless Linux box already reports the plugged-in-desktop shape",
     "battery:chargingTime": "see battery:charging",
     "battery:dischargingTime": "see battery:charging",
-    "navigator.maxTouchPoints": "no reader; desktop personas want the host's 0 anyway",
     "navigator.globalPrivacyControl": "no reader",
     "screen.pageXOffset": "no reader",
     "screen.pageYOffset": "no reader",
-    "screen.pixelDepth": "no reader; falls back to colorDepth",
     "fonts:spacing_seed": "no reader; 0010 covers glyph metrics via the visual seed instead",
     "webrtc:ipv4": "no reader; block_webrtc is the only WebRTC control today",
 }

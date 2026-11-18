@@ -69,3 +69,9 @@ third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc
 # --- the product name --------------------------------------------------------
 chrome/app/theme/chromium/BRANDING
 chrome/app/chromium_strings.grd
+
+# --- touch points ------------------------------------------------------------
+third_party/blink/renderer/core/events/navigator_events.cc
+
+# --- device scale factor (window.devicePixelRatio) ---------------------------
+ui/display/display.cc

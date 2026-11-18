@@ -1,6 +1,6 @@
 # The patch series
 
-23 diffs in `browser/patches/`, applied in `series` order against the Chromium
+25 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:
@@ -125,7 +125,11 @@ and `navigator.userAgentData.brands`; `fullVersionList` feeds
 
 ### 0004 — screen
 
-`screen.cc`. Width, height, avail rect, colour depth, `isExtended`.
+`screen.cc`. Width, height, avail rect, colour depth, pixel depth,
+`isExtended`.
+
+`screen.pixelDepth` falls back to `screen.colorDepth` when absent, which is
+Chrome's own invariant; the key exists because Camoufox fingerprints carry both.
 
 `availWidth`/`availHeight` are separate keys rather than derived, because the
 launcher enforces `availHeight < height`: CreepJS computes
@@ -360,3 +364,35 @@ There is also an interaction with 0021 worth knowing: these keywords resolve to
 a concrete family name, which then passes through the font-list gate. A Windows
 identity whose drawn font list omitted Segoe UI would get no system font at
 all — which is why the launcher's Windows font manifest always carries it.
+
+### 0024 — touch points
+
+`navigator_events.cc`. `navigator.maxTouchPoints` from `navigator.maxTouchPoints`.
+
+The count only. `ontouchstart` and the `pointer` / `any-pointer` media features
+come from separate settings the host decides, so a non-zero value is coherent
+only for an identity whose other touch signals the launcher has arranged too
+(`--touch-events=enabled`, or a mobile emulation). Desktop identities leave the
+key out, or write 0.
+
+### 0025 — device scale factor
+
+`ui/display/display.cc`. `window.devicePixelRatio`, delivered as the **real**
+device scale factor — the key makes `Display::HasForceDeviceScaleFactor()` true
+and `GetForcedDeviceScaleFactor()` return the value, exactly as
+`--force-device-scale-factor` would.
+
+Not an override of the JS getter, because the getter is one reader among
+several: `matchMedia('(resolution: 2dppx)')`, `-webkit-device-pixel-ratio`,
+`srcset` / `image-set()` selection and layout's pixel snapping all compare
+against the same factor, and a getter that says 2 while a media query says 1 is
+found in one line. Moving the factor itself moves all of them.
+
+What that costs: the window really is rendered at that scale, so screenshots
+and `--window-size` (which is in DIPs) scale with it, and the host screen's
+size in DIPs shrinks by the factor — which is why `screen.*` (0004) must be set
+alongside. Code that reads the `--force-device-scale-factor` switch directly
+instead of going through `display::Display` does not see the key. That set
+has not been audited (it needs a full checkout: `git grep kForceDeviceScaleFactor`);
+on the first real build, compare `devicePixelRatio`, a `resolution` media query
+and a screenshot's pixel size against a run with the switch.

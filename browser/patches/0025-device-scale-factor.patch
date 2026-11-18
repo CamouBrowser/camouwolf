@@ -1,0 +1,57 @@
+diff --git a/ui/display/display.cc b/ui/display/display.cc
+--- a/ui/display/display.cc
++++ b/ui/display/display.cc
+@@ -5,7 +5,9 @@
+ #include "ui/display/display.h"
+ 
+ #include <algorithm>
+-
++#include <optional>  // CAMOUWOLF
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/logging.h"
+ #include "base/no_destructor.h"
+@@ -37,12 +39,42 @@
+ // expected DP display size.
+ constexpr float kDisplaySizeAllowanceEpsilon = 0.01f;
+ 
++// CAMOUWOLF: `window.devicePixelRatio` is delivered as a forced device scale
++// factor, not as an override of the JS getter.
++//
++// devicePixelRatio is not one value a page reads once. It is also what
++// matchMedia's `resolution` / `-webkit-device-pixel-ratio` queries compare
++// against, what `srcset` and `image-set()` select on, the ratio between a
++// canvas's CSS box and the backing store a page sizes for it, and the grid
++// layout snaps to. Returning 2 from the getter while every one of those still
++// says 1 is a contradiction a page finds with one media query. Making the
++// configured value the real scale factor — exactly what
++// --force-device-scale-factor does — moves all of them together, in every
++// process, because each one answers from this function.
++//
++// A key rather than the switch because the switch is forwarded verbatim to
++// every child's command line; see the rationale in camouwolf_config.h.
++std::optional<double> CamouwolfDeviceScaleFactor() {
++  const auto dpr =
++      base::CamouwolfConfig::Get().GetDouble("window.devicePixelRatio");
++  if (dpr && *dpr > 0.0) {
++    return dpr;
++  }
++  return std::nullopt;
++}
++
+ bool HasForceDeviceScaleFactorImpl() {
++  if (CamouwolfDeviceScaleFactor()) {
++    return true;
++  }
+   return base::CommandLine::ForCurrentProcess()->HasSwitch(
+       switches::kForceDeviceScaleFactor);
+ }
+ 
+ float GetForcedDeviceScaleFactorImpl() {
++  if (const auto dpr = CamouwolfDeviceScaleFactor()) {
++    return static_cast<float>(*dpr);
++  }
+   double scale_in_double = 1.0;
+   if (HasForceDeviceScaleFactorImpl()) {
+     std::string value =

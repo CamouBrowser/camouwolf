@@ -46,12 +46,16 @@ diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink
    // "If the user agent does not know the color depth or does not want to
    // return it for privacy considerations, it should return 24."
    //
-@@ -115,28 +133,42 @@
+@@ -115,28 +133,46 @@
  }
  
  unsigned Screen::pixelDepth() const {
-+  // Chrome ties pixelDepth to colorDepth; keep that invariant rather than
-+  // exposing a second key that could be set to disagree.
++  // CAMOUWOLF: Chrome ties pixelDepth to colorDepth, and so does this when only
++  // colorDepth is configured. The separate key exists for schema parity with
++  // Camoufox, whose fingerprints carry both; the launcher writes them equal.
++  if (const auto v = base::CamouwolfConfig::Get().GetUint32("screen.pixelDepth")) {
++    return *v;
++  }
    return colorDepth();
  }
  
@@ -89,7 +93,7 @@ diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink
    if (!DomWindow())
      return 0;
    return GetRect(/*available=*/true).width();
-@@ -157,6 +189,15 @@
+@@ -157,6 +193,15 @@
  }
  
  bool Screen::isExtended() const {

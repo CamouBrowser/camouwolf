@@ -68,3 +68,14 @@
 # Chromium-branded build (the UA says "Chrome/", and the UA-CH brand list is
 # built from the identity), so this is a local name only, like the icons.
 0023-product-name.patch
+
+# --- touch points ------------------------------------------------------------
+# navigator.maxTouchPoints is the host digitizer's count: 0 on a server, which
+# is wrong for a touchscreen laptop or a mobile identity.
+0024-touch-points.patch
+
+# --- device scale factor ------------------------------------------------------
+# window.devicePixelRatio is delivered as the real scale factor, because the
+# getter is only one of its readers: matchMedia resolution queries, srcset and
+# layout snapping all have to move with it.
+0025-device-scale-factor.patch

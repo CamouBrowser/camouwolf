@@ -1,0 +1,31 @@
+diff --git a/third_party/blink/renderer/core/events/navigator_events.cc b/third_party/blink/renderer/core/events/navigator_events.cc
+--- a/third_party/blink/renderer/core/events/navigator_events.cc
++++ b/third_party/blink/renderer/core/events/navigator_events.cc
+@@ -30,6 +30,7 @@
+ 
+ #include "third_party/blink/renderer/core/events/navigator_events.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
+ #include "third_party/blink/renderer/core/frame/navigator.h"
+@@ -38,6 +39,19 @@
+ namespace blink {
+ 
+ int32_t NavigatorEvents::maxTouchPoints(Navigator& navigator) {
++  // CAMOUWOLF: the claimed touch digitizer. Upstream reports the host's, which
++  // on a server is 0 — right for most desktop identities, wrong for a
++  // touchscreen laptop (10 on Windows) and for any mobile one. Served ahead of
++  // the frame lookup so a detached window answers like an attached one.
++  //
++  // This is the count only. Whether touch EVENTS exist (`ontouchstart`) and
++  // what `(any-pointer: coarse)` matches are separate settings the host
++  // decides, so the launcher writes a non-zero value only for an identity
++  // whose other touch signals it has also arranged.
++  if (const auto v =
++          base::CamouwolfConfig::Get().GetInt("navigator.maxTouchPoints")) {
++    return *v;
++  }
+   LocalDOMWindow* window = navigator.DomWindow();
+   return window ? window->GetFrame()->GetSettings()->GetMaxTouchPoints() : 0;
+ }

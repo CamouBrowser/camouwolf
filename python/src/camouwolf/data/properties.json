@@ -20,6 +20,10 @@
     "type": "double"
   },
   {
+    "property": "navigator.maxTouchPoints",
+    "type": "int"
+  },
+  {
     "property": "navigator.languages",
     "type": "array"
   },
@@ -89,6 +93,10 @@
   },
   {
     "property": "screen.colorDepth",
+    "type": "uint"
+  },
+  {
+    "property": "screen.pixelDepth",
     "type": "uint"
   },
   {
@@ -180,6 +188,10 @@
     "property": "window.outerHeight",
     "type": "int",
     "carriedBy": "launcher"
+  },
+  {
+    "property": "window.devicePixelRatio",
+    "type": "double"
   },
   {
     "property": "window.screenX",
