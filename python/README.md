@@ -94,6 +94,10 @@ A Camouwolf browser has one identity per process. `new_context()` and
 (Playwright's defaults are emulation overrides). `NewContext()` accepts
 `proxy`, `geolocation`, `timezone_id` and `locale`, and refuses options that
 would give one context another identity (`user_agent`, `screen`, ...).
+A context with its own `proxy` is placed where that proxy exits: `timezone_id`
+and `geolocation` default to the exit IP's, looked up through the proxy (needs
+the `geoip` extra), unless both are given, and a failed lookup raises
+`InvalidIP`. Its locale stays the identity's.
 
 ### Differences from Camoufox
 

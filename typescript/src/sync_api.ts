@@ -33,6 +33,7 @@ import {
 	newContextOptions,
 	persistentContextOptions,
 	pinnedCoreCount,
+	placeAtExit,
 	startVirtualDisplay,
 	warnAddonsWithoutProfile,
 } from "./utils.js";
@@ -229,6 +230,11 @@ export function camelCase(snake: string): string {
  * context emulates. So a context can differ in where it is, not in what
  * machine it is.
  *
+ * A `proxy` places the context where it exits: timezoneId and geolocation
+ * default to the exit IP's, looked up through the proxy (needs the geoip
+ * database) unless both are given; InvalidIP is thrown if the lookup fails.
+ * The locale stays the browser's identity's.
+ *
  * Other keys are Playwright newContext() options, such as timezoneId and
  * locale. Options that would change the identity (userAgent, screen,
  * deviceScaleFactor, isMobile, hasTouch) throw IncoherentIdentity, and
@@ -239,7 +245,10 @@ export async function NewContext(
 	browser: Browser,
 	{ proxy, geolocation, ...contextOptions }: NewContextOptions = {},
 ): Promise<BrowserContext> {
-	return browser.newContext(
-		newContextOptions(contextOptions, proxy, geolocation),
+	const [placed, options] = await placeAtExit(
+		proxy,
+		geolocation,
+		contextOptions,
 	);
+	return browser.newContext(newContextOptions(options, proxy, placed));
 }

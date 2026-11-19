@@ -1024,6 +1024,32 @@ export const PER_CONTEXT_FINGERPRINT_OPTIONS: readonly string[] = [
 ];
 
 /**
+ * A proxied context's timezone and position, defaulted to where the proxy
+ * exits (looked up through it) unless the caller gave both. A failed lookup
+ * throws: the context would otherwise sit at the launch's place beside another
+ * IP. The locale stays the identity's, which patch 0026 holds.
+ */
+export async function placeAtExit(
+	proxy: ProxyConfig | null | undefined,
+	geolocation: GeolocationOption | null | undefined,
+	contextOptions: Config,
+): Promise<[GeolocationOption | null | undefined, Config]> {
+	if (!proxy || (geolocation && "timezoneId" in contextOptions))
+		return [geolocation, contextOptions];
+	utilsDeps.geoipAllowed();
+	const exitGeo = await utilsDeps.getGeolocation(
+		await utilsDeps.publicIp(ProxyHelper.asString(proxy)),
+	);
+	return [
+		geolocation ?? {
+			latitude: exitGeo.latitude,
+			longitude: exitGeo.longitude,
+		},
+		{ timezoneId: exitGeo.timezone, ...contextOptions },
+	];
+}
+
+/**
  * The newContext() options NewContext passes: the caller's, after refusing any
  * that would give the context an identity of its own.
  */

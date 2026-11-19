@@ -693,6 +693,25 @@ def context_defaults(geolocation: Optional[Dict[str, float]]) -> Any:
 PER_CONTEXT_FINGERPRINT_OPTIONS = ('preset', 'os', 'ff_version', 'chrome_version', 'webrtc_ip')
 
 
+def place_at_exit(
+    proxy: Optional[Dict[str, str]],
+    geolocation: Optional[Dict[str, float]],
+    context_kwargs: Dict[str, Any],
+) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
+    """A proxied context's timezone and position, defaulted to where the proxy
+    exits (looked up through it) unless the caller gave both. A failed lookup
+    raises: the context would otherwise sit at the launch's place beside
+    another IP. The locale stays the identity's, which patch 0026 holds."""
+    if not proxy or (geolocation and 'timezone_id' in context_kwargs):
+        return geolocation, context_kwargs
+    geoip_allowed()
+    exit_geo = get_geolocation(public_ip(Proxy(**proxy).as_string()))
+    return (
+        geolocation or {'latitude': exit_geo.latitude, 'longitude': exit_geo.longitude},
+        {'timezone_id': exit_geo.timezone, **context_kwargs},
+    )
+
+
 def new_context_options(
     context_kwargs: Dict[str, Any],
     proxy: Optional[Dict[str, str]] = None,
