@@ -15,7 +15,7 @@ from camouwolf.pkgman import LOCAL_DATA
 from camouwolf.gpudisplay import GpuDisplay, prove_gpu
 from camouwolf.humanize import driven_channels
 from camouwolf.utils import launch_options, start_virtual_display
-from camouwolf.virtdisplay import VirtualDisplay
+from camoucore.virtdisplay import VirtualDisplay
 
 LAUNCH_SCRIPT: Path = LOCAL_DATA / "launchServer.js"
 

@@ -8,7 +8,7 @@ from playwright.sync_api import (
 )
 from typing_extensions import Literal
 
-from camouwolf.virtdisplay import VirtualDisplay
+from camoucore.virtdisplay import VirtualDisplay
 
 from . import _humanize_playwright, driver_defaults
 from .utils import (
@@ -146,7 +146,7 @@ def _launch(
     # Pin the driver (and so the browser it is about to spawn) to as many
     # cores as the identity reports, so measurable parallelism matches
     # navigator.hardwareConcurrency; the driver gets its cores back afterwards.
-    from . import cpu_affinity
+    from camoucore import cpu_affinity
     from .utils import driver_pid, pinned_core_count
 
     pin_to = pinned_core_count(from_options) if kwargs.get('pin_cpu_cores') else None

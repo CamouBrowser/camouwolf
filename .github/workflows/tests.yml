@@ -172,6 +172,8 @@ jobs:
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q libcairo2 fontconfig
           python3 -m pip install -q -r ci/requirements.txt
+          # The config-key guard reads the locale keys from the launcher's camoucore.
+          python3 -m pip install -q ./python
 
       - name: Pipeline self-tests
         run: python3 -m pytest ci/tests -q

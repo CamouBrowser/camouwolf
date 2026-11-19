@@ -26,6 +26,12 @@ camouwolf fetch
 fpgen model, the GeoIP database, and the default addon (uBlock Origin Lite,
 from the release pinned in `src/camouwolf/data/ubo.json`).
 
+The parts that do not depend on the browser engine -- locales, GeoIP, proxy
+lookup, the fpgen model pin, the virtual display -- come from
+[camoucore](https://github.com/JWriter20/CamouCore), which the Camoufox
+launcher shares. The GeoIP database and the fpgen model are therefore one copy
+per machine, whichever launcher fetched them.
+
 | Requirement | Value |
 |---|---|
 | Python | 3.11 or newer |

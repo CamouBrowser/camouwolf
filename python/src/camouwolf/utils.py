@@ -18,7 +18,7 @@ from typing_extensions import TypeAlias
 from . import clienthints, coherence, driver_defaults
 from ._warnings import WARNINGS_DATA, LeakWarning, _warn_from_caller
 from .addons import DefaultAddons, add_default_addons, confirm_paths
-from .display import has_display, largest_display
+from camoucore.display import has_display, largest_display
 from .exceptions import (
     IncoherentIdentity,
     UnknownIPLocation,
@@ -45,12 +45,13 @@ from .fingerprints import (
     handle_window_size,
     raise_screen_to_modern_floor,
 )
-from .geolocation import geoip_allowed, get_geolocation
+from camoucore.geolocation import geoip_allowed, get_geolocation
 from .gpudisplay import GPU_SWITCHES, GpuDisplay, async_prove_gpu, prove_gpu, select_gpu
 from .humanize import HumanizeSetting
 from .humanize import normalize as normalize_humanize
-from .ip import Proxy, public_ip, public_ipv6, valid_ipv4
-from .locales import handle_locales
+from camoucore.ip import Proxy, public_ip, public_ipv6, valid_ipv4
+from camoucore.locales import handle_locales
+from .product import PRODUCT
 from .pkgman import (
     INSTALL_DIR,
     LOCAL_DATA,
@@ -63,7 +64,7 @@ from .pkgman import (
     warn_if_package_outdated,
 )
 from .switches import IGNORED_DEFAULT_ARGS, PLAYWRIGHT_DISABLED_FEATURES, audit_switches, merge_list_switches
-from .virtdisplay import VirtualDisplay
+from camoucore.virtdisplay import VirtualDisplay
 from .webgl import chrome_gpus, usable_gpu
 
 ListOrString: TypeAlias = Union[Tuple[str, ...], List[str], str]
@@ -405,13 +406,13 @@ def warn_manual_config(config: Dict[str, Any]) -> None:
     Warns the user if they are manually setting properties that Camouwolf already sets internally.
     """
     if is_domain_set(config, 'navigator.languages'):
-        LeakWarning.warn('locale', False)
+        LeakWarning.warn(WARNINGS_DATA['locale'], False)
     if is_domain_set(config, 'geolocation:', 'timezone'):
-        LeakWarning.warn('geolocation', False)
+        LeakWarning.warn(WARNINGS_DATA['geolocation'], False)
     if any(key.startswith(('navigator.', 'userAgentData.')) and key != 'navigator.languages' for key in config):
-        LeakWarning.warn('navigator', False)
+        LeakWarning.warn(WARNINGS_DATA['navigator'], False)
     if is_domain_set(config, 'screen.', 'window.'):
-        LeakWarning.warn('viewport', False)
+        LeakWarning.warn(WARNINGS_DATA['viewport'], False)
 
 
 def check_custom_fingerprint(fingerprint: Dict[str, Any]) -> None:
@@ -426,7 +427,7 @@ def check_custom_fingerprint(fingerprint: Dict[str, Any]) -> None:
             f'(user agent: {user_agent or "none"!r}). Camouwolf is Chromium; a fingerprint from another '
             'browser WILL lead to detection. Generate one with fpgen and browser="Chrome".'
         )
-    LeakWarning.warn('custom_fingerprint', False)
+    LeakWarning.warn(WARNINGS_DATA['custom_fingerprint'], False)
 
 
 def resolve_version(executable_path: Optional[Union[str, Path]] = None) -> str:
@@ -564,7 +565,7 @@ def pinned_core_count(from_options: Dict[str, Any]) -> Optional[int]:
     or None: the identity's navigator.hardwareConcurrency when this host can
     honour it (see cpu_affinity), so a page measuring parallelism sees the
     reported number."""
-    from .cpu_affinity import host_cores, supported
+    from camoucore.cpu_affinity import host_cores, supported
 
     if not supported():
         return None
@@ -706,7 +707,7 @@ def keeps_ipv6(geo_config: Dict[str, Any], geoip_db: Optional[str], i_know_what_
         ipv6_config = {}
     if all(ipv6_config.get(key) == geo_config.get(key) for key in ('timezone', 'locale:region')):
         return True
-    LeakWarning.warn('ipv6_elsewhere', i_know_what_im_doing)
+    LeakWarning.warn(WARNINGS_DATA['ipv6_elsewhere'], i_know_what_im_doing)
     return False
 
 
@@ -801,7 +802,7 @@ def start_virtual_display(
     elif gpu is not None or require_gpu is not None:
         raise ValueError("gpu and require_gpu apply to headless='virtual-gpu' only")
     elif headless == 'virtual':
-        display = VirtualDisplay(debug=bool(debug))
+        display = VirtualDisplay(PRODUCT, debug=bool(debug))
     else:
         return None, headless
     # launch_options sizes the display to the identity and starts it.
@@ -1216,7 +1217,7 @@ def launch_options(
     # The identity has to match the Chromium that actually runs.
     full_version = resolve_version(browser_binary)
     if chrome_version is not None and int(chrome_version) != int(full_version.split('.', 1)[0]):
-        LeakWarning.warn('chrome_version', i_know_what_im_doing)
+        LeakWarning.warn(WARNINGS_DATA['chrome_version'], i_know_what_im_doing)
         full_version = f'{int(chrome_version)}.0.0.0'
     milestone = int(full_version.split('.', 1)[0])
 
@@ -1258,7 +1259,7 @@ def launch_options(
         and not is_domain_set(config, 'geolocation:')
     ):
         # This is a very bad idea; the warning cannot be silenced.
-        LeakWarning.warn('proxy_without_geoip')
+        LeakWarning.warn(WARNINGS_DATA['proxy_without_geoip'])
 
     if locale:
         locale_config = {}
@@ -1314,7 +1315,7 @@ def launch_options(
     if custom_fonts_only:
         if not fonts:
             raise ValueError('custom_fonts_only=True needs `fonts`')
-        LeakWarning.warn('custom_fonts_only', i_know_what_im_doing)
+        LeakWarning.warn(WARNINGS_DATA['custom_fonts_only'], i_know_what_im_doing)
         config['fonts'] = list(dict.fromkeys(fonts))
     elif fonts:
         base = config.get('fonts') or ESSENTIAL_FONTS[target_os]
@@ -1331,7 +1332,7 @@ def launch_options(
 
     # ---- canvas ------------------------------------------------------------
     if canvas_noise:
-        LeakWarning.warn('canvas_noise', i_know_what_im_doing)
+        LeakWarning.warn(WARNINGS_DATA['canvas_noise'], i_know_what_im_doing)
         config.setdefault('canvas:seed', secrets.randbelow(2**32 - 1) + 1)
         config.setdefault('canvas:randomizeReadback', True)
     else:
@@ -1374,16 +1375,16 @@ def launch_options(
 
     # ---- switches ----------------------------------------------------------
     if block_images:
-        LeakWarning.warn('block_images', i_know_what_im_doing)
+        LeakWarning.warn(WARNINGS_DATA['block_images'], i_know_what_im_doing)
         args.append('--blink-settings=imagesEnabled=false')
     # Chromium sends WebRTC's UDP around the proxy, and STUN then reports the
     # host's public IP; with a proxy, only the proxied route is left by default.
     if block_webrtc is False and proxy:
-        LeakWarning.warn('webrtc_beside_proxy', i_know_what_im_doing)
+        LeakWarning.warn(WARNINGS_DATA['webrtc_beside_proxy'], i_know_what_im_doing)
     if block_webrtc or (block_webrtc is None and proxy):
         args.append('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
     if block_webgl:
-        LeakWarning.warn('block_webgl', i_know_what_im_doing)
+        LeakWarning.warn(WARNINGS_DATA['block_webgl'], i_know_what_im_doing)
         args.extend(['--disable-webgl', '--disable-webgl2'])
     if not enable_cache:
         args.append('--disk-cache-size=1')

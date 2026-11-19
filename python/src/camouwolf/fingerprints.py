@@ -8,7 +8,6 @@ binary really is, and the client hints that milestone and OS imply
 """
 
 import os
-import re
 from dataclasses import dataclass
 from random import randrange
 from typing import Any, Dict, List, Optional, Tuple
@@ -47,7 +46,7 @@ _FP_GENERATOR = None
 def _generator():
     global _FP_GENERATOR
     if _FP_GENERATOR is None:
-        from .fpgen_model import load_fpgen
+        from camoucore.fpgen_model import load_fpgen
 
         _FP_GENERATOR = load_fpgen().Generator()
     return _FP_GENERATOR
@@ -118,7 +117,7 @@ def fix_hardware_concurrency(config: Dict[str, Any], can_pin: Optional[bool] = N
     # the host cannot honour (more cores than it has), a host that cannot pin
     # (macOS), or pin_cpu_cores left off -- the default since 2026-09-17 --
     # falls back to the snapped host count, which is equally coherent.
-    from .cpu_affinity import supported as _can_pin
+    from camoucore.cpu_affinity import supported as _can_pin
 
     # can_pin=False: the caller launches the browser itself and nothing will
     # pin it (launch_server, launch_options used directly), so a kept draw

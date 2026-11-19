@@ -18,7 +18,7 @@ from functools import lru_cache
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
 from .fingerprints import _FPGEN_OS, OS_KEYS, is_software_renderer
-from .fpgen_model import load_fpgen
+from camoucore.fpgen_model import load_fpgen
 
 # The ANGLE backends Chrome uses on each OS, as they appear in the renderer.
 _BACKENDS = {

@@ -11,8 +11,8 @@ from typing import Any, List, NoReturn, Optional, Tuple
 import requests
 import rich_click as click
 
-from .fpgen_model import ensure_fpgen_model
-from .geolocation import (
+from camoucore.fpgen_model import ensure_fpgen_model
+from camoucore.geolocation import (
     ALLOW_GEOIP,
     GEOIP_DIR,
     _load_geoip_repos,

@@ -27,9 +27,10 @@ sys.path.insert(0, str(TYPESCRIPT.parent / 'python' / 'src'))
 for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'CAMOUWOLF_EXECUTABLE_PATH', 'CAMOUWOLF_GPU'):
     os.environ.pop(name, None)
 
-from camouwolf import DefaultAddons, addons, cpu_affinity, fingerprints, utils  # noqa: E402
+from camoucore import cpu_affinity  # noqa: E402
+from camouwolf import DefaultAddons, addons, fingerprints, utils  # noqa: E402
 from camouwolf.fingerprints import Screen  # noqa: E402
-from camouwolf.locales import Geolocation, Locale  # noqa: E402
+from camoucore.locales import Geolocation, Locale  # noqa: E402
 
 FIXTURES = TYPESCRIPT / 'tests' / 'fixtures' / 'launch'
 BUNDLE = FIXTURES / 'bundle'

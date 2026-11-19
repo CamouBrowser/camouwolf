@@ -98,13 +98,14 @@ def main() -> int:
     from camouwolf import DefaultAddons, launch_options
     from camouwolf.sync_api import Camouwolf
     from camouwolf.utils import launch_config
-    from camouwolf.virtdisplay import VirtualDisplay
+    from camoucore.virtdisplay import VirtualDisplay
+    from camouwolf.product import PRODUCT
 
     headless = True if opts.headless == 'true' else 'virtual'
     display = None
     extra = {}
     if headless == 'virtual':
-        display = VirtualDisplay()
+        display = VirtualDisplay(PRODUCT)
         extra = {'virtual_display': display.get(), 'virtual_display_size': display.size}
 
     results = []

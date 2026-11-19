@@ -31,6 +31,9 @@ classifiers = [
 # 3.11: myuri (humanize) and its cursory need it, and 3.10 reached end of life
 # in October 2026.
 python = "^3.11"
+# The launcher core shared with Camoufox. A git tag while the repositories are
+# private; the PyPI release once they are public.
+camoucore = {git = "https://github.com/JWriter20/CamouCore.git", tag = "v0.1.0", subdirectory = "python"}
 rich-click = "*"
 rich = "*"
 requests = "*"
@@ -42,18 +45,14 @@ fpgen = "^1.3.0"
 # compat guarantee. Bump deliberately, checking chromiumSwitches against
 # switches.PLAYWRIGHT_DISABLED_FEATURES.
 playwright = "<1.63"
-pyyaml = "*"
-platformdirs = "*"
-numpy = "*"
 typing_extensions = "*"
-screeninfo = "*"
-language-tags = "*"
 # requests needs it to look up the exit IP through a socks proxy (geoip=True).
 pysocks = "*"
 inquirer = "*"
 # humanize's default engine. Pinned: a seed must plan the same input in Python and
 # TypeScript, and in every install of one camouwolf release.
 myuri = "4.0.0"
+# camoucore reads the GeoIP database with it.
 maxminddb = {version = "*", optional = true}
 
 [tool.poetry.extras]

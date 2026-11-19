@@ -29,9 +29,6 @@ ipv6_elsewhere: >-
 proxy_without_geoip: >-
     When using a proxy, it is heavily recommended that you pass `geoip=True`.
 
-no_region: >-
-    Because you did not pass in a locale region, Camouwolf will generate one for you.
-    This can cause suspicion if your IP does not match your locale region.
 
 webrtc_beside_proxy: >-
     block_webrtc=False with a proxy lets WebRTC send UDP straight from this host,
@@ -58,16 +55,6 @@ fallback: |-
     Please report this at https://github.com/JWriter20/Camouwolf/issues/new and include:
 
     {report}
-
-geoip_deprecated: >-
-    The GeoIP source "{name}" is deprecated and will be removed in a future release.
-    "{default}" is the default and resolves locations more accurately.
-    Run `camouwolf set --geoip` to switch, or stop passing `geoip_db`.
-
-geoip_frozen: >-
-    The newest "{name}" GeoIP database was built {days} days ago, so its source may have
-    stopped publishing and locations may be out of date. Please report this at
-    https://github.com/JWriter20/Camouwolf/issues.
 
 humanize_remote: >-
     humanize runs on a remote browser. Each event myuri plays is a round trip over the network,

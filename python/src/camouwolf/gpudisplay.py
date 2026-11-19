@@ -19,7 +19,9 @@ from pathlib import Path
 from shutil import which
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ._warnings import LeakWarning
+from camoucore.virtdisplay import VirtualDisplay
+
+from ._warnings import WARNINGS_DATA, LeakWarning
 from .exceptions import (
     AmbiguousGpuSelection,
     CannotExecuteXorg,
@@ -29,7 +31,7 @@ from .exceptions import (
     GpuVtTakeover,
     NoGpuFound,
 )
-from .virtdisplay import VirtualDisplay
+from .product import PRODUCT
 
 # Names the card when the `gpu` launch option is not given.
 GPU_ENV_VAR = 'CAMOUWOLF_GPU'
@@ -436,7 +438,7 @@ class GpuDisplay(VirtualDisplay):
         return CannotExecuteXorg(message)
 
     def __init__(self, gpu: GpuDevice, debug: bool = False, require_gpu: bool = True) -> None:
-        super().__init__(debug=debug)
+        super().__init__(PRODUCT, debug=debug)
         if not self.fixed:
             self.screen = GPU_SCREEN
         self.gpu = gpu
@@ -585,7 +587,7 @@ class GpuDisplay(VirtualDisplay):
         if active:
             return
         if not self.require_gpu:
-            LeakWarning.warn('gpu_software_rendering')
+            LeakWarning.warn(WARNINGS_DATA['gpu_software_rendering'])
             return
         raise GpuSoftwareFallback(
             f'The browser on :{self._display} never rendered on {self.gpu}, so it renders in software. '
