@@ -39,7 +39,6 @@
 0013-media-device-spoofing.patch
 0014-keyboard-layout-spoofing.patch
 0015-network-information.patch
-0016-storage-quota-spoofing.patch
 
 # --- automation --------------------------------------------------------------
 0017-automation-invisible.patch

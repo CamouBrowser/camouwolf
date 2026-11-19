@@ -323,6 +323,10 @@ const buildTester = (() => {
     out.canvas = [canvasHash(), canvasHash()];
     out.voices = await voices();
     try {
+      const { quota, usage } = await navigator.storage.estimate();
+      out.storage = { quota, usage };
+    } catch (error) { out.storage = { error: String(error) }; }
+    try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       out.mediaDevices = devices.map((d) => d.kind);
     } catch (error) { out.mediaDevices = { error: String(error) }; }

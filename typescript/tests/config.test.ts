@@ -115,7 +115,7 @@ describe("validateConfig", () => {
 			"navigator.languages": ["en-US"],
 			systemColors: { canvas: 0xffffff },
 			"webGl:parameters": { "3379": 16384, "7936": "WebKit" },
-			"storage.quota": new PyFloat(1e12),
+			"connection.downlink": new PyFloat(1.5),
 			timezone: "Europe/Berlin",
 			"userAgentData.brands": [{ brand: "Chromium", version: "152" }],
 		});

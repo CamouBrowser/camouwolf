@@ -65,7 +65,7 @@ def test_values_of_the_right_type_pass():
         'navigator.userAgent': 'x', 'navigator.hardwareConcurrency': 8, 'navigator.deviceMemory': 0.5,
         'screen.availLeft': -1920, 'userAgentData.mobile': False, 'navigator.languages': ['en-US'],
         'systemColors': {'canvas': 0xFFFFFF}, 'webGl:parameters': {'3379': 16384, '7936': 'WebKit'},
-        'storage.quota': 1e12, 'timezone': 'Europe/Berlin',
+        'connection.downlink': 1.5, 'timezone': 'Europe/Berlin',
     })
 
 

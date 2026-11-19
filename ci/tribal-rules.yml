@@ -84,3 +84,13 @@ rules:
     required:
       paths: [ci/sundial.yml]
       pattern: '(?m)^enabled: (true|false)$'
+
+  - id: storage-quota-is-stock
+    decision: Nothing patches or configures navigator.storage.estimate().quota.
+    why: >-
+      Chrome's static storage quota already reports usage + 10 GiB on any disk
+      of 10 GiB or more, so the host's disk does not show. A configured quota
+      is a fixed number that does not grow with usage the way Chrome's does.
+    forbidden:
+      paths: ["browser/patches/*.patch", "browser/settings/properties.json", "python/src/**/*.py", "typescript/src/**/*.ts"]
+      pattern: 'storage\.quota'

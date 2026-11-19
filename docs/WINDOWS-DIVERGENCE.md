@@ -136,7 +136,6 @@ support at all.
 | `keyboard.layoutMap` | 0014 | `IntlBackslash` = `\` (Win) vs `<` (Lin) |
 | `mediaDevices:enumerated` | 0013 | 3 devices (audioin/videoin/audioout) vs 2 |
 | `connection.downlink` | 0015 | rtt 100/downlink 1.65 vs 50/1.5 — weak, network-derived |
-| `storage.quota` | 0016 | none — both report exactly 10 GiB |
 | `screen.availLeft` / `availTop` | 0004 | none here (both 0); needed for a side/top taskbar |
 | `navigator.vendor` | 0002 | none — `Google Inc.` on both |
 | `timezone` | 0006 | none here; only drawn on a geoip launch |
