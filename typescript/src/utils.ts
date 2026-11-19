@@ -1281,18 +1281,31 @@ function reprPairs(pairs: ReadonlyArray<readonly [string, string]>): string {
 	return `[${pairs.map(([v, r]) => `(${pyStrRepr(v)}, ${pyStrRepr(r)})`).join(", ")}]`;
 }
 
+/** An fpgen condition on navigator.languages: the first is `language`'s. */
+export function speaks(language: string): (value: unknown) => boolean {
+	const wanted = language.split("-")[0].toLowerCase();
+	return (value) =>
+		Array.isArray(value) &&
+		value.length > 0 &&
+		pyStr(value[0]).split("-")[0].toLowerCase() === wanted;
+}
+
 /**
  * Draw an fpgen Chrome fingerprint whose GPU the identity may claim.
  *
  * Without `webglConfig`, any recorded hardware GPU on a backend its OS uses.
  * With it, a record of exactly that device: its limits, screen and fonts are
  * then the ones a machine with that GPU reported.
+ *
+ * With `language`, a record of Chrome in that language where fpgen has one:
+ * a machine's voices and fonts follow the language its OS was installed in.
  */
 export async function drawFingerprint(
 	os: ListOrString | null | undefined,
 	screen: Screen | null | undefined,
 	window: readonly [number, number] | null | undefined,
 	webglConfig: readonly [string, string] | null | undefined,
+	language?: string,
 ): Promise<Config> {
 	await utilsDeps.ensureModel();
 	const names: string[] = typeof os === "string" ? [os] : [...(os ?? [])];
@@ -1323,13 +1336,25 @@ export async function drawFingerprint(
 		gpu = (value) => usableGpu(value);
 	}
 
+	const conditions: Record<string, unknown> = { gpu };
+	if (language) conditions.languages = speaks(language);
 	for (let i = 0; i < MAX_FINGERPRINT_DRAWS; i++) {
-		const fingerprint = utilsDeps.generateFingerprint({
-			window,
-			screen,
-			os: pyTruthy(os) ? os : null,
-			gpu,
-		});
+		let fingerprint: Config;
+		try {
+			fingerprint = utilsDeps.generateFingerprint({
+				window,
+				screen,
+				os: pyTruthy(os) ? os : null,
+				...conditions,
+			});
+		} catch (err) {
+			if (!("languages" in conditions)) throw err;
+			// fpgen has no record of Chrome in this language on these machines
+			// (its sampler throws a TypeError on a pairing it never recorded).
+			// The draw is then a machine installed in another language.
+			delete conditions.languages;
+			continue;
+		}
 		const drawnOs = fingerprintOs(fingerprint);
 		// Camouwolf builds are x86-64 desktops. fpgen also records Chrome on ARM
 		// Linux ("Linux armv81", "Linux aarch64"), whose platform a build that
@@ -1660,6 +1685,50 @@ export async function launchOptions({
 		}
 	}
 
+	// ---- place: geoip, locale ---------------------------------------------
+	let localeConfig: Config = {};
+	if (pyTruthy(geoip)) {
+		utilsDeps.geoipAllowed(); // Assert that geoip is allowed
+		let ip = geoip as string | true;
+		if (ip === true) {
+			ip = await utilsDeps.publicIp(
+				proxy ? ProxyHelper.asString(proxy) : undefined,
+			);
+		}
+		const geoConfig = (await utilsDeps.getGeolocation(ip, geoip_db)).asConfig();
+		for (const [key, value] of Object.entries(geoConfig)) {
+			if (key.startsWith("locale:")) localeConfig[key] = value;
+			else if (key === "timezone") setDefault(config, key, value);
+			else config[key] = value;
+		}
+		// Without a proxy, a site that has an IPv6 address sees this host's,
+		// not the IPv4 address the identity was drawn from. Keep IPv6 only when
+		// it places the host where the identity does.
+		if (
+			!proxy &&
+			validIPv4(ip) &&
+			!(await keepsIpv6(geoConfig, geoip_db, i_know_what_im_doing))
+		)
+			config["network:ipv4Only"] = true;
+	} else if (
+		pyTruthy(proxy) &&
+		!String(proxy?.server ?? "").includes("localhost") &&
+		!String(proxy?.server ?? "").includes("127.0.0.1") &&
+		!isDomainSet(config, "geolocation:")
+	) {
+		// This is a very bad idea; the warning cannot be silenced.
+		LeakWarning.warn("proxy_without_geoip");
+	}
+
+	if (pyTruthy(locale)) {
+		localeConfig = {};
+		await handleLocales(locale as string | string[], localeConfig);
+	}
+	const languages: string[] | null = pyTruthy(config["navigator.languages"])
+		? config["navigator.languages"]
+		: languagesFor(localeConfig);
+	if (pyTruthy(languages)) config["navigator.languages"] = languages;
+
 	// A caller who names the user agent themselves has pinned the identity.
 	if (
 		(fingerprint === undefined || fingerprint === null) &&
@@ -1670,6 +1739,7 @@ export async function launchOptions({
 			screen ? toScreen(screen) : displayBound,
 			window,
 			webgl_config,
+			languages?.[0],
 		);
 	} else if (fingerprint !== undefined && fingerprint !== null) {
 		if (pyTruthy(webgl_config)) {
@@ -1757,50 +1827,6 @@ export async function launchOptions({
 	}
 	setDefault(config, "canvas:quantizeTextMetrics", false);
 	setDefault(config, "AudioContext:randomizeSamples", false);
-
-	// ---- place: geoip, locale ---------------------------------------------
-	let localeConfig: Config = {};
-	if (pyTruthy(geoip)) {
-		utilsDeps.geoipAllowed(); // Assert that geoip is allowed
-		let ip = geoip as string | true;
-		if (ip === true) {
-			ip = await utilsDeps.publicIp(
-				proxy ? ProxyHelper.asString(proxy) : undefined,
-			);
-		}
-		const geoConfig = (await utilsDeps.getGeolocation(ip, geoip_db)).asConfig();
-		for (const [key, value] of Object.entries(geoConfig)) {
-			if (key.startsWith("locale:")) localeConfig[key] = value;
-			else if (key === "timezone") setDefault(config, key, value);
-			else config[key] = value;
-		}
-		// Without a proxy, a site that has an IPv6 address sees this host's,
-		// not the IPv4 address the identity was drawn from. Keep IPv6 only when
-		// it places the host where the identity does.
-		if (
-			!proxy &&
-			validIPv4(ip) &&
-			!(await keepsIpv6(geoConfig, geoip_db, i_know_what_im_doing))
-		)
-			config["network:ipv4Only"] = true;
-	} else if (
-		pyTruthy(proxy) &&
-		!String(proxy?.server ?? "").includes("localhost") &&
-		!String(proxy?.server ?? "").includes("127.0.0.1") &&
-		!isDomainSet(config, "geolocation:")
-	) {
-		// This is a very bad idea; the warning cannot be silenced.
-		LeakWarning.warn("proxy_without_geoip");
-	}
-
-	if (pyTruthy(locale)) {
-		localeConfig = {};
-		await handleLocales(locale as string | string[], localeConfig);
-	}
-	const languages: string[] | null = pyTruthy(config["navigator.languages"])
-		? config["navigator.languages"]
-		: languagesFor(localeConfig);
-	if (pyTruthy(languages)) config["navigator.languages"] = languages;
 
 	// ---- geometry ----------------------------------------------------------
 	if (!userSetScreenWindow) {

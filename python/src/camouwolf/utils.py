@@ -10,7 +10,7 @@ from os import environ
 from os.path import abspath
 from pathlib import Path
 from pprint import pprint
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import orjson
 from typing_extensions import TypeAlias
@@ -870,13 +870,27 @@ The launch
 """
 
 
+def speaks(language: str) -> Callable[[Any], bool]:
+    """An fpgen condition on navigator.languages: the first is `language`'s."""
+    wanted = language.split('-')[0].lower()
+
+    def condition(value: Any) -> bool:
+        return isinstance(value, (list, tuple)) and bool(value) and str(value[0]).split('-')[0].lower() == wanted
+
+    return condition
+
+
 def draw_fingerprint(
     os: Optional[ListOrString],
     screen: Optional[Screen],
     window: Optional[Tuple[int, int]],
     webgl_config: Optional[Tuple[str, str]],
+    language: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Draw an fpgen Chrome fingerprint whose GPU the identity may claim.
+
+    With `language`, a record of Chrome in that language where fpgen has one:
+    a machine's voices and fonts follow the language its OS was installed in.
 
     Without `webgl_config`, any recorded hardware GPU on a backend its OS uses.
     With it, a record of exactly that device: its limits, screen and fonts are
@@ -903,8 +917,20 @@ def draw_fingerprint(
     else:
         gpu = usable_gpu
 
+    conditions: Dict[str, Any] = {'gpu': gpu}
+    if language:
+        conditions['languages'] = speaks(language)
     for _ in range(MAX_FINGERPRINT_DRAWS):
-        fingerprint = generate_fingerprint(window=window, screen=screen, os=os or None, gpu=gpu)
+        try:
+            fingerprint = generate_fingerprint(window=window, screen=screen, os=os or None, **conditions)
+        except (ValueError, StopIteration):
+            if 'languages' not in conditions:
+                raise
+            # fpgen has no record of Chrome in this language on these machines
+            # (its sampler raises StopIteration on a pairing it never recorded).
+            # The draw is then a machine installed in another language.
+            del conditions['languages']
+            continue
         drawn_os = fingerprint_os(fingerprint)
         # Camouwolf builds are x86-64 desktops. fpgen also records Chrome on ARM
         # Linux ("Linux armv81", "Linux aarch64"), whose platform a build that
@@ -1206,9 +1232,46 @@ def launch_options(
             if display:
                 display_bound = Screen(max_width=display.width, max_height=display.height)
 
+    # ---- place: geoip, locale ---------------------------------------------
+    locale_config: Dict[str, Any] = {}
+    if geoip:
+        geoip_allowed()  # Assert that geoip is allowed
+        if geoip is True:
+            geoip = public_ip(Proxy(**proxy).as_string()) if proxy else public_ip()
+        geo_config = get_geolocation(geoip, geoip_db=geoip_db).as_config()
+        for key, value in geo_config.items():
+            if key.startswith('locale:'):
+                locale_config[key] = value
+            elif key == 'timezone':
+                config.setdefault(key, value)
+            else:
+                config[key] = value
+        # Without a proxy, a site that has an IPv6 address sees this host's,
+        # not the IPv4 address the identity was drawn from. Keep IPv6 only when
+        # it places the host where the identity does.
+        if not proxy and valid_ipv4(geoip) and not keeps_ipv6(geo_config, geoip_db, i_know_what_im_doing):
+            config['network:ipv4Only'] = True
+    elif (
+        proxy
+        and 'localhost' not in proxy.get('server', '')
+        and '127.0.0.1' not in proxy.get('server', '')
+        and not is_domain_set(config, 'geolocation:')
+    ):
+        # This is a very bad idea; the warning cannot be silenced.
+        LeakWarning.warn('proxy_without_geoip')
+
+    if locale:
+        locale_config = {}
+        handle_locales(locale, locale_config)
+    languages = config.get('navigator.languages') or languages_for(locale_config)
+    if languages:
+        config['navigator.languages'] = languages
+
     # A caller who names the user agent themselves has pinned the identity.
     if fingerprint is None and 'navigator.userAgent' not in config:
-        fingerprint = draw_fingerprint(os, screen or display_bound, window, webgl_config)
+        fingerprint = draw_fingerprint(
+            os, screen or display_bound, window, webgl_config, languages[0] if languages else None
+        )
     elif fingerprint is not None:
         if webgl_config:
             raise ValueError('webgl_config draws the fingerprint; it cannot be combined with `fingerprint`')
@@ -1277,41 +1340,6 @@ def launch_options(
         config.setdefault('canvas:randomizeReadback', False)
     config.setdefault('canvas:quantizeTextMetrics', False)
     config.setdefault('AudioContext:randomizeSamples', False)
-
-    # ---- place: geoip, locale ---------------------------------------------
-    locale_config: Dict[str, Any] = {}
-    if geoip:
-        geoip_allowed()  # Assert that geoip is allowed
-        if geoip is True:
-            geoip = public_ip(Proxy(**proxy).as_string()) if proxy else public_ip()
-        geo_config = get_geolocation(geoip, geoip_db=geoip_db).as_config()
-        for key, value in geo_config.items():
-            if key.startswith('locale:'):
-                locale_config[key] = value
-            elif key == 'timezone':
-                config.setdefault(key, value)
-            else:
-                config[key] = value
-        # Without a proxy, a site that has an IPv6 address sees this host's,
-        # not the IPv4 address the identity was drawn from. Keep IPv6 only when
-        # it places the host where the identity does.
-        if not proxy and valid_ipv4(geoip) and not keeps_ipv6(geo_config, geoip_db, i_know_what_im_doing):
-            config['network:ipv4Only'] = True
-    elif (
-        proxy
-        and 'localhost' not in proxy.get('server', '')
-        and '127.0.0.1' not in proxy.get('server', '')
-        and not is_domain_set(config, 'geolocation:')
-    ):
-        # This is a very bad idea; the warning cannot be silenced.
-        LeakWarning.warn('proxy_without_geoip')
-
-    if locale:
-        locale_config = {}
-        handle_locales(locale, locale_config)
-    languages = config.get('navigator.languages') or languages_for(locale_config)
-    if languages:
-        config['navigator.languages'] = languages
 
     # ---- geometry ----------------------------------------------------------
     if not _user_set_screen_window:

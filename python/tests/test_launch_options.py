@@ -488,3 +488,32 @@ def test_a_drawn_mac_is_a_machine_apple_made(monkeypatch):
     draws = iter([record(5), record(10)])
     monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
     assert utils.draw_fingerprint('macos', None, None, None)['navigator']['hardwareConcurrency'] == 10
+
+
+def test_the_identity_is_drawn_from_a_machine_in_its_language(options, places, monkeypatch):
+    # A machine's voices and fonts follow the language its OS was installed in.
+    real = utils.draw_fingerprint('windows', None, None, None)
+    asked = []
+
+    def generate(**conditions):
+        asked.append(conditions.get('languages'))
+        return real
+
+    monkeypatch.setattr(utils, 'generate_fingerprint', generate)
+    for kwargs in ({'locale': 'de-DE'}, {'geoip': '203.0.113.5'}):
+        asked.clear()
+        options(os='windows', **kwargs)
+        speaks = asked[0]
+        assert speaks and speaks(['de-de', 'de']) and not speaks(['en-us', 'de'])
+
+
+def test_a_language_fpgen_never_recorded_draws_another_machine(monkeypatch):
+    real = utils.draw_fingerprint('windows', None, None, None)
+
+    def generate(**conditions):
+        if 'languages' in conditions:
+            raise StopIteration  # fpgen's sampler, on a pairing it never recorded
+        return real
+
+    monkeypatch.setattr(utils, 'generate_fingerprint', generate)
+    assert utils.draw_fingerprint('windows', None, None, None, 'ja-JP') is real
