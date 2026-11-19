@@ -20,6 +20,7 @@ required_categories:
   - Worker
   - Timezone & Locale
   - WebGL
+  - Editing
   - Screen & Window
   - Fonts
   - Voices

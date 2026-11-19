@@ -302,6 +302,12 @@ def compare(claimed: Dict[str, Any], os_name: str, got: Dict[str, Any], probe: D
         ("Direct3D" in renderer) == (os_name == "windows") and ("Metal" in renderer or "Apple" in renderer) == (os_name == "macos"),
         f"{os_name} identity, renderer {renderer}")
 
+    # ---- Editing ------------------------------------------------------------
+    c = out["Editing"] = {}
+    wanted = "alpha " if os_name == "windows" else "alpha"
+    c["doubleClickSelection"] = check(probe["doubleClick"] == wanted,
+                                      f"{os_name} identity, a double-click selected {probe['doubleClick']!r}")
+
     # ---- Screen & Window ----------------------------------------------------
     c = out["Screen & Window"] = {}
     screen, window = got["screen"], got["window"]
@@ -386,6 +392,20 @@ def font_families(claimed: Dict[str, Any]) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def double_click_selection(page: Any) -> str:
+    """What a double-click on a word selects: Windows takes the trailing space."""
+    page.evaluate("""() => {
+        const p = document.createElement('p');
+        p.id = 'editing';
+        p.style.font = '32px monospace';
+        p.textContent = 'alpha beta';
+        document.body.prepend(p);
+    }""")
+    box = page.locator("#editing").bounding_box()
+    page.mouse.dblclick(box["x"] + 20, box["y"] + box["height"] / 2)
+    return page.evaluate("String(getSelection())")
+
+
 def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, index: int, headless: bool,
                 log: Callable[[str], None]) -> Dict[str, Any]:
     variant = VARIANTS[index % len(VARIANTS)]
@@ -414,6 +434,7 @@ def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, ind
             "fonts": sorted({*font_families(claimed), *font_families(claimed).values(), *FOREIGN_FONTS[os_name]}),
             "systemColors": sorted(claimed.get("systemColors") or {}),
         })
+        probe["doubleClick"] = double_click_selection(page)
         profile["results"] = {"Launch": {"launched": check(True)}, **result["checks"],
                               **compare(claimed, os_name, result["collected"], probe, server.seen.get("navigation") or {})}
         profile["identity"] = {

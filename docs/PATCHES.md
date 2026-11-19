@@ -623,3 +623,15 @@ See 0007. Camoufox removed both; nothing to port.
 ### `navigator.gpu.wgslLanguageFeatures`
 
 See 0008. Follows the build, not the identity.
+
+### 0029 — platform editing behaviour
+
+`web_view_impl.cc`. Blink picks its editing conventions at compile time, and a
+page can measure them. Keyed on `navigator.platform`, matching 0019, a `Win32`
+identity gets Windows' editing behaviour: Ctrl+Right stops after the space, a
+double-click selects the trailing space, and a middle click autoscrolls rather
+than pasting the X11 primary selection. A `MacIntel` identity gets macOS's
+editing behaviour and smart insert and delete. A Linux identity, and a launch
+with no config, keep the build's own. The key bindings themselves stay the
+host's: Blink compiles them per platform, and Playwright sends the keys a test
+names.
