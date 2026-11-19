@@ -96,6 +96,7 @@ export function loadDataFile<T = any>(file: string): T {
 export interface LauncherConstants {
 	plausibleCoreCounts: number[];
 	taskbarHeight: Record<"win" | "mac" | "lin", number>;
+	plausibleDpr: Record<"win" | "mac" | "lin", number[]>;
 	essentialFonts: Record<"win" | "mac" | "lin", string[]>;
 }
 export const LAUNCHER_CONSTANTS: Readonly<LauncherConstants> = loadDataFile(

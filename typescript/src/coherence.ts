@@ -17,7 +17,8 @@
  * TypeScript twin of python/src/camouwolf/coherence.py.
  */
 import * as clienthints from "./clienthints.js";
-import { isPyInt, num, pyRepr, pyStr, pyTruthy } from "./pycompat.js";
+import { LAUNCHER_CONSTANTS } from "./paths.js";
+import { isPyInt, num, pyRepr, pyRound, pyStr, pyTruthy } from "./pycompat.js";
 import { backendMatchesOs } from "./webgl.js";
 
 type Config = Record<string, any>;
@@ -42,6 +43,30 @@ export const PLAUSIBLE_DEVICE_MEMORY: readonly number[] = [
  * machine has more than this.
  */
 export const MAX_PLAUSIBLE_CORES = 256;
+
+/**
+ * window.devicePixelRatio: the scaling steps each OS's display settings offer.
+ * Scraped records also carry ratios such as 1.0909, which are a browser zoom
+ * folded into the display's scale.
+ */
+export const PLAUSIBLE_DPR: Readonly<Record<string, readonly number[]>> =
+	LAUNCHER_CONSTANTS.plausibleDpr;
+
+/** The CSS geometry a ratio scales: device pixels / devicePixelRatio. */
+export const CSS_GEOMETRY_KEYS: readonly string[] = [
+	"screen.width",
+	"screen.height",
+	"screen.availWidth",
+	"screen.availHeight",
+	"screen.availLeft",
+	"screen.availTop",
+	"window.outerWidth",
+	"window.outerHeight",
+	"window.innerWidth",
+	"window.innerHeight",
+	"window.screenX",
+	"window.screenY",
+];
 
 export interface Violation {
 	rule: string;
@@ -247,6 +272,42 @@ function repairWindowFits(config: Config, _targetOs: string): void {
 	}
 }
 
+/** A devicePixelRatio no display mode of the OS offers. */
+export function isZoomedRatio(dpr: unknown, targetOs: string): boolean {
+	const allowed = PLAUSIBLE_DPR[targetOs];
+	if (!allowed || typeof dpr !== "number" || !(dpr > 0)) return false;
+	return !allowed.includes(dpr);
+}
+
+function checkDevicePixelRatio(
+	config: Config,
+	targetOs: string,
+): string | null {
+	const dpr = config["window.devicePixelRatio"];
+	if (!isNone(dpr) && isZoomedRatio(dpr, targetOs))
+		return `window.devicePixelRatio ${pyRepr(dpr)} is not a display mode ${targetOs} offers`;
+	return null;
+}
+
+/**
+ * Move the ratio to the nearest display step and rescale the CSS geometry by
+ * the zoom that was folded in, so the screen is still the display behind it:
+ * 1760x990 at 1.0909 is a 1920x1080 monitor at 1.
+ */
+export function repairDevicePixelRatio(config: Config, targetOs: string): void {
+	const dpr = config["window.devicePixelRatio"];
+	if (!isZoomedRatio(dpr, targetOs)) return;
+	const step = PLAUSIBLE_DPR[targetOs].reduce((best, v) =>
+		Math.abs(v - dpr) < Math.abs(best - dpr) ? v : best,
+	);
+	config["window.devicePixelRatio"] = step;
+	const scale = dpr / step;
+	for (const key of CSS_GEOMETRY_KEYS) {
+		const value = config[key];
+		if (typeof value === "number") config[key] = pyRound(value * scale);
+	}
+}
+
 export const RULES: readonly Rule[] = [
 	{ name: "client-hints", check: checkClientHints, repair: null },
 	{ name: "target-os", check: checkTargetOs, repair: null },
@@ -263,6 +324,12 @@ export const RULES: readonly Rule[] = [
 		repair: repairDeviceMemory,
 	},
 	{ name: "hardware-concurrency", check: checkCores, repair: null },
+	{
+		name: "device-pixel-ratio",
+		check: checkDevicePixelRatio,
+		repair: repairDevicePixelRatio,
+		adjusts: CSS_GEOMETRY_KEYS,
+	},
 	{ name: "screen-shape", check: checkScreenShape, repair: null },
 	{ name: "avail-bounds", check: checkAvailBounds, repair: repairAvailBounds },
 	{

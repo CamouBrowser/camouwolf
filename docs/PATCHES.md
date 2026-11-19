@@ -484,7 +484,10 @@ found in one line. Moving the factor itself moves all of them.
 What that costs: the window really is rendered at that scale, so screenshots
 and `--window-size` (which is in DIPs) scale with it, and the host screen's
 size in DIPs shrinks by the factor — which is why `screen.*` (0004) must be set
-alongside. Code that reads the `--force-device-scale-factor` switch directly
+alongside. The launchers therefore size the virtual display they own to the
+claimed screen times the ratio, and move a ratio no display setting offers (a
+scraped page zoom such as 1.0909) to the nearest step, rescaling the CSS
+geometry so the screen is still the monitor behind it. Code that reads the `--force-device-scale-factor` switch directly
 instead of going through `display::Display` does not see the key. That set
 has not been audited (it needs a full checkout: `git grep kForceDeviceScaleFactor`);
 on the first real build, compare `devicePixelRatio`, a `resolution` media query

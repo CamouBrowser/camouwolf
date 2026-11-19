@@ -1,11 +1,12 @@
 """Launching through the API, and what a context of the browser may set."""
 
 import asyncio
+import math
 import warnings
 
 import pytest
 
-from camouwolf import async_api, sync_api, utils
+from camouwolf import async_api, coherence, sync_api, utils
 from camouwolf._warnings import LeakWarning
 from camouwolf.exceptions import IncoherentIdentity
 
@@ -170,30 +171,61 @@ def test_the_async_api_launches_the_same_way(launch_kwargs):
     assert browser.contexts[0]['no_viewport'] is True
 
 
-def test_headless_virtual_starts_a_display_and_launches_headed(launch_kwargs, monkeypatch):
-    class Display:
-        size = (1600, 900)
-        killed = False
+class FakeDisplay(utils.VirtualDisplay):
+    """A display that records the size it was started at instead of running Xvfb."""
 
-        def __init__(self, debug=None):
-            pass
+    started = None
+    killed = False
 
-        def get(self):
-            return ':77'
+    def get(self):
+        FakeDisplay.started = self.size
+        self.proc = object()
+        return ':77'
 
-        def kill(self):
-            Display.killed = True
+    def kill(self):
+        FakeDisplay.killed = True
 
-    monkeypatch.setattr(utils, 'VirtualDisplay', Display)
+
+@pytest.fixture
+def fake_display(monkeypatch):
+    monkeypatch.setattr(utils, 'VirtualDisplay', FakeDisplay)
+    monkeypatch.setattr(FakeDisplay, 'started', None)
+    monkeypatch.setattr(FakeDisplay, 'killed', False)
+    return FakeDisplay
+
+
+def test_headless_virtual_starts_a_display_and_launches_headed(launch_kwargs, fake_display, monkeypatch):
+    monkeypatch.setenv('CAMOUWOLF_VIRTUAL_DISPLAY_SIZE', '1600x900')
     playwright = FakePlaywright()
     launch_kwargs['headless'] = 'virtual'
     browser = sync_api.NewBrowser(playwright, **launch_kwargs)
 
     (launched,) = playwright.chromium.launched
+    config = utils.launch_config(launched)
     assert launched['headless'] is False and launched['env']['DISPLAY'] == ':77'
-    assert utils.launch_config(launched)['screen.width'] <= 1600
+    assert fake_display.started == (1600, 900)
+    # A fixed display holds the screen in device pixels.
+    assert config['screen.width'] * config['window.devicePixelRatio'] <= 1600
     browser.close()
-    assert Display.killed and playwright.chromium.browser.closed
+    assert fake_display.killed and playwright.chromium.browser.closed
+
+
+@pytest.mark.parametrize('draw', range(8))
+def test_headless_virtual_display_is_the_claimed_screen_at_its_ratio(launch_kwargs, fake_display, monkeypatch, draw):
+    """The window renders at the identity's devicePixelRatio, so the display the
+    launcher owns is the claimed screen in device pixels, and a high-ratio
+    identity's screen is not cut down to fit a fixed-size display."""
+    monkeypatch.delenv('CAMOUWOLF_VIRTUAL_DISPLAY_SIZE', raising=False)
+    playwright = FakePlaywright()
+    launch_kwargs.update(headless='virtual', os='windows')
+    sync_api.NewBrowser(playwright, **launch_kwargs)
+
+    config = utils.launch_config(playwright.chromium.launched[0])
+    dpr = config['window.devicePixelRatio']
+    assert dpr in coherence.PLAUSIBLE_DPR['win']
+    assert fake_display.started == (
+        math.ceil(config['screen.width'] * dpr), math.ceil(config['screen.height'] * dpr)
+    )
 
 
 def test_addons_on_a_non_persistent_launch_warn_that_they_will_not_run(options, tmp_path):

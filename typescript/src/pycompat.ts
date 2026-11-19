@@ -38,6 +38,15 @@ export function num(value: unknown): number {
 }
 
 /** Whether `value` is a Python int (bool counts, as in Python). */
+/** Python's round(x) to an integer: halves go to the even neighbour. */
+export function pyRound(x: number): number {
+	const floor = Math.floor(x);
+	const diff = x - floor;
+	if (diff < 0.5) return floor;
+	if (diff > 0.5) return floor + 1;
+	return floor % 2 === 0 ? floor : floor + 1;
+}
+
 export function isPyInt(value: unknown): boolean {
 	return (
 		typeof value === "bigint" ||

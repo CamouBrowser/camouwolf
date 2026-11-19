@@ -195,9 +195,15 @@ describe.skipIf(!MODEL.ok)("NewBrowser", () => {
 	});
 
 	it("starts a display for headless='virtual', launches headed, and tears it down", async () => {
+		const startedAt: [number, number][] = [];
 		const get = vi
 			.spyOn(VirtualDisplay.prototype, "get")
-			.mockResolvedValue(":88");
+			.mockImplementation(async function (
+				this: InstanceType<typeof VirtualDisplay>,
+			) {
+				startedAt.push(this.size);
+				return ":88";
+			});
 		const kill = vi
 			.spyOn(VirtualDisplay.prototype, "kill")
 			.mockImplementation(() => undefined);
@@ -214,8 +220,16 @@ describe.skipIf(!MODEL.ok)("NewBrowser", () => {
 		expect(launched.env).not.toHaveProperty("WAYLAND_DISPLAY");
 		expect(launched.args[0]).not.toBe("--ozone-platform=x11");
 		expect(launched.args).toContain("--ozone-platform=x11");
+		// The window renders at the identity's ratio, so the display is the
+		// claimed screen in device pixels.
 		const config = configOf(launched);
-		expect(config["screen.width"]).toBeLessThanOrEqual(3840);
+		const dpr = config["window.devicePixelRatio"];
+		expect(startedAt).toEqual([
+			[
+				Math.ceil(config["screen.width"] * dpr),
+				Math.ceil(config["screen.height"] * dpr),
+			],
+		]);
 		await browser.close();
 		expect(kill).toHaveBeenCalled();
 	});

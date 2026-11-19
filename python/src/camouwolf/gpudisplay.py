@@ -40,7 +40,8 @@ GPU_WAIT_S = 30.0
 GPU_WAIT_ENV_VAR = 'CAMOUWOLF_GPU_WAIT_S'
 
 # The root window is not observable (screen.* is spoofed per context), but the
-# GPU compositor needs a real surface, so it is not 1x1 like Xvfb's.
+# GPU compositor needs a real surface, so it is not 1x1 like Xvfb's. Like the
+# Xvfb one, launch_options fits it to the identity before it starts.
 GPU_SCREEN = '1920x1080x24'
 
 # Where Xorg looks up a relative -config when the setuid wrapper elevates it.
@@ -435,7 +436,9 @@ class GpuDisplay(VirtualDisplay):
         return CannotExecuteXorg(message)
 
     def __init__(self, gpu: GpuDevice, debug: bool = False, require_gpu: bool = True) -> None:
-        super().__init__(debug=debug, screen=GPU_SCREEN)
+        super().__init__(debug=debug)
+        if not self.fixed:
+            self.screen = GPU_SCREEN
         self.gpu = gpu
         self.require_gpu = require_gpu
         self._client: Optional[socket.socket] = None

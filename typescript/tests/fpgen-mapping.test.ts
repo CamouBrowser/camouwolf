@@ -163,7 +163,13 @@ describe("fromFpgen", () => {
 	it("does not send keys the browser cannot read", () => {
 		const config = fromFpgen(WINDOWS_FINGERPRINT, 152);
 		expect(config).not.toHaveProperty(["navigator.oscpu"]);
-		expect(config).not.toHaveProperty(["window.devicePixelRatio"]);
+	});
+
+	it("sends the device pixel ratio, which the browser renders at", () => {
+		const config = fromFpgen(WINDOWS_FINGERPRINT, 152);
+		expect(config["window.devicePixelRatio"]).toBe(
+			WINDOWS_FINGERPRINT.window.devicePixelRatio,
+		);
 	});
 
 	it("maps touch points and pixel depth", () => {

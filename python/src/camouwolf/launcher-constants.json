@@ -1,6 +1,7 @@
 {
   "plausibleCoreCounts": [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32],
   "taskbarHeight": {"win": 40, "mac": 25, "lin": 27},
+  "plausibleDpr": {"win": [1, 1.25, 1.5, 1.75, 2, 2.5, 3], "mac": [1, 2], "lin": [1, 1.25, 1.5, 1.75, 2]},
   "essentialFonts": {
     "win": ["Arial", "Calibri", "Cambria", "Cambria Math", "Consolas", "Courier New", "Georgia", "Microsoft Sans Serif", "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"],
     "mac": ["Arial", "Courier", "Courier New", "Geneva", "Georgia", "Helvetica", "Helvetica Neue", "Menlo", "Monaco", "Apple Color Emoji", "Times", "Times New Roman", "Trebuchet MS", "Verdana"],

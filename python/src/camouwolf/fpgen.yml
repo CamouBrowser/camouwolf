@@ -31,8 +31,10 @@ window:
   outerWidth: window.outerWidth
   screenX: window.screenX
   screenY: window.screenY
-  # devicePixelRatio is not mapped: the browser has no key for it, and
-  # --force-device-scale-factor would scale the real window, not the claim.
+  # The browser renders at this scale (0025), so matchMedia, srcset and the
+  # window's device pixels move with it. A ratio no display mode offers is a
+  # browser zoom; launch_options moves it to the display's own scale.
+  devicePixelRatio: window.devicePixelRatio
 
 gpu:
   vendor: webGl:vendor

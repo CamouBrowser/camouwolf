@@ -19,10 +19,11 @@ from camouwolf.pkgman import OS_NAME
 DISPLAYFD_READ_TIMEOUT_S = 30.0
 
 # Xvfb screen geometry for headless="virtual". Unlike Camoufox's 1x1, it has to
-# hold the browser's real window: Chromium's window size is the window's
-# (--window-size), not a spoofed number, and the identity's screen is kept
-# within the display (launch_options(virtual_display_size=)).
-# CAMOUWOLF_VIRTUAL_DISPLAY_SIZE="<width>x<height>[x<depth>]" overrides it.
+# hold the browser's real window, which renders at the identity's
+# devicePixelRatio, so launch_options sizes it to the claimed screen in device
+# pixels (fit()) before starting it. This is the size when nothing does.
+# CAMOUWOLF_VIRTUAL_DISPLAY_SIZE="<width>x<height>[x<depth>]" fixes the size
+# instead, and the identity's screen is then kept within it.
 DEFAULT_SCREEN = "3840x2160x24"
 SCREEN_ENV_VAR = "CAMOUWOLF_VIRTUAL_DISPLAY_SIZE"
 
@@ -56,6 +57,8 @@ class VirtualDisplay:
         composite: Optional[bool] = None,
     ) -> None:
         self.debug = debug
+        #: A size the caller chose; fit() leaves it alone.
+        self.fixed = bool(screen or os.environ.get(SCREEN_ENV_VAR, "").strip())
         self.screen = screen or _resolve_screen()
         if composite is None:
             composite = os.environ.get(COMPOSITE_ENV_VAR, "0").strip() in ("1", "true")
@@ -68,6 +71,14 @@ class VirtualDisplay:
         """The display's width and height in pixels."""
         width, height = self.screen.lower().split('x')[:2]
         return int(width), int(height)
+
+    def fit(self, width: int, height: int) -> None:
+        """Size a display that is not yet started to `width` x `height` pixels,
+        unless its size was fixed."""
+        if self.fixed or self.proc is not None:
+            return
+        depth = self.screen.lower().split('x')[2]
+        self.screen = f"{width}x{height}x{depth}"
 
     @property
     def xvfb_args(self) -> tuple:

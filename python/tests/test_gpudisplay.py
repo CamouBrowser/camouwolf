@@ -344,8 +344,8 @@ class TestLaunch:
         assert isinstance(display, GpuDisplay) and display.require_gpu
         assert headless is False
         assert kwargs == {
-            'virtual_display': ':77',
-            'virtual_display_size': (1920, 1080),
+            # Not yet started: launch_options sizes it to the identity first.
+            'virtual_display': display,
             # The caller's switches come last, and Chromium reads the last one.
             'args': [*GPU_SWITCHES, '--use-angle=vulkan'],
         }

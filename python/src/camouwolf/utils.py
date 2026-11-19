@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -767,8 +768,8 @@ def start_virtual_display(
         display = VirtualDisplay(debug=bool(debug))
     else:
         return None, headless
-    kwargs['virtual_display'] = display.get()
-    kwargs['virtual_display_size'] = display.size
+    # launch_options sizes the display to the identity and starts it.
+    kwargs['virtual_display'] = display
     return display, False
 
 
@@ -920,7 +921,7 @@ def launch_options(
     env: Optional[Dict[str, Union[str, float, bool]]] = None,
     i_know_what_im_doing: Optional[bool] = None,
     debug: Optional[bool] = None,
-    virtual_display: Optional[str] = None,
+    virtual_display: Optional[Union[str, VirtualDisplay]] = None,
     virtual_display_size: Optional[Tuple[int, int]] = None,
     pin_cpu_cores: Optional[bool] = None,
     canvas_noise: Optional[bool] = None,
@@ -1021,10 +1022,12 @@ def launch_options(
             Environment variables to set.
         debug (Optional[bool]):
             Prints the config being sent to Camouwolf.
-        virtual_display (Optional[str]):
-            Virtual display number. Ex: ':99'. This is handled by Camouwolf & AsyncCamouwolf.
+        virtual_display (Optional[Union[str, VirtualDisplay]]):
+            Virtual display number. Ex: ':99'. This is handled by Camouwolf & AsyncCamouwolf,
+            which pass a display not yet started; it is sized to the identity and started here.
         virtual_display_size (Optional[Tuple[int, int]]):
-            The virtual display's size; the identity's screen is kept within it.
+            The virtual display's size in device pixels; the identity's screen,
+            at its devicePixelRatio, is kept within it.
         pin_cpu_cores (Optional[bool]):
             Keep the fingerprint's own core count by pinning the browser to that
             many cores. Off by default: the host's count is reported.
@@ -1115,8 +1118,12 @@ def launch_options(
     warn_if_package_outdated()
 
     # ---- display -----------------------------------------------------------
+    owned_display = virtual_display if isinstance(virtual_display, VirtualDisplay) else None
+    if owned_display and owned_display.fixed:
+        virtual_display_size = owned_display.size
     if virtual_display:
-        env['DISPLAY'] = virtual_display
+        if not owned_display:
+            env['DISPLAY'] = virtual_display
         # The virtual display is X11. A host session that exports
         # WAYLAND_DISPLAY would otherwise send the window to the real desktop.
         env['GDK_BACKEND'] = 'x11'
@@ -1144,8 +1151,9 @@ def launch_options(
         full_version = f'{int(chrome_version)}.0.0.0'
     milestone = int(full_version.split('.', 1)[0])
 
-    # A real display bounds the screen the identity may claim; so does the
-    # virtual one, which the real window has to fit on.
+    # A real display bounds the screen the identity may claim; so does a
+    # virtual one of fixed size, which the real window has to fit on. One the
+    # launcher sizes is fitted to the identity instead.
     display_bound: Optional[Screen] = None
     if headless is not True:
         if virtual_display_size:
@@ -1255,10 +1263,16 @@ def launch_options(
 
     # ---- geometry ----------------------------------------------------------
     if not _user_set_screen_window:
+        coherence.repair_device_pixel_ratio(config, target_os)
         raise_screen_to_modern_floor(config)
         coherence.repair_screen_orientation(config)
         if display_bound is not None:
-            clamp_screen_to_display(config, display_bound.max_width, display_bound.max_height)
+            # A virtual display is measured in device pixels, and the window
+            # renders at the identity's ratio.
+            scale = float(config.get('window.devicePixelRatio') or 1) if virtual_display else 1.0
+            clamp_screen_to_display(
+                config, int(display_bound.max_width / scale), int(display_bound.max_height / scale)
+            )
         fix_screen_no_taskbar(config, target_os)
         clamp_window_dimensions(config)
         clamp_window_position(config)
@@ -1335,6 +1349,13 @@ def launch_options(
         write_chromium_prefs(user_data_dir, chromium_prefs)
 
     # ---- environment -------------------------------------------------------
+    if owned_display:
+        dpr = float(config.get('window.devicePixelRatio') or 1)
+        width = config.get('screen.width') or config.get('window.outerWidth')
+        height = config.get('screen.height') or config.get('window.outerHeight')
+        if width and height:
+            owned_display.fit(math.ceil(width * dpr), math.ceil(height * dpr))
+        env['DISPLAY'] = owned_display.get()
     if debug:
         print('[DEBUG] Config:')
         pprint(config)
