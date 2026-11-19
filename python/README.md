@@ -56,7 +56,7 @@ instance you own, and `launch_options(...)` returns the options for
 | `webgl_config` | A `(vendor, renderer)` pair fpgen has recorded from Chrome on `os`; the identity is drawn from a machine with that GPU. |
 | `config` | Config keys set directly; they win over drawn values. An unknown key raises `UnknownProperty`. |
 | `locale` | The UI and `Intl` locale (`--lang`), `navigator.languages`, and the `Accept-Language` header. |
-| `geoip`, `proxy` | `geoip=True` (or an IP) sets the timezone, locale and geolocation from the exit IP. |
+| `geoip`, `proxy` | `geoip=True` (or an IP) sets the timezone, locale and geolocation from the exit IP. Without a proxy, the browser behaves as on an IPv4-only network unless this host's IPv6 address geolocates to the same place, so a site reached over IPv6 cannot see an address elsewhere. |
 | `headless` | `True` (Chromium headless), `False`, `"virtual"` (headed on Xvfb), `"virtual-gpu"` (headed on a headless Xorg bound to `gpu`; `require_gpu`). |
 | `humanize` | `True`, or a dict of [myuri](https://pypi.org/project/myuri/) engines per channel. Runs in the driver, as in Camoufox. |
 | `fonts`, `custom_fonts_only` | Extra font families to report installed; or only those. |

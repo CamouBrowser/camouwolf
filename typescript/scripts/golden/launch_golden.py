@@ -193,6 +193,7 @@ def run(case_options, binary, scratch):
     utils.has_display = lambda env=None: has_display
     utils.largest_display = lambda: Display(*HOST['display'])
     utils.public_ip = lambda proxy=None: HOST['publicIp']
+    utils.public_ipv6 = lambda: None
     utils.geoip_allowed = lambda: None
     geo = HOST['geolocation']
     utils.get_geolocation = lambda ip, geoip_db=None: Geolocation(

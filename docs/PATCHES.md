@@ -546,6 +546,21 @@ Not covered: `baseLatency` (derived from the real callback buffer, and it does
 move when the rate is resampled) and the values a page gets from
 `enumerateDevices()`/`getUserMedia` capabilities.
 
+### 0028 — IPv4-only network
+
+`ip_address.cc`, `host_resolver_manager.cc`, `tcp_client_socket.cc`,
+`udp_socket_posix.cc`, `ipc_network_manager.cc`. With `network:ipv4Only` the
+browser behaves as on a network with no IPv6 route: names resolve without AAAA
+(as when Chrome's own IPv6 probe fails), a TCP or QUIC connect to a global IPv6
+address fails with the error `ENETUNREACH` maps to, and WebRTC gathers no IPv6
+address. Loopback, link-local and IPv4-mapped addresses still work, as they do
+on a real IPv4-only host. Stopping only the AAAA lookups would be a state no
+network produces: IPv6 literals would still connect and a page could read the
+host's IPv6 address.
+
+The launcher sets the key on a `geoip` launch without a proxy when this host's
+IPv6 address does not geolocate where the IPv4 identity does.
+
 ## Not yet patched
 
 Surfaces that were looked at against 158.0.8127.36 and deliberately left alone,

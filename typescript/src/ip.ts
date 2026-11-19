@@ -321,6 +321,25 @@ export function publicIP(proxy?: string): Promise<string> {
 	return pending;
 }
 
+let publicIPv6Cache: Promise<string | null> | undefined;
+
+/**
+ * This host's public IPv6 address, or null when it has none it can reach the
+ * internet from. The hosts have AAAA records only, so an answer proves the route.
+ */
+export function publicIPv6(): Promise<string | null> {
+	publicIPv6Cache ??= (async () => {
+		for (const url of ["https://api6.ipify.org", "https://v6.ident.me"]) {
+			try {
+				const ip = (await httpsGetText(url)).trim();
+				if (validIPv6(ip)) return ip;
+			} catch {}
+		}
+		return null;
+	})();
+	return publicIPv6Cache;
+}
+
 async function resolvePublicIP(proxy?: string): Promise<string> {
 	let endException: unknown;
 	for (const url of PUBLIC_IP_URLS) {

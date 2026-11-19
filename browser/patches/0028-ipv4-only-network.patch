@@ -1,0 +1,112 @@
+diff --git a/net/base/ip_address.h b/net/base/ip_address.h
+--- a/net/base/ip_address.h
++++ b/net/base/ip_address.h
+@@ -256,6 +256,13 @@
+   // ::ffff:169.254.0.0/112 (IPv4 mapped IPv6 link-local).
+   bool IsLinkLocal() const;
+ 
++  // CAMOUWOLF: whether the browser behaves as on an IPv4-only network, which
++  // the network:ipv4Only config key asks for.
++  static bool IsIPv4OnlyNetwork();
++
++  // CAMOUWOLF: whether a host on such a network has no route to this address.
++  bool IsUnreachableOnIPv4OnlyNetwork() const;
++
+   // Returns true if `ip_address_` is a unique local IPv6 address (fc00::/7).
+   bool IsUniqueLocalIPv6() const;
+ 
+diff --git a/net/base/ip_address.cc b/net/base/ip_address.cc
+--- a/net/base/ip_address.cc
++++ b/net/base/ip_address.cc
+@@ -12,6 +12,7 @@
+ #include <optional>
+ #include <string_view>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check_op.h"
+ #include "base/containers/span.h"
+ #include "base/debug/alias.h"
+@@ -298,6 +299,20 @@
+   return false;
+ }
+ 
++// static
++bool IPAddress::IsIPv4OnlyNetwork() {
++  return base::CamouwolfConfig::Get().GetBool("network:ipv4Only").value_or(false);
++}
++
++bool IPAddress::IsUnreachableOnIPv4OnlyNetwork() const {
++  if (!IsIPv6() || !IsIPv4OnlyNetwork()) {
++    return false;
++  }
++  // Loopback, the any address, IPv4-mapped and link-local addresses need no
++  // IPv6 route, so they work on an IPv4-only network too.
++  return !IsZero() && !IsLoopback() && !IsIPv4MappedIPv6() && !IsLinkLocal();
++}
++
+ bool IPAddress::IsUniqueLocalIPv6() const {
+   // [fc00::]/7
+   return IsIPv6() && ((ip_address_[0] & 0xFE) == 0xFC);
+diff --git a/net/dns/host_resolver_manager.cc b/net/dns/host_resolver_manager.cc
+--- a/net/dns/host_resolver_manager.cc
++++ b/net/dns/host_resolver_manager.cc
+@@ -840,6 +840,12 @@
+     out_job_key.flags |= HOST_RESOLVER_DEFAULT_FAMILY_SET_DUE_TO_NO_IPV6;
+     effective_types.Remove(DnsQueryType::AAAA);
+   }
++  // CAMOUWOLF: an IPv4-only network resolves names as a failed IPv6 probe
++  // does.
++  if (!is_ip && IPAddress::IsIPv4OnlyNetwork()) {
++    out_job_key.flags |= HOST_RESOLVER_DEFAULT_FAMILY_SET_DUE_TO_NO_IPV6;
++    effective_types.Remove(DnsQueryType::AAAA);
++  }
+ 
+   // Optimistically enable HTTPS record. It may be skipped at a later point.
+   if (base::FeatureList::IsEnabled(features::kUseDnsHttpsSvcb) &&
+diff --git a/net/socket/tcp_client_socket.cc b/net/socket/tcp_client_socket.cc
+--- a/net/socket/tcp_client_socket.cc
++++ b/net/socket/tcp_client_socket.cc
+@@ -245,6 +245,11 @@
+     return ERR_UNSAFE_PORT;
+   }
+ 
++  // CAMOUWOLF: connect() on an IPv4-only network fails with ENETUNREACH.
++  if (endpoint.address().IsUnreachableOnIPv4OnlyNetwork()) {
++    return ERR_ADDRESS_UNREACHABLE;
++  }
++
+   if (!socket_->IsValid()) {
+     int result = OpenSocket(endpoint.GetFamily());
+     if (result != OK)
+diff --git a/net/socket/udp_socket_posix.cc b/net/socket/udp_socket_posix.cc
+--- a/net/socket/udp_socket_posix.cc
++++ b/net/socket/udp_socket_posix.cc
+@@ -653,6 +653,12 @@
+   IPEndPoint target_address =
+       handles::MaybeTranslateEmulatedNetworkAddressForTesting(address,
+                                                               bound_network_);
++
++  // CAMOUWOLF: connect() on an IPv4-only network fails with ENETUNREACH; this
++  // is QUIC's path to an IPv6 literal.
++  if (target_address.address().IsUnreachableOnIPv4OnlyNetwork()) {
++    return ERR_ADDRESS_UNREACHABLE;
++  }
+ 
+   int rv = 0;
+   if (bind_type_ == DatagramSocket::RANDOM_BIND) {
+diff --git a/third_party/blink/renderer/platform/p2p/ipc_network_manager.cc b/third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
+--- a/third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
++++ b/third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
+@@ -151,8 +151,10 @@
+           webrtc::InterfaceAddress(ip_address, it->ip_address_attributes);
+ 
+       // Only allow non-link-local, non-loopback, non-deprecated IPv6 addresses
+-      // which don't contain MAC.
+-      if (webrtc::IPIsMacBased(iface_addr) ||
++      // which don't contain MAC. CAMOUWOLF: and none that an IPv4-only network
++      // has no route for.
++      if (it->address.IsUnreachableOnIPv4OnlyNetwork() ||
++          webrtc::IPIsMacBased(iface_addr) ||
+           (it->ip_address_attributes & net::IP_ADDRESS_ATTRIBUTE_DEPRECATED) ||
+           webrtc::IPIsLinkLocal(iface_addr) ||
+           webrtc::IPIsLoopback(iface_addr)) {

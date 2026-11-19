@@ -22,6 +22,7 @@ import {
 	InvalidPropertyType,
 	NonChromeFingerprint,
 	NotImplementedError,
+	UnknownIPLocation,
 	UnknownProperty,
 	UnsupportedOSSpoof,
 	ValueError,
@@ -47,7 +48,13 @@ import {
 import { geoipAllowed, getGeolocation } from "./geolocation.js";
 import { GPU_SWITCHES, GpuDisplay, proveGpu, selectGpu } from "./gpudisplay.js";
 import { type HumanizeSetting, normalize } from "./humanize.js";
-import { type ProxyConfig, ProxyHelper, publicIP } from "./ip.js";
+import {
+	type ProxyConfig,
+	ProxyHelper,
+	publicIP,
+	publicIPv6,
+	validIPv4,
+} from "./ip.js";
 import { handleLocales } from "./locales.js";
 import { INSTALL_DIR, loadDataFile, OS_NAME } from "./paths.js";
 import {
@@ -150,6 +157,7 @@ export const utilsDeps = {
 	generateFingerprint,
 	chromeGpus,
 	publicIp: publicIP,
+	publicIpv6: publicIPv6,
 	geoipAllowed,
 	getGeolocation,
 	selectGpu,
@@ -1029,6 +1037,33 @@ export const PER_CONTEXT_FINGERPRINT_OPTIONS: readonly string[] = [
  * throws: the context would otherwise sit at the launch's place beside another
  * IP. The locale stays the identity's, which patch 0026 holds.
  */
+/**
+ * Whether this host has a public IPv6 address that geolocates where the IPv4
+ * identity does. Warns when it has one that does not.
+ */
+export async function keepsIpv6(
+	geoConfig: Config,
+	geoipDb: string | undefined,
+	iKnowWhatImDoing: boolean | undefined,
+): Promise<boolean> {
+	const ipv6 = await utilsDeps.publicIpv6();
+	if (ipv6 === null) return false;
+	let ipv6Config: Config = {};
+	try {
+		ipv6Config = (await utilsDeps.getGeolocation(ipv6, geoipDb)).asConfig();
+	} catch (error) {
+		if (!(error instanceof UnknownIPLocation)) throw error;
+	}
+	if (
+		["timezone", "locale:region"].every(
+			(key) => ipv6Config[key] === geoConfig[key],
+		)
+	)
+		return true;
+	LeakWarning.warn("ipv6_elsewhere", iKnowWhatImDoing);
+	return false;
+}
+
 export async function placeAtExit(
 	proxy: ProxyConfig | null | undefined,
 	geolocation: GeolocationOption | null | undefined,
@@ -1721,12 +1756,21 @@ export async function launchOptions({
 				proxy ? ProxyHelper.asString(proxy) : undefined,
 			);
 		}
-		const geolocation = await utilsDeps.getGeolocation(ip, geoip_db);
-		for (const [key, value] of Object.entries(geolocation.asConfig())) {
+		const geoConfig = (await utilsDeps.getGeolocation(ip, geoip_db)).asConfig();
+		for (const [key, value] of Object.entries(geoConfig)) {
 			if (key.startsWith("locale:")) localeConfig[key] = value;
 			else if (key === "timezone") setDefault(config, key, value);
 			else config[key] = value;
 		}
+		// Without a proxy, a site that has an IPv6 address sees this host's,
+		// not the IPv4 address the identity was drawn from. Keep IPv6 only when
+		// it places the host where the identity does.
+		if (
+			!proxy &&
+			validIPv4(ip) &&
+			!(await keepsIpv6(geoConfig, geoip_db, i_know_what_im_doing))
+		)
+			config["network:ipv4Only"] = true;
 	} else if (
 		pyTruthy(proxy) &&
 		!String(proxy?.server ?? "").includes("localhost") &&

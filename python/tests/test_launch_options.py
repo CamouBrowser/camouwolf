@@ -12,6 +12,7 @@ from camouwolf.exceptions import (
     InvalidAddonPath,
     InvalidOS,
     NonChromeFingerprint,
+    UnknownIPLocation,
     UnsupportedOSSpoof,
 )
 from camouwolf.fingerprints import Screen
@@ -239,20 +240,67 @@ def test_a_proxy_without_geoip_warns(options):
     assert launch['proxy'] == {'server': 'http://203.0.113.5:8080'}
 
 
-def test_geoip_places_the_browser_at_the_ip(options, monkeypatch):
+BERLIN = {'geolocation:latitude': 52.5, 'geolocation:longitude': 13.4, 'timezone': 'Europe/Berlin',
+          'locale:language': 'de', 'locale:region': 'DE'}
+AMSTERDAM = {'geolocation:latitude': 52.4, 'geolocation:longitude': 4.9, 'timezone': 'Europe/Amsterdam',
+             'locale:language': 'nl', 'locale:region': 'NL'}
+
+
+@pytest.fixture
+def places(monkeypatch):
+    """Where each IP geolocates, and this host's public IPv6 address (none)."""
+    known = {'203.0.113.5': BERLIN}
+
     class Place:
+        def __init__(self, ip):
+            if ip not in known:
+                raise UnknownIPLocation(ip)
+            self.config = known[ip]
+
         def as_config(self):
-            return {'geolocation:latitude': 52.5, 'geolocation:longitude': 13.4, 'timezone': 'Europe/Berlin',
-                    'locale:language': 'de', 'locale:region': 'DE'}
+            return dict(self.config)
 
     monkeypatch.setattr(utils, 'geoip_allowed', lambda: None)
-    monkeypatch.setattr(utils, 'get_geolocation', lambda ip, geoip_db=None: Place())
+    monkeypatch.setattr(utils, 'get_geolocation', lambda ip, geoip_db=None: Place(ip))
+    monkeypatch.setattr(utils, 'public_ipv6', lambda: known.get('ipv6'))
+    return known
+
+
+def test_geoip_places_the_browser_at_the_ip(options, places):
     launch = options(os='linux', geoip='203.0.113.5')
     config = config_of(launch)
 
     assert config['timezone'] == 'Europe/Berlin' and launch['env']['TZ'] == 'Europe/Berlin'
     assert config['navigator.languages'] == ['de-DE', 'de'] and '--lang=de-DE' in launch['args']
     assert utils.launch_geolocation(launch) == {'latitude': 52.5, 'longitude': 13.4}
+
+
+def test_a_host_without_ipv6_is_an_ipv4_only_network(options, places):
+    assert config_of(options(os='linux', geoip='203.0.113.5'))['network:ipv4Only'] is True
+
+
+def test_ipv6_that_geolocates_with_the_identity_stays_on(options, places):
+    places['ipv6'] = '2001:db8::5'
+    places['2001:db8::5'] = BERLIN
+    assert 'network:ipv4Only' not in config_of(options(os='linux', geoip='203.0.113.5'))
+
+
+def test_ipv6_that_geolocates_elsewhere_is_turned_off(options, places):
+    # An IPv4-only VPN: sites with an IPv6 address would see the host's own.
+    places['ipv6'] = '2001:db8::5'
+    places['2001:db8::5'] = AMSTERDAM
+    with pytest.warns(LeakWarning, match='IPv6'):
+        config = config_of(options(os='linux', geoip='203.0.113.5'))
+    assert config['network:ipv4Only'] is True
+
+
+def test_behind_a_proxy_ipv6_is_left_alone(options, places, monkeypatch):
+    # Sites are reached only through the proxy, so the host's IPv6 is not seen.
+    monkeypatch.setattr(utils, 'public_ipv6', lambda: pytest.fail('looked up the host IPv6 behind a proxy'))
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        config = config_of(options(os='linux', geoip='203.0.113.5', proxy={'server': 'http://203.0.113.9:1'}))
+    assert 'network:ipv4Only' not in config
 
 
 # ---- switches --------------------------------------------------------------
