@@ -1,24 +1,12 @@
 /**
- * Both launchers must load the same fpgen model: the Python one installs the
- * release in python/src/camouwolf/fpgen-model.json, this one the release the
- * `fpgen` package pins. Bump them together.
+ * Camouwolf loads the fpgen model its `fpgen-js` pins, and the Python launcher
+ * the one camoucore pins in fpgen-model.json. Bump them together.
  */
-
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { loadDataFile } from "camoucore/data.js";
 import { MODEL_PIN } from "fpgen-js";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-const PYTHON_PIN = path.resolve(
-	import.meta.dirname,
-	"../../python/src/camouwolf/fpgen-model.json",
-);
-
-describe("fpgen model pin", () => {
-	it("matches python/src/camouwolf/fpgen-model.json", () => {
-		const { note: _note, ...fields } = JSON.parse(
-			fs.readFileSync(PYTHON_PIN, "utf-8"),
-		);
-		expect({ ...MODEL_PIN, files: [...MODEL_PIN.files] }).toEqual(fields);
-	});
+it("matches camoucore's fpgen-model.json", () => {
+	const { note: _note, ...fields } = loadDataFile("fpgen-model.json");
+	expect({ ...MODEL_PIN, files: [...MODEL_PIN.files] }).toEqual(fields);
 });

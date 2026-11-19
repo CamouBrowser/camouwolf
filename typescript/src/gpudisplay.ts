@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
+import { VirtualDisplay } from "camoucore/virtdisplay.js";
 import {
 	AmbiguousGpuSelection,
 	CannotExecuteXorg,
@@ -24,8 +25,8 @@ import {
 	GpuVtTakeover,
 	NoGpuFound,
 } from "./exceptions.js";
-import { VirtualDisplay } from "./virtdisplay.js";
-import { LeakWarning } from "./warnings.js";
+import { PRODUCT } from "./product.js";
+import { LeakWarning, loadWarnings } from "./warnings.js";
 
 /** Names the card when the `gpu` launch option is not given. */
 export const GPU_ENV_VAR = "CAMOUWOLF_GPU";
@@ -528,7 +529,7 @@ export class GpuDisplay extends VirtualDisplay {
 	private vtTaken = false;
 
 	constructor(gpu: GpuDevice, debug = false, requireGpu = true) {
-		super(debug);
+		super(PRODUCT, debug);
 		if (!this.fixed) this.screen = GPU_SCREEN;
 		this.serverName = "Xorg";
 		this.gpu = gpu;
@@ -729,7 +730,7 @@ export class GpuDisplay extends VirtualDisplay {
 	checkGpu(active: boolean): void {
 		if (active) return;
 		if (!this.requireGpu) {
-			LeakWarning.warn("gpu_software_rendering");
+			LeakWarning.warn(loadWarnings().gpu_software_rendering);
 			return;
 		}
 		throw new GpuSoftwareFallback(

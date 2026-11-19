@@ -9,12 +9,22 @@ import { createHash, randomInt } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { inspect } from "node:util";
+import * as cpuAffinity from "camoucore/cpu_affinity.js";
+import { hasDisplay, largestDisplay } from "camoucore/display.js";
+import { geoipAllowed, getGeolocation } from "camoucore/geolocation.js";
+import {
+	type ProxyConfig,
+	ProxyHelper,
+	publicIP,
+	publicIPv6,
+	validIPv4,
+} from "camoucore/ip.js";
+import { handleLocales } from "camoucore/locales.js";
+import { VirtualDisplay } from "camoucore/virtdisplay.js";
 import { ensureModel } from "fpgen-js";
 import { addDefaultAddons, confirmPaths, type DefaultAddon } from "./addons.js";
 import * as clienthints from "./clienthints.js";
 import * as coherence from "./coherence.js";
-import * as cpuAffinity from "./cpu_affinity.js";
-import { hasDisplay, largestDisplay } from "./display.js";
 import { attachDriverDefaults } from "./driver_defaults.js";
 import {
 	IncoherentIdentity,
@@ -45,17 +55,8 @@ import {
 	raiseScreenToModernFloor,
 	Screen,
 } from "./fingerprints.js";
-import { geoipAllowed, getGeolocation } from "./geolocation.js";
 import { GPU_SWITCHES, GpuDisplay, proveGpu, selectGpu } from "./gpudisplay.js";
 import { type HumanizeSetting, normalize } from "./humanize.js";
-import {
-	type ProxyConfig,
-	ProxyHelper,
-	publicIP,
-	publicIPv6,
-	validIPv4,
-} from "./ip.js";
-import { handleLocales } from "./locales.js";
 import { INSTALL_DIR, loadDataFile, OS_NAME } from "./paths.js";
 import {
 	buildFile,
@@ -66,6 +67,7 @@ import {
 	selectedLaunchPath,
 	warnIfPackageOutdated,
 } from "./pkgman.js";
+import { PRODUCT } from "./product.js";
 import {
 	comparePyStr,
 	isPlainObject,
@@ -84,7 +86,6 @@ import {
 	mergeListSwitches,
 	PLAYWRIGHT_DISABLED_FEATURES,
 } from "./switches.js";
-import { VirtualDisplay } from "./virtdisplay.js";
 import { LeakWarning, loadWarnings, warn } from "./warnings.js";
 import { chromeGpus, usableGpu } from "./webgl.js";
 
@@ -649,9 +650,9 @@ export function warnKeptIncoherent(violations: coherence.Violation[]): void {
  */
 export function warnManualConfig(config: Config): void {
 	if (isDomainSet(config, "navigator.languages"))
-		LeakWarning.warn("locale", false);
+		LeakWarning.warn(loadWarnings().locale, false);
 	if (isDomainSet(config, "geolocation:", "timezone"))
-		LeakWarning.warn("geolocation", false);
+		LeakWarning.warn(loadWarnings().geolocation, false);
 	if (
 		Object.keys(config).some(
 			(key) =>
@@ -659,10 +660,10 @@ export function warnManualConfig(config: Config): void {
 				key !== "navigator.languages",
 		)
 	) {
-		LeakWarning.warn("navigator", false);
+		LeakWarning.warn(loadWarnings().navigator, false);
 	}
 	if (isDomainSet(config, "screen.", "window."))
-		LeakWarning.warn("viewport", false);
+		LeakWarning.warn(loadWarnings().viewport, false);
 }
 
 /**
@@ -686,7 +687,7 @@ export function checkCustomFingerprint(fingerprint: Config): void {
 				'browser WILL lead to detection. Generate one with fpgen and browser="Chrome".',
 		);
 	}
-	LeakWarning.warn("custom_fingerprint", false);
+	LeakWarning.warn(loadWarnings().custom_fingerprint, false);
 }
 
 /**
@@ -1060,7 +1061,7 @@ export async function keepsIpv6(
 		)
 	)
 		return true;
-	LeakWarning.warn("ipv6_elsewhere", iKnowWhatImDoing);
+	LeakWarning.warn(loadWarnings().ipv6_elsewhere, iKnowWhatImDoing);
 	return false;
 }
 
@@ -1199,7 +1200,7 @@ export async function startVirtualDisplay(
 			"gpu and require_gpu apply to headless='virtual-gpu' only",
 		);
 	} else if (headless === "virtual") {
-		display = new VirtualDisplay(Boolean(debug));
+		display = new VirtualDisplay(PRODUCT, Boolean(debug));
 	} else {
 		return [null, headless as boolean | undefined | null];
 	}
@@ -1661,7 +1662,7 @@ export async function launchOptions({
 		chrome_version !== null &&
 		Math.trunc(Number(chrome_version)) !== ownMilestone
 	) {
-		LeakWarning.warn("chrome_version", i_know_what_im_doing);
+		LeakWarning.warn(loadWarnings().chrome_version, i_know_what_im_doing);
 		fullVersion = `${Math.trunc(Number(chrome_version))}.0.0.0`;
 	}
 	const milestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
@@ -1717,7 +1718,7 @@ export async function launchOptions({
 		!isDomainSet(config, "geolocation:")
 	) {
 		// This is a very bad idea; the warning cannot be silenced.
-		LeakWarning.warn("proxy_without_geoip");
+		LeakWarning.warn(loadWarnings().proxy_without_geoip);
 	}
 
 	if (pyTruthy(locale)) {
@@ -1796,7 +1797,7 @@ export async function launchOptions({
 		if (!pyTruthy(fonts)) {
 			throw new ValueError("custom_fonts_only=True needs `fonts`");
 		}
-		LeakWarning.warn("custom_fonts_only", i_know_what_im_doing);
+		LeakWarning.warn(loadWarnings().custom_fonts_only, i_know_what_im_doing);
 		config.fonts = [...new Set(fonts)];
 	} else if (pyTruthy(fonts)) {
 		const base: string[] = pyTruthy(config.fonts)
@@ -1816,7 +1817,7 @@ export async function launchOptions({
 
 	// ---- canvas ------------------------------------------------------------
 	if (canvas_noise) {
-		LeakWarning.warn("canvas_noise", i_know_what_im_doing);
+		LeakWarning.warn(loadWarnings().canvas_noise, i_know_what_im_doing);
 		if (!("canvas:seed" in config))
 			config["canvas:seed"] = utilsDeps.canvasSeed();
 		setDefault(config, "canvas:randomizeReadback", true);
@@ -1870,13 +1871,13 @@ export async function launchOptions({
 
 	// ---- switches ----------------------------------------------------------
 	if (block_images) {
-		LeakWarning.warn("block_images", i_know_what_im_doing);
+		LeakWarning.warn(loadWarnings().block_images, i_know_what_im_doing);
 		args.push("--blink-settings=imagesEnabled=false");
 	}
 	// Chromium sends WebRTC's UDP around the proxy, and STUN then reports the
 	// host's public IP; with a proxy, only the proxied route is left by default.
 	if (block_webrtc === false && pyTruthy(proxy))
-		LeakWarning.warn("webrtc_beside_proxy", i_know_what_im_doing);
+		LeakWarning.warn(loadWarnings().webrtc_beside_proxy, i_know_what_im_doing);
 	if (
 		block_webrtc ||
 		((block_webrtc === undefined || block_webrtc === null) && pyTruthy(proxy))
@@ -1884,7 +1885,7 @@ export async function launchOptions({
 		args.push("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
 	}
 	if (block_webgl) {
-		LeakWarning.warn("block_webgl", i_know_what_im_doing);
+		LeakWarning.warn(loadWarnings().block_webgl, i_know_what_im_doing);
 		args.push("--disable-webgl", "--disable-webgl2");
 	}
 	if (!enable_cache) args.push("--disk-cache-size=1");

@@ -9,6 +9,9 @@
  * virtual-display teardown.
  */
 
+import * as cpuAffinity from "camoucore/cpu_affinity.js";
+import type { ProxyConfig } from "camoucore/ip.js";
+import type { VirtualDisplay } from "camoucore/virtdisplay.js";
 import {
 	type Browser,
 	type BrowserContext,
@@ -16,10 +19,8 @@ import {
 	chromium,
 } from "playwright-core";
 import { attach } from "./_humanize_playwright.js";
-import * as cpuAffinity from "./cpu_affinity.js";
 import { attachDriverDefaults } from "./driver_defaults.js";
 import { normalize } from "./humanize.js";
-import type { ProxyConfig } from "./ip.js";
 import {
 	attachContextDefaults,
 	attachVirtualDisplay,
@@ -37,7 +38,6 @@ import {
 	startVirtualDisplay,
 	warnAddonsWithoutProfile,
 } from "./utils.js";
-import type { VirtualDisplay } from "./virtdisplay.js";
 
 export type { Headless } from "./utils.js";
 

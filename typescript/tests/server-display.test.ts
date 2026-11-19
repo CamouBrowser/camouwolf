@@ -3,8 +3,9 @@
  * playwright-core's launchServer in-process, so there is no launchServer.js
  * child to reap) and test_display.py's has_display().
  */
+
+import { hasDisplay } from "camoucore/display.js";
 import { describe, expect, it } from "vitest";
-import { hasDisplay } from "../src/display.js";
 import { OS_NAME } from "../src/paths.js";
 import { launchServer, toCamelCaseDict } from "../src/server.js";
 import { camelCase } from "../src/sync_api.js";
