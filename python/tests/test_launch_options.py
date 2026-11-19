@@ -255,6 +255,19 @@ def test_the_block_options_and_the_cache(options):
     assert '--disk-cache-size=1' not in options(os='linux', enable_cache=True)['args']
 
 
+
+def test_the_voices_are_always_sent_so_the_hosts_never_show(options):
+    # Patch 0012 shows the host's voices when the key is absent: a record
+    # without voices, and a caller's user agent (no draw), must still send it.
+    fingerprint = {**generate_fingerprint(os='windows'), 'voices': []}
+    assert config_of(options(os=None, fingerprint=fingerprint))['voices'] == []
+    ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        config = config_of(options(os=None, config={'navigator.userAgent': ua}))
+    assert config['voices'] == []
+
+
 POLICY = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
 
 

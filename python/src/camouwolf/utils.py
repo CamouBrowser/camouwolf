@@ -1184,6 +1184,9 @@ def launch_options(
 
     if fingerprint is not None:
         merge_into(config, from_fpgen(fingerprint, chrome_version=milestone))
+    # Patch 0012 shows the host's voices only when the key is absent, so it is
+    # always sent: the recorded list, or none, never the host's.
+    config.setdefault('voices', [])
 
     target_os = get_target_os(config)
     check_os_policy([OS_NAMES[target_os]], allow_os_mismatch)
