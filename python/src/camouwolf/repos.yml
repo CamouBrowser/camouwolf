@@ -8,7 +8,7 @@ default:
 # one asset per target: camouwolf-{version}-{build}-{os}.{arch}.zip, with os one
 # of lin, win, mac.
 browsers:
-  - repo: JWriter20/Camouwolf
+  - repo: CamouBrowser/camouwolf
     name: Official
     pattern: "{name}-{version}-{build}-{os}.{arch}.zip"
     versions:

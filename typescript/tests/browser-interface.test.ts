@@ -81,7 +81,7 @@ describe("choosing a browser", () => {
 		const fetcher = Object.create(pkgman.CamouwolfFetcher.prototype);
 		fetcher.repoConfig = pkgman.RepoConfig.getDefault();
 		fetcher.pattern = fetcher.repoConfig.buildPattern("lin", "x86_64");
-		fetcher.githubRepos = ["JWriter20/Camouwolf"];
+		fetcher.githubRepos = ["CamouBrowser/camouwolf"];
 		fetcher.getReleases = async () => [
 			release("v156.0.1-beta.40", "beta.40", { interface: NEWER }),
 			release("v156.0.1-beta.39", "beta.39", {
@@ -95,7 +95,7 @@ describe("choosing a browser", () => {
 
 	it("lists only browsers this library can drive", async () => {
 		const pkgman = await import("../src/pkgman.js");
-		served.set("https://api.github.com/repos/JWriter20/Camouwolf/releases", [
+		served.set("https://api.github.com/repos/CamouBrowser/camouwolf/releases", [
 			release("v156.0.1-beta.40", "beta.40", { interface: NEWER }),
 			release("v156.0.1-beta.39", "beta.39", {
 				interface: CONSTRAINTS.INTERFACE,

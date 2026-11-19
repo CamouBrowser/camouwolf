@@ -29,9 +29,11 @@ name: Release
 # failed jobs": `plan` runs once per run, so a re-run publishes the same
 # versions.
 #
-# Before the first release, each registry needs this workflow registered as a
-# trusted publisher for the package `camouwolf` (a "pending publisher" on PyPI);
-# see ci/README.md. Nothing has been published yet.
+# Before the first release, each registry needs this workflow in
+# CamouBrowser/camouwolf registered as a trusted publisher for the package
+# `camouwolf` (a "pending publisher" on PyPI); see ci/README.md. Nothing has been
+# published yet. `plan` refuses to run anywhere else, so a fork's copy of this
+# file never creates a release.
 
 on:
   workflow_dispatch:
@@ -82,7 +84,7 @@ jobs:
   plan:
     name: Plan
     needs: tests
-    if: needs.tests.outputs.verdict == 'pass'
+    if: github.repository == 'CamouBrowser/camouwolf' && needs.tests.outputs.verdict == 'pass'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

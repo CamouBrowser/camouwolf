@@ -92,7 +92,7 @@ def test_sync_lists_only_browsers_this_library_can_drive(manifests, monkeypatch)
         _release("v156.0.1-beta.39", "beta.39", {"interface": CONSTRAINTS.INTERFACE}, served),
         _release("v156.0.1-beta.31", "beta.31"),
     ]
-    api = "https://api.github.com/repos/JWriter20/Camouwolf/releases"
+    api = "https://api.github.com/repos/CamouBrowser/camouwolf/releases"
     served[api] = releases
 
     versions = pkgman.list_available_versions(spoof_os="lin", spoof_arch="x86_64")
@@ -166,7 +166,7 @@ def test_sync_keeps_builds_needing_an_upgrade_out_of_the_installable_list(manife
     from camouwolf import __main__ as cli
 
     served, _ = manifests
-    served["https://api.github.com/repos/JWriter20/Camouwolf/releases"] = [
+    served["https://api.github.com/repos/CamouBrowser/camouwolf/releases"] = [
         _release("v156.0.1-beta.40", "beta.40", {"interface": NEWER}, served),
         _release("v156.0.1-beta.39", "beta.39", {"interface": CONSTRAINTS.INTERFACE}, served),
     ]

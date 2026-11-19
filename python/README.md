@@ -22,7 +22,7 @@ camouwolf fetch
 ```
 
 `camouwolf fetch` installs the browser from the
-[JWriter20/Camouwolf](https://github.com/JWriter20/Camouwolf) releases, the
+[CamouBrowser/camouwolf](https://github.com/CamouBrowser/camouwolf) releases, the
 fpgen model, the GeoIP database, and the default addon (uBlock Origin Lite,
 from the release pinned in `src/camouwolf/data/ubo.json`).
 

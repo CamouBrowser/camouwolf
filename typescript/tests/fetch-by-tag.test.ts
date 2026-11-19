@@ -18,7 +18,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CONSTRAINTS } from "../src/__version__.js";
 import type { BrowserPin } from "../src/browser-pin.js";
 
-const API = "https://api.github.com/repos/JWriter20/Camouwolf/releases";
+const API = "https://api.github.com/repos/CamouBrowser/camouwolf/releases";
 
 let tmp: string;
 let savedXdg: string | undefined;
@@ -181,7 +181,7 @@ it("fetches a named build with one API call", async () => {
 it("fetches the paired build with one API call", async () => {
 	pin = {
 		tag: "v156.0.1-beta.33",
-		repo: "JWriter20/Camouwolf",
+		repo: "CamouBrowser/camouwolf",
 		repoName: "official",
 		version: "156.0.1",
 		build: "beta.33",

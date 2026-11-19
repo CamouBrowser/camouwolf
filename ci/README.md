@@ -141,11 +141,16 @@ publishes both launchers under one version from `ci.release lib-plan`:
 Both registries use trusted publishing; no token is stored. Before the first
 release, register the publisher once on each:
 
-- PyPI: a pending publisher for project `camouwolf`, this repository, workflow
-  `release.yml`, no environment.
+- PyPI: a pending publisher for project `camouwolf`, owner `CamouBrowser`,
+  repository `camouwolf`, workflow `release.yml`, no environment.
 - npm: a trusted publisher for package `camouwolf`, same repository and
   workflow. npm needs the package to exist first, so its first version is
   published by a maintainer by hand.
+
+The launchers take camoucore from a git tag of CamouBrowser/camoucore. PyPI
+refuses a package with a direct URL dependency, so before the first release
+camoucore has to be on PyPI and npm and both launchers have to depend on that
+release instead.
 
 Not carried over from the pipeline this one is modelled on: a scheduled release
 train, promotion of a prerelease to stable without a rebuild, and publishing

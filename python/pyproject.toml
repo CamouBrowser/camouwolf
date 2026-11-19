@@ -10,7 +10,7 @@ description = "Wrapper around Playwright to help launch Camouwolf"
 # and the Camoufox contributors); see LICENSE.
 authors = ["JWriter20", "daijro <daijro.dev@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/JWriter20/Camouwolf"
+repository = "https://github.com/CamouBrowser/camouwolf"
 readme = "README.md"
 keywords = [
     "client",

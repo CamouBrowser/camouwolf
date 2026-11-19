@@ -52,7 +52,7 @@ custom_fonts_only: >-
 fallback: |-
     {what} failed, so this identity uses {instead} instead.
     A substitute is not drawn to match the rest of the identity, and a page may be able to tell.
-    Please report this at https://github.com/JWriter20/Camouwolf/issues/new and include:
+    Please report this at https://github.com/CamouBrowser/camouwolf/issues/new and include:
 
     {report}
 

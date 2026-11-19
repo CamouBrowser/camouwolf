@@ -33,11 +33,11 @@
   "author": "JWriter20",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JWriter20/Camouwolf.git",
+    "url": "git+https://github.com/CamouBrowser/camouwolf.git",
     "directory": "typescript"
   },
   "bugs": {
-    "url": "https://github.com/JWriter20/Camouwolf/issues"
+    "url": "https://github.com/CamouBrowser/camouwolf/issues"
   },
   "engines": {
     "node": ">= 22.15"
