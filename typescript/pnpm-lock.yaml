@@ -11,33 +11,18 @@ importers:
       '@jwriter20/myuri':
         specifier: 4.0.0
         version: 4.0.0(playwright-core@1.62.0)
-      adm-zip:
-        specifier: ^0.6.1
-        version: 0.6.1
-      cli-progress:
-        specifier: ^3.12.0
-        version: 3.12.0
+      camoucore:
+        specifier: git+https://github.com/CamoufoxCloud/camoucore.git#v0.1.1&path:/typescript
+        version: https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript
       commander:
         specifier: ^14.0.0
         version: 14.0.3
       fpgen-js:
         specifier: 1.3.0
         version: 1.3.0
-      language-tags:
-        specifier: ^2.0.1
-        version: 2.1.0
-      maxmind:
-        specifier: ^5.0.0
-        version: 5.0.7
-      pretty-bytes:
-        specifier: ^7.1.0
-        version: 7.1.1
       python-random:
         specifier: 1.0.0
         version: 1.0.0
-      xml2js:
-        specifier: ^0.6.2
-        version: 0.6.2
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -45,18 +30,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.4.10
         version: 2.4.10
-      '@types/cli-progress':
-        specifier: ^3.11.6
-        version: 3.11.6
-      '@types/language-tags':
-        specifier: ^1.0.4
-        version: 1.0.4
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
-      '@types/xml2js':
-        specifier: ^0.4.14
-        version: 0.4.14
       playwright-core:
         specifier: 1.62.0
         version: 1.62.0
@@ -265,23 +241,14 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
-  '@types/cli-progress@3.11.6':
-    resolution: {integrity: sha512-cE3+jb9WRlu+uOSAugewNpITJDt1VF8dHOopPO4IABFc3SXYL5WE/+PTz/FCdZRRfIujiWW3n3aMbv1eIGVRWA==}
-
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
-  '@types/language-tags@1.0.4':
-    resolution: {integrity: sha512-20PQbifv3v/djCT+KlXybv0KqO5ofoR1qD1wkinN59kfggTPVTWGmPFgL/1yWuDyRcsQP/POvkqK+fnl5nOwTg==}
-
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
-
-  '@types/xml2js@0.4.14':
-    resolution: {integrity: sha512-4YnrRemBShWRO2QjvUin8ESA41rH+9nQGLUGZV/1IDhi3SL9OhdpNC/MrulTWuptXKwhx/aDxE7toV0f/ypIXQ==}
 
   '@vitest/expect@4.1.10':
     resolution: {integrity: sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA==}
@@ -331,6 +298,11 @@ packages:
   brace-expansion@5.0.9:
     resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
     engines: {node: 20 || >=22}
+
+  camoucore@https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript:
+    resolution: {gitHosted: true, path: /typescript, tarball: https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30}
+    version: 0.1.1
+    engines: {node: '>=22.15'}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -841,23 +813,13 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
-  '@types/cli-progress@3.11.6':
-    dependencies:
-      '@types/node': 24.13.3
-
   '@types/deep-eql@4.0.2': {}
 
   '@types/estree@1.0.9': {}
 
-  '@types/language-tags@1.0.4': {}
-
   '@types/node@24.13.3':
     dependencies:
       undici-types: 7.18.2
-
-  '@types/xml2js@0.4.14':
-    dependencies:
-      '@types/node': 24.13.3
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -911,6 +873,16 @@ snapshots:
   brace-expansion@5.0.9:
     dependencies:
       balanced-match: 4.0.4
+
+  camoucore@https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript:
+    dependencies:
+      adm-zip: 0.6.1
+      cli-progress: 3.12.0
+      language-tags: 2.1.0
+      maxmind: 5.0.7
+      pretty-bytes: 7.1.1
+      xml2js: 0.6.2
+      yaml: 2.9.1
 
   chai@6.2.2: {}
 
