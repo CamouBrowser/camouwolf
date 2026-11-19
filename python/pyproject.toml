@@ -33,7 +33,7 @@ classifiers = [
 python = "^3.11"
 # The launcher core shared with Camoufox. A git tag while the repositories are
 # private; the PyPI release once they are public.
-camoucore = {git = "https://github.com/JWriter20/CamouCore.git", tag = "v0.1.0", subdirectory = "python"}
+camoucore = {git = "https://github.com/CamoufoxCloud/camoucore.git", tag = "v0.1.0", subdirectory = "python"}
 rich-click = "*"
 rich = "*"
 requests = "*"
