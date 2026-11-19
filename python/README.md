@@ -28,7 +28,7 @@ from the release pinned in `src/camouwolf/data/ubo.json`).
 
 The parts that do not depend on the browser engine -- locales, GeoIP, proxy
 lookup, the fpgen model pin, the virtual display -- come from
-[camoucore](https://github.com/CamoufoxCloud/camoucore), which the Camoufox
+[camoucore](https://github.com/CamouBrowser/camoucore), which the Camoufox
 launcher shares. The GeoIP database and the fpgen model are therefore one copy
 per machine, whichever launcher fetched them.
 
