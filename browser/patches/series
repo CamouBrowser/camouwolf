@@ -92,3 +92,9 @@
 # as on an IPv4-only network: no AAAA lookups, IPv6 connects fail as
 # ENETUNREACH does, and WebRTC gathers no IPv6 address.
 0028-ipv4-only-network.patch
+
+# --- platform editing behaviour ---------------------------------------------
+# Blink picks its editing conventions at compile time, so a Linux build claiming
+# Windows or macOS kept Linux's: where Ctrl+Right stops, whether a double-click
+# takes the trailing space, and a middle click that pastes the X11 selection.
+0029-platform-editing-behaviour.patch
