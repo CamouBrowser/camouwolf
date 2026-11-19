@@ -106,7 +106,7 @@ would give one context another identity (`user_agent`, `screen`, ...).
 | `addons` take `.xpi`-style extracted Firefox addons; uBlock Origin is bundled | Unpacked Chrome extensions; uBlock Origin Lite, installed by `camouwolf fetch`. |
 | `NewContext()` draws an identity per context | One identity per browser. |
 | SOCKS5 proxy authentication | Not available: Chromium does not support it. |
-| Xvfb screen `1x1` | `3840x2160`: the browser's real window carries the window size. `CAMOUWOLF_VIRTUAL_DISPLAY_SIZE` overrides it. |
+| Xvfb screen `1x1` | The identity's screen in device pixels (screen × `devicePixelRatio`): the browser's real window renders at that ratio. `CAMOUWOLF_VIRTUAL_DISPLAY_SIZE` fixes the size instead, and the screen is then kept within it. |
 
 ## CLI
 

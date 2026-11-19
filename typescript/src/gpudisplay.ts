@@ -39,7 +39,8 @@ export const GPU_WAIT_ENV_VAR = "CAMOUWOLF_GPU_WAIT_S";
 
 /**
  * The root window is not observable (screen.* is spoofed per context), but
- * the GPU compositor needs a real surface, so it is not 1x1 like Xvfb's.
+ * the GPU compositor needs a real surface, so it is not 1x1 like Xvfb's. Like
+ * the Xvfb one, launchOptions fits it to the identity before it starts.
  */
 export const GPU_SCREEN = "1920x1080x24";
 
@@ -527,7 +528,8 @@ export class GpuDisplay extends VirtualDisplay {
 	private vtTaken = false;
 
 	constructor(gpu: GpuDevice, debug = false, requireGpu = true) {
-		super(debug, GPU_SCREEN);
+		super(debug);
+		if (!this.fixed) this.screen = GPU_SCREEN;
 		this.serverName = "Xorg";
 		this.gpu = gpu;
 		this.requireGpu = requireGpu;

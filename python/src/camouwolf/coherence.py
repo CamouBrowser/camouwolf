@@ -21,6 +21,7 @@ height) have no Chrome counterpart and are not here.
 from typing import AbstractSet, Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from . import clienthints
+from .pkgman import LAUNCHER_CONSTANTS
 from .webgl import backend_matches_os
 
 # screen.colorDepth: Chrome reports 24, or 30 on a deep-colour display (most
@@ -34,6 +35,21 @@ PLAUSIBLE_DEVICE_MEMORY: Tuple[float, ...] = (0.25, 0.5, 1, 2, 4, 8, 16, 32)
 # navigator.hardwareConcurrency: at least one logical core, and no consumer
 # machine has more than this.
 MAX_PLAUSIBLE_CORES = 256
+
+# window.devicePixelRatio: the scaling steps each OS's display settings offer.
+# Scraped records also carry ratios such as 1.0909, which are a browser zoom
+# folded into the display's scale.
+PLAUSIBLE_DPR: Dict[str, Tuple[float, ...]] = {
+    os_key: tuple(steps) for os_key, steps in LAUNCHER_CONSTANTS['plausibleDpr'].items()
+}
+
+# The CSS geometry a ratio scales: device pixels / devicePixelRatio.
+CSS_GEOMETRY_KEYS = (
+    'screen.width', 'screen.height', 'screen.availWidth', 'screen.availHeight',
+    'screen.availLeft', 'screen.availTop',
+    'window.outerWidth', 'window.outerHeight', 'window.innerWidth', 'window.innerHeight',
+    'window.screenX', 'window.screenY',
+)
 
 
 class Violation(NamedTuple):
@@ -185,6 +201,37 @@ def _repair_window_fits(config: Dict[str, Any], target_os: str) -> None:
             config[f'window.outer{axis}'] = config.get(f'screen.avail{axis}') or screen
 
 
+def is_zoomed_ratio(dpr: Any, target_os: str) -> bool:
+    """A devicePixelRatio no display mode of the OS offers."""
+    allowed = PLAUSIBLE_DPR.get(target_os)
+    if not allowed or isinstance(dpr, bool) or not isinstance(dpr, (int, float)) or dpr <= 0:
+        return False
+    return float(dpr) not in {float(v) for v in allowed}
+
+
+def _check_device_pixel_ratio(config: Dict[str, Any], target_os: str) -> Optional[str]:
+    dpr = config.get('window.devicePixelRatio')
+    if dpr is not None and is_zoomed_ratio(dpr, target_os):
+        return f'window.devicePixelRatio {dpr} is not a display mode {target_os} offers'
+    return None
+
+
+def repair_device_pixel_ratio(config: Dict[str, Any], target_os: str) -> None:
+    """Move the ratio to the nearest display step and rescale the CSS geometry
+    by the zoom that was folded in, so the screen is still the display behind
+    it: 1760x990 at 1.0909 is a 1920x1080 monitor at 1."""
+    dpr = config.get('window.devicePixelRatio')
+    if not is_zoomed_ratio(dpr, target_os):
+        return
+    step = min(PLAUSIBLE_DPR[target_os], key=lambda v: abs(float(v) - float(dpr)))
+    config['window.devicePixelRatio'] = step
+    scale = float(dpr) / float(step)
+    for key in CSS_GEOMETRY_KEYS:
+        value = config.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            config[key] = int(round(value * scale))
+
+
 RULES: List[Rule] = [
     Rule('client-hints', _check_client_hints, None),
     Rule('target-os', _check_target_os, None),
@@ -193,6 +240,7 @@ RULES: List[Rule] = [
     Rule('color-depth', _check_color_depth, _repair_color_depth),
     Rule('device-memory', _check_device_memory, _repair_device_memory),
     Rule('hardware-concurrency', _check_cores, None),
+    Rule('device-pixel-ratio', _check_device_pixel_ratio, repair_device_pixel_ratio, CSS_GEOMETRY_KEYS),
     Rule('screen-shape', _check_screen_shape, None),
     Rule('avail-bounds', _check_avail_bounds, _repair_avail_bounds),
     Rule('window-fits-screen', _check_window_fits, _repair_window_fits),

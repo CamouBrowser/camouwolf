@@ -106,4 +106,54 @@ describe("coherence", () => {
 			1920, 1080,
 		]);
 	});
+
+	it("turns a zoomed ratio into the display behind it", () => {
+		// A scraped 1760x990 at 1.0909 is a 1920x1080 monitor at 100% with the
+		// page zoomed to 110%: no Windows display setting offers 1.0909.
+		const config: Record<string, any> = {
+			...windows(),
+			"window.devicePixelRatio": 1.0909,
+			"screen.width": 1760,
+			"screen.height": 990,
+			"screen.availWidth": 1760,
+			"screen.availHeight": 953,
+			"window.outerWidth": 1466,
+			"window.outerHeight": 825,
+		};
+		expect(coherence.validate(config, "win").map((v) => v.rule)).toContain(
+			"device-pixel-ratio",
+		);
+		coherence.repairDevicePixelRatio(config, "win");
+		expect(config["window.devicePixelRatio"]).toBe(1);
+		expect([config["screen.width"], config["screen.height"]]).toEqual([
+			1920, 1080,
+		]);
+		expect(config["window.outerWidth"]).toBe(1599);
+		expect(coherence.validate(config, "win")).toEqual([]);
+	});
+
+	it("leaves a display step alone", () => {
+		const config = { ...windows(), "window.devicePixelRatio": 1.25 };
+		coherence.repairDevicePixelRatio(config, "win");
+		expect(config).toEqual({ ...windows(), "window.devicePixelRatio": 1.25 });
+		// macOS offers 1 and 2 only.
+		expect(coherence.isZoomedRatio(1.25, "mac")).toBe(true);
+		expect(coherence.isZoomedRatio(2, "mac")).toBe(false);
+	});
+
+	it("keeps and reports a caller's ratio", () => {
+		const config = { ...windows(), "window.devicePixelRatio": 1.0909 };
+		const violations = coherence.apply(
+			config,
+			"win",
+			new Set(["window.devicePixelRatio"]),
+		);
+		expect(config["window.devicePixelRatio"]).toBe(1.0909);
+		expect(config["screen.width"]).toBe(1920);
+		expect(
+			violations
+				.filter((v) => v.rule === "device-pixel-ratio")
+				.map((v) => v.kept),
+		).toEqual([["window.devicePixelRatio"]]);
+	});
 });

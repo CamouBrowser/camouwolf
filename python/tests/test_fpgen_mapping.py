@@ -86,7 +86,13 @@ def test_every_mapped_key_is_in_the_schema():
 
 def test_keys_the_browser_cannot_read_are_not_sent():
     config = from_fpgen(WINDOWS_FINGERPRINT, chrome_version=152)
-    assert not {'navigator.oscpu', 'window.devicePixelRatio'} & set(config)
+    assert 'navigator.oscpu' not in config
+
+
+def test_device_pixel_ratio_is_sent():
+    # The browser renders at it (0025), so the claimed ratio is the real one.
+    config = from_fpgen(WINDOWS_FINGERPRINT, chrome_version=152)
+    assert config['window.devicePixelRatio'] == WINDOWS_FINGERPRINT['window']['devicePixelRatio']
 
 
 @pytest.mark.parametrize('renderer, target, ok', [

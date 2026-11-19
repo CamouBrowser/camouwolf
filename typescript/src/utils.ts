@@ -1142,8 +1142,8 @@ export async function startVirtualDisplay(
 	} else {
 		return [null, headless as boolean | undefined | null];
 	}
-	options.virtual_display = await display.get();
-	options.virtual_display_size = display.size;
+	// launchOptions sizes the display to the identity and starts it.
+	options.virtual_display = display;
 	return [display, false];
 }
 
@@ -1370,9 +1370,15 @@ export interface LaunchOptions {
 	i_know_what_im_doing?: boolean;
 	/** Prints the config being sent to Camouwolf. */
 	debug?: boolean | null;
-	/** Virtual display number. Ex: ':99'. Handled by Camouwolf(). */
-	virtual_display?: string;
-	/** The virtual display's size; the identity's screen is kept within it. */
+	/**
+	 * Virtual display number. Ex: ':99'. Handled by Camouwolf(), which passes
+	 * a display not yet started; it is sized to the identity and started here.
+	 */
+	virtual_display?: string | VirtualDisplay;
+	/**
+	 * The virtual display's size in device pixels; the identity's screen, at
+	 * its devicePixelRatio, is kept within it.
+	 */
 	virtual_display_size?: [number, number];
 	/** Keep the fingerprint's own core count by pinning the browser to that
 	 * many cores. Off by default: the host's count is reported. */
@@ -1517,8 +1523,12 @@ export async function launchOptions({
 	utilsDeps.warnIfPackageOutdated();
 
 	// ---- display -----------------------------------------------------------
+	const ownedDisplay =
+		virtual_display instanceof VirtualDisplay ? virtual_display : null;
+	let displaySize = virtual_display_size;
+	if (ownedDisplay?.fixed) displaySize = ownedDisplay.size;
 	if (virtual_display) {
-		env.DISPLAY = virtual_display;
+		if (!ownedDisplay) env.DISPLAY = virtual_display as string;
 		// The virtual display is X11. A host session that exports
 		// WAYLAND_DISPLAY would otherwise send the window to the real desktop.
 		env.GDK_BACKEND = "x11";
@@ -1557,12 +1567,13 @@ export async function launchOptions({
 	}
 	const milestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
 
-	// A real display bounds the screen the identity may claim; so does the
-	// virtual one, which the real window has to fit on.
+	// A real display bounds the screen the identity may claim; so does a
+	// virtual one of fixed size, which the real window has to fit on. One the
+	// launcher sizes is fitted to the identity instead.
 	let displayBound: Screen | null = null;
 	if (headless !== true) {
-		if (pyTruthy(virtual_display_size)) {
-			const [width, height] = virtual_display_size as [number, number];
+		if (pyTruthy(displaySize)) {
+			const [width, height] = displaySize as [number, number];
 			displayBound = new Screen({ maxWidth: width, maxHeight: height });
 		} else if (!virtual_display && utilsDeps.hasDisplay(env)) {
 			const display = utilsDeps.largestDisplay();
@@ -1707,13 +1718,19 @@ export async function launchOptions({
 
 	// ---- geometry ----------------------------------------------------------
 	if (!userSetScreenWindow) {
+		coherence.repairDevicePixelRatio(config, targetOs);
 		raiseScreenToModernFloor(config);
 		coherence.repairScreenOrientation(config);
 		if (displayBound !== null) {
+			// A virtual display is measured in device pixels, and the window
+			// renders at the identity's ratio.
+			const scale = virtual_display
+				? num(config["window.devicePixelRatio"] || 1)
+				: 1;
 			clampScreenToDisplay(
 				config,
-				displayBound.maxWidth,
-				displayBound.maxHeight,
+				Math.trunc(num(displayBound.maxWidth) / scale),
+				Math.trunc(num(displayBound.maxHeight) / scale),
 			);
 		}
 		fixScreenNoTaskbar(config, targetOs);
@@ -1817,6 +1834,14 @@ export async function launchOptions({
 	}
 
 	// ---- environment -------------------------------------------------------
+	if (ownedDisplay) {
+		const dpr = num(config["window.devicePixelRatio"] || 1);
+		const width = config["screen.width"] || config["window.outerWidth"];
+		const height = config["screen.height"] || config["window.outerHeight"];
+		if (width && height)
+			ownedDisplay.fit(Math.ceil(width * dpr), Math.ceil(height * dpr));
+		env.DISPLAY = await ownedDisplay.get();
+	}
 	if (debug) {
 		// Python pretty-prints with pprint(); the layout differs, the content
 		// does not.

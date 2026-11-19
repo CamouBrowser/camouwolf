@@ -332,7 +332,7 @@ def test_launch_server_runs_virtual_headless_on_a_virtual_display(
 
     assert len(fake_virtual_display) == 1
     assert launched["headless"] is False
-    assert launched["virtual_display"] == ":99"
+    assert launched["virtual_display"] is fake_virtual_display[0]
     assert fake_virtual_display[0].killed
 
 

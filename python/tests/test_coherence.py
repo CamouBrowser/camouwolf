@@ -65,3 +65,33 @@ def test_a_portrait_desktop_screen_is_turned():
     assert coherence.screen_is_implausible(config)
     assert coherence.repair_screen_orientation(config)
     assert (config['screen.width'], config['screen.height']) == (1920, 1080)
+
+
+def test_a_zoomed_ratio_becomes_the_display_behind_it():
+    # A scraped 1760x990 at 1.0909 is a 1920x1080 monitor at 100% with the page
+    # zoomed to 110%: no Windows display setting offers 1.0909.
+    config = {**windows(), 'window.devicePixelRatio': 1.0909, 'screen.width': 1760, 'screen.height': 990,
+              'screen.availWidth': 1760, 'screen.availHeight': 953, 'window.outerWidth': 1466, 'window.outerHeight': 825}
+    assert 'device-pixel-ratio' in rules(coherence.validate(config, 'win'))
+
+    coherence.repair_device_pixel_ratio(config, 'win')
+    assert config['window.devicePixelRatio'] == 1
+    assert (config['screen.width'], config['screen.height']) == (1920, 1080)
+    assert config['window.outerWidth'] == 1599
+    assert coherence.validate(config, 'win') == []
+
+
+def test_a_display_step_is_left_alone():
+    config = {**windows(), 'window.devicePixelRatio': 1.25}
+    coherence.repair_device_pixel_ratio(config, 'win')
+    assert config == {**windows(), 'window.devicePixelRatio': 1.25}
+    # macOS offers 1 and 2 only.
+    assert coherence.is_zoomed_ratio(1.25, 'mac') and not coherence.is_zoomed_ratio(2, 'mac')
+
+
+def test_a_callers_ratio_is_kept_and_reported():
+    config = {**windows(), 'window.devicePixelRatio': 1.0909}
+    violations = coherence.apply(config, 'win', keep=frozenset({'window.devicePixelRatio'}))
+
+    assert config['window.devicePixelRatio'] == 1.0909 and config['screen.width'] == 1920
+    assert [v.kept for v in violations if v.rule == 'device-pixel-ratio'] == [('window.devicePixelRatio',)]

@@ -21,10 +21,11 @@ const DISPLAYFD_READ_TIMEOUT_MS = 30_000;
 
 /**
  * Xvfb screen geometry for headless="virtual". Unlike Camoufox's 1x1, it has to
- * hold the browser's real window: Chromium's window size is the window's
- * (--window-size), not a spoofed number, and the identity's screen is kept
- * within the display (launchOptions({ virtual_display_size })). Override it
- * with CAMOUWOLF_VIRTUAL_DISPLAY_SIZE="<width>x<height>[x<depth>]".
+ * hold the browser's real window, which renders at the identity's
+ * devicePixelRatio, so launchOptions sizes it to the claimed screen in device
+ * pixels (fit()) before starting it. This is the size when nothing does.
+ * CAMOUWOLF_VIRTUAL_DISPLAY_SIZE="<width>x<height>[x<depth>]" fixes the size
+ * instead, and the identity's screen is then kept within it.
  */
 export const DEFAULT_SCREEN = "3840x2160x24";
 export const SCREEN_ENV_VAR = "CAMOUWOLF_VIRTUAL_DISPLAY_SIZE";
@@ -55,6 +56,8 @@ function resolveScreen(): string {
 export class VirtualDisplay {
 	debug: boolean;
 	screen: string;
+	/** A size the caller chose; fit() leaves it alone. */
+	fixed: boolean;
 	composite: boolean;
 	proc: ChildProcess | null = null;
 	protected _display: number | null = null;
@@ -63,6 +66,7 @@ export class VirtualDisplay {
 
 	constructor(debug: boolean = false, screen?: string, composite?: boolean) {
 		this.debug = debug;
+		this.fixed = Boolean(screen || (process.env[SCREEN_ENV_VAR] ?? "").trim());
 		this.screen = screen || resolveScreen();
 		this.composite =
 			composite ??
@@ -73,6 +77,16 @@ export class VirtualDisplay {
 	get size(): [number, number] {
 		const [width, height] = this.screen.toLowerCase().split("x");
 		return [Number.parseInt(width, 10), Number.parseInt(height, 10)];
+	}
+
+	/**
+	 * Size a display that is not yet started to `width` x `height` pixels,
+	 * unless its size was fixed.
+	 */
+	fit(width: number, height: number): void {
+		if (this.fixed || this.proc !== null) return;
+		const depth = this.screen.toLowerCase().split("x")[2];
+		this.screen = `${width}x${height}x${depth}`;
 	}
 
 	get xvfbArgs(): string[] {

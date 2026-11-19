@@ -351,8 +351,8 @@ describe("the launch", () => {
 		expect((display as any).requireGpu).toBe(true);
 		expect(headless).toBe(false);
 		expect(options).toEqual({
-			virtual_display: ":77",
-			virtual_display_size: (display as any).size,
+			// Not yet started: launchOptions sizes it to the identity first.
+			virtual_display: display,
 			// The caller's own switches come after, and win.
 			args: [...GPU_SWITCHES, "--use-angle=vulkan"],
 		});
