@@ -9,13 +9,14 @@
  *
  * TypeScript twin of python/src/camouwolf/fingerprints.py.
  */
-import { generate, InvalidConstraints } from "fpgen-js";
-import * as random from "python-random";
-import { type OsKey, retargetUserAgent, uaOs } from "./clienthints.js";
+
 import {
 	supported as cpuAffinitySupported,
 	hostCoreCount,
-} from "./cpu_affinity.js";
+} from "camoucore/cpu_affinity.js";
+import { generate, InvalidConstraints } from "fpgen-js";
+import * as random from "python-random";
+import { type OsKey, retargetUserAgent, uaOs } from "./clienthints.js";
 import { ValueError } from "./exceptions.js";
 import { LAUNCHER_CONSTANTS, loadDataFile } from "./paths.js";
 import { isPlainObject, num, pyStr, pyStrRepr, pyTruthy } from "./pycompat.js";

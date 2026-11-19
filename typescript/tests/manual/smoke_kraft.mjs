@@ -26,7 +26,7 @@ delete process.env.WAYLAND_DISPLAY;
 process.removeAllListeners("warning");
 process.on("warning", () => undefined);
 
-const { Camouwolf, launchOptions, VirtualDisplay } = await import(
+const { Camouwolf, launchOptions, PRODUCT, VirtualDisplay } = await import(
 	"../../dist/index.js"
 );
 const { launchConfig } = await import("../../dist/utils.js");
@@ -149,7 +149,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 let display = null;
 let extra = {};
 if (opts.headless === "virtual") {
-	display = new VirtualDisplay();
+	display = new VirtualDisplay(PRODUCT);
 	extra = {
 		virtual_display: await display.get(),
 		virtual_display_size: display.size,

@@ -10,9 +10,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { unzip, verifySha256, webdl } from "camoucore/download.js";
 import { InvalidAddonPath } from "./exceptions.js";
 import { INSTALL_DIR, loadDataFile } from "./paths.js";
-import { unzip, verifySha256, webdl } from "./pkgman.js";
 import { loadWarnings, warn } from "./warnings.js";
 
 /** Injection points (tests point the addon directory at a fixture). */

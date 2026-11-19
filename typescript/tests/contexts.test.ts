@@ -29,7 +29,7 @@ import {
 } from "./launch-host.js";
 
 const { NewBrowser, NewContext } = await import("../src/sync_api.js");
-const { VirtualDisplay } = await import("../src/virtdisplay.js");
+const { VirtualDisplay } = await import("camoucore/virtdisplay.js");
 
 class FakeBrowser {
 	closed = false;

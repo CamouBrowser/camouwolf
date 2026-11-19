@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { finished } from "node:stream/promises";
+import { flattenSingleRoot, unzip, verifySha256 } from "camoucore/download.js";
 import { effectivePin, pinMatches } from "./browser-pin.js";
 import { INSTALL_DIR, OS_NAME, rprint } from "./paths.js";
 // pkgman and multiversion are mutually dependent, exactly as the Python twin's
@@ -15,13 +16,10 @@ import { INSTALL_DIR, OS_NAME, rprint } from "./paths.js";
 import {
 	type AvailableVersion,
 	type CamouwolfFetcher,
-	flattenSingleRoot,
 	formatAssetDate,
 	makeExecutable,
 	RepoConfig,
-	unzip,
 	Version,
-	verifySha256,
 } from "./pkgman.js";
 import { comparePyStr } from "./pycompat.js";
 
