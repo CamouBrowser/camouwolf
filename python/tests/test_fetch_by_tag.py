@@ -18,7 +18,7 @@ from camouwolf import __main__ as cli
 from camouwolf import browser_pin, multiversion, pkgman
 from camouwolf.__version__ import CONSTRAINTS
 
-API = "https://api.github.com/repos/JWriter20/Camouwolf/releases"
+API = "https://api.github.com/repos/CamouBrowser/camouwolf/releases"
 UPDATE = cli.CamouwolfUpdate
 
 
@@ -106,7 +106,7 @@ def test_a_named_build_is_fetched_with_one_api_call(github, installs):
 def test_the_paired_build_is_fetched_with_one_api_call(github, installs, tmp_path):
     served, requested = github
     (tmp_path / "browser-pin.json").write_text(json.dumps({
-        "tag": "v156.0.1-beta.33", "repo": "JWriter20/Camouwolf", "repo_name": "Official",
+        "tag": "v156.0.1-beta.33", "repo": "CamouBrowser/camouwolf", "repo_name": "Official",
         "version": "156.0.1", "build": "beta.33",
     }))
     served[f"{API}/tags/v156.0.1-beta.33"] = _release(served, "v156.0.1-beta.33", "beta.33", prerelease=True)

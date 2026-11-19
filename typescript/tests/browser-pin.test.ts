@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PIN = {
 	tag: "v156.0.1-beta.33",
-	repo: "JWriter20/Camouwolf",
+	repo: "CamouBrowser/camouwolf",
 	repo_name: "Official",
 	version: "156.0.1",
 	build: "beta.33",

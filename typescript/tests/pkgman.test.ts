@@ -85,7 +85,7 @@ describe("RepoConfig", () => {
 	it("parses the comma-separated fallback repo list", () => {
 		const official = RepoConfig.findByName("Official");
 		expect(official).toBeDefined();
-		expect(official?.repos).toEqual(["JWriter20/Camouwolf"]);
+		expect(official?.repos).toEqual(["CamouBrowser/camouwolf"]);
 		expect(
 			RepoConfig.fromEntry({
 				repo: "a/b, c/d",
@@ -93,7 +93,7 @@ describe("RepoConfig", () => {
 				pattern: "{name}.zip",
 			}).repos,
 		).toEqual(["a/b", "c/d"]);
-		expect(official?.repo).toBe("JWriter20/Camouwolf");
+		expect(official?.repo).toBe("CamouBrowser/camouwolf");
 	});
 
 	it("defaults to the repo named in the config", () => {

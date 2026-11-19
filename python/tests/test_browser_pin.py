@@ -17,7 +17,7 @@ from camouwolf.exceptions import CamouwolfNotInstalled, UnsupportedVersion
 
 PIN = {
     "tag": "v156.0.1-beta.33",
-    "repo": "JWriter20/Camouwolf",
+    "repo": "CamouBrowser/camouwolf",
     "repo_name": "Official",
     "version": "156.0.1",
     "build": "beta.33",
