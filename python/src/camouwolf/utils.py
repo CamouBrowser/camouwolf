@@ -1267,7 +1267,9 @@ def launch_options(
 
     # ---- geometry ----------------------------------------------------------
     if not _user_set_screen_window:
-        coherence.repair_device_pixel_ratio(config, target_os)
+        coherence.repair_device_pixel_ratio(
+            config, target_os, keep=('window.outerWidth', 'window.outerHeight') if window else ()
+        )
         raise_screen_to_modern_floor(config)
         coherence.repair_screen_orientation(config)
         if display_bound is not None:

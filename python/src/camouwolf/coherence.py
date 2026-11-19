@@ -18,7 +18,7 @@ cpu:manufacturer, Firefox's sanitized renderer buckets, the 86px chrome
 height) have no Chrome counterpart and are not here.
 """
 
-from typing import AbstractSet, Any, Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import AbstractSet, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from . import clienthints
 from .pkgman import LAUNCHER_CONSTANTS
@@ -216,10 +216,11 @@ def _check_device_pixel_ratio(config: Dict[str, Any], target_os: str) -> Optiona
     return None
 
 
-def repair_device_pixel_ratio(config: Dict[str, Any], target_os: str) -> None:
+def repair_device_pixel_ratio(config: Dict[str, Any], target_os: str, keep: Iterable[str] = ()) -> None:
     """Move the ratio to the nearest display step and rescale the CSS geometry
     by the zoom that was folded in, so the screen is still the display behind
-    it: 1760x990 at 1.0909 is a 1920x1080 monitor at 1."""
+    it: 1760x990 at 1.0909 is a 1920x1080 monitor at 1. `keep` names sizes
+    that are not the record's (a caller's window) and stay as they are."""
     dpr = config.get('window.devicePixelRatio')
     if not is_zoomed_ratio(dpr, target_os):
         return
@@ -228,7 +229,7 @@ def repair_device_pixel_ratio(config: Dict[str, Any], target_os: str) -> None:
     scale = float(dpr) / float(step)
     for key in CSS_GEOMETRY_KEYS:
         value = config.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if key not in keep and isinstance(value, (int, float)) and not isinstance(value, bool):
             config[key] = int(round(value * scale))
 
 

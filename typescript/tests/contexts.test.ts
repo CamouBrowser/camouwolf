@@ -18,7 +18,6 @@ import { MODEL } from "./fpgen-setup.js";
 import {
 	BUNDLE_EXE,
 	configOf,
-	fingerprints,
 	HOME,
 	quietly,
 	restoreDeps,
@@ -380,11 +379,31 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 		expect(launch.executablePath).toBe(BUNDLE_EXE);
 	});
 
+	it("keeps a fixed window when a zoomed ratio is repaired", async () => {
+		// The repair rescales the record's CSS sizes to the display's scale; the
+		// caller's window is not the record's and stays as asked.
+		const drawn = await utils.drawFingerprint("windows", null, null, null);
+		const fingerprint = {
+			...drawn,
+			window: { ...drawn.window, devicePixelRatio: 1.1 },
+		};
+		const launch = await quietly(() =>
+			utils.launchOptions({
+				...base(),
+				os: undefined,
+				fingerprint,
+				window: [1200, 800],
+			}),
+		);
+		expect(configOf(launch)["window.devicePixelRatio"]).toBe(1);
+		expect(launch.args).toContain("--window-size=1200,800");
+	});
+
 	it("always sends the voices, so the host's never show", async () => {
 		// Patch 0012 shows the host's voices when the key is absent: a record
 		// without voices, and a caller's user agent (no draw), must still send it.
 		const fingerprint = {
-			...fingerprints.generateFingerprint({ os: "windows" }),
+			...(await utils.drawFingerprint("windows", null, null, null)),
 			voices: [],
 		};
 		const drawn = await quietly(() =>
@@ -404,7 +423,14 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 	});
 
 	it("uses a passed fingerprint, and refuses one from another browser", async () => {
-		const fingerprint = fingerprints.generateFingerprint({ os: "windows" });
+		// The launcher's own draw: a raw fpgen record may have a software GPU,
+		// which a passed fingerprint is refused for.
+		const fingerprint = await utils.drawFingerprint(
+			"windows",
+			null,
+			null,
+			null,
+		);
 		const launch = await quietly(() =>
 			utils.launchOptions({ ...base(), os: undefined, fingerprint }),
 		);
