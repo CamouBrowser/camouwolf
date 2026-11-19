@@ -1627,6 +1627,9 @@ export async function launchOptions({
 	if (fingerprint !== undefined && fingerprint !== null) {
 		mergeInto(config, fromFpgen(fingerprint, milestone));
 	}
+	// Patch 0012 shows the host's voices only when the key is absent, so it is
+	// always sent: the recorded list, or none, never the host's.
+	if (!("voices" in config)) config.voices = [];
 
 	const targetOs = getTargetOs(config);
 	checkOsPolicy([OS_NAMES[targetOs]], allow_os_mismatch);

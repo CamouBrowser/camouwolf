@@ -311,6 +311,11 @@ Note the Chrome-specific shape: `voiceURI` equals `name` (Firefox's
 `Google <language>` **network** voices with `localService: false` alongside the
 OS ones.
 
+The list fails closed, as Camoufox's `voices:blockIfNotDefined` does: a present
+`voices` key replaces the host's list even when it is empty, and the launcher
+always sends one (the drawn record's list, or none). Some recorded devices have
+no voices, mostly Linux ones, so those identities report an empty list.
+
 ### 0013 — media devices
 
 `media_devices.cc`. `enumerateDevices()` needs no permission — labels are hidden

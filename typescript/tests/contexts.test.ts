@@ -380,6 +380,29 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 		expect(launch.executablePath).toBe(BUNDLE_EXE);
 	});
 
+	it("always sends the voices, so the host's never show", async () => {
+		// Patch 0012 shows the host's voices when the key is absent: a record
+		// without voices, and a caller's user agent (no draw), must still send it.
+		const fingerprint = {
+			...fingerprints.generateFingerprint({ os: "windows" }),
+			voices: [],
+		};
+		const drawn = await quietly(() =>
+			utils.launchOptions({ ...base(), os: undefined, fingerprint }),
+		);
+		expect(configOf(drawn).voices).toEqual([]);
+		const ua =
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
+		const caller = await quietly(() =>
+			utils.launchOptions({
+				...base(),
+				os: undefined,
+				config: { "navigator.userAgent": ua },
+			}),
+		);
+		expect(configOf(caller).voices).toEqual([]);
+	});
+
 	it("uses a passed fingerprint, and refuses one from another browser", async () => {
 		const fingerprint = fingerprints.generateFingerprint({ os: "windows" });
 		const launch = await quietly(() =>

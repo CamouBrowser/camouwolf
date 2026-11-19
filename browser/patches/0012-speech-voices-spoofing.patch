@@ -10,7 +10,7 @@ diff --git a/third_party/blink/renderer/modules/speech/speech_synthesis.cc b/thi
  #include <tuple>
  
  #include "build/build_config.h"
-@@ -85,6 +87,44 @@
+@@ -85,6 +87,42 @@
  void SpeechSynthesis::OnSetVoiceList(
      Vector<mojom::blink::SpeechSynthesisVoicePtr> mojom_voices) {
    voice_list_.clear();
@@ -24,13 +24,11 @@ diff --git a/third_party/blink/renderer/modules/speech/speech_synthesis.cc b/thi
 +  // the Linux list here unless this is patched, and that single mismatch is
 +  // enough on its own.
 +  //
-+  // The launcher draws the list from a per-OS manifest that models which voices
-+  // actually ship together (a language pack installs its voices AND its fonts),
-+  // so the set is one Windows could really be in, not a random subset.
-+  const std::vector<std::string> spoofed =
-+      base::CamouwolfConfig::Get().GetStringList("voices");
-+  if (!spoofed.empty()) {
-+    for (const std::string& packed : spoofed) {
++  // The list comes whole from the identity's recorded device. A present key
++  // replaces the host's list even when empty, so no launch falls through to it.
++  const base::CamouwolfConfig& config = base::CamouwolfConfig::Get();
++  if (config.Has("voices")) {
++    for (const std::string& packed : config.GetStringList("voices")) {
 +      // "name|lang|uri|local|default"
 +      //
 +      // String::Split(UChar) returns the vector and keeps empty entries
