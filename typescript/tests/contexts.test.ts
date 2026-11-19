@@ -623,4 +623,30 @@ describe.skipIf(!MODEL.ok)("drawFingerprint", () => {
 		const drawn = await utils.drawFingerprint("macos", null, null, null);
 		expect(drawn.navigator.hardwareConcurrency).toBe(10);
 	});
+
+	it("draws a machine in the identity's language", async () => {
+		// A machine's voices and fonts follow the language its OS was installed in.
+		const real = await utils.drawFingerprint("windows", null, null, null);
+		const asked: unknown[] = [];
+		utils.utilsDeps.generateFingerprint = ((conditions: any) => {
+			asked.push(conditions.languages);
+			return real;
+		}) as any;
+		await utils.launchOptions({ ...base(), os: "windows", locale: "de-DE" });
+		const speaks = asked[0] as (value: unknown) => boolean;
+		expect(speaks(["de-de", "de"])).toBe(true);
+		expect(speaks(["en-us", "de"])).toBe(false);
+	});
+
+	it("draws another machine for a language fpgen never recorded", async () => {
+		const real = await utils.drawFingerprint("windows", null, null, null);
+		utils.utilsDeps.generateFingerprint = ((conditions: any) => {
+			// fpgen's sampler, on a pairing it never recorded
+			if ("languages" in conditions) throw new TypeError("length");
+			return real;
+		}) as any;
+		expect(
+			await utils.drawFingerprint("windows", null, null, null, "ja-JP"),
+		).toBe(real);
+	});
 });
