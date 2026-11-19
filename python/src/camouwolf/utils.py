@@ -944,7 +944,8 @@ def launch_options(
         block_images (Optional[bool]):
             Whether to block all images.
         block_webrtc (Optional[bool]):
-            Keep WebRTC from using any route but the proxy's.
+            Keep WebRTC from using any route but the proxy's. On by default
+            with a proxy; False with a proxy warns.
         block_webgl (Optional[bool]):
             Whether to block WebGL. To prevent leaks, only use this for special cases.
         disable_coop (Optional[bool]):
@@ -1294,7 +1295,11 @@ def launch_options(
     if block_images:
         LeakWarning.warn('block_images', i_know_what_im_doing)
         args.append('--blink-settings=imagesEnabled=false')
-    if block_webrtc:
+    # Chromium sends WebRTC's UDP around the proxy, and STUN then reports the
+    # host's public IP; with a proxy, only the proxied route is left by default.
+    if block_webrtc is False and proxy:
+        LeakWarning.warn('webrtc_beside_proxy', i_know_what_im_doing)
+    if block_webrtc or (block_webrtc is None and proxy):
         args.append('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
     if block_webgl:
         LeakWarning.warn('block_webgl', i_know_what_im_doing)

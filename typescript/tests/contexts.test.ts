@@ -319,6 +319,22 @@ describe("NewContext", () => {
 });
 
 describe.skipIf(!MODEL.ok)("launchOptions", () => {
+	it("keeps WebRTC on the proxied route by default with a proxy", async () => {
+		// Otherwise WebRTC's UDP goes around the proxy, and STUN reports the
+		// host's own public IP.
+		const policy = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp";
+		const proxy = { server: "http://127.0.0.1:8080" };
+		expect((await utils.launchOptions({ ...base(), proxy })).args).toContain(
+			policy,
+		);
+		expect((await utils.launchOptions(base())).args).not.toContain(policy);
+		const { result, warnings: caught } = await warnings.recordWarnings(() =>
+			utils.launchOptions({ ...base(), proxy, block_webrtc: false }),
+		);
+		expect(result?.args).not.toContain(policy);
+		expect(caught.map((w) => w.message).join()).toContain("block_webrtc=False");
+	});
+
 	it("does not write to the caller's objects", async () => {
 		const config = { timezone: "Europe/Berlin" };
 		const args = ["--foo"];

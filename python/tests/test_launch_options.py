@@ -255,6 +255,19 @@ def test_the_block_options_and_the_cache(options):
     assert '--disk-cache-size=1' not in options(os='linux', enable_cache=True)['args']
 
 
+POLICY = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
+
+
+def test_a_proxy_keeps_webrtc_on_the_proxied_route_by_default(options):
+    # Otherwise WebRTC's UDP goes around the proxy, and STUN reports the
+    # host's own public IP.
+    proxy = {'server': 'http://127.0.0.1:8080'}
+    assert POLICY in options(os='linux', proxy=proxy)['args']
+    assert POLICY not in options(os='linux')['args']
+    with pytest.warns(LeakWarning, match='block_webrtc=False'):
+        assert POLICY not in options(os='linux', proxy=proxy, block_webrtc=False)['args']
+
+
 def test_a_conflicting_switch_is_refused_or_dropped_when_asked(options):
     with pytest.raises(ValueError, match="refuses '--user-agent'"):
         options(os='linux', args=['--user-agent=x'])
