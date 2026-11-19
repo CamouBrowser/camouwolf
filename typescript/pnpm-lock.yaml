@@ -12,8 +12,8 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(playwright-core@1.62.0)
       camoucore:
-        specifier: git+https://github.com/CamoufoxCloud/camoucore.git#v0.1.1&path:/typescript
-        version: https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript
+        specifier: git+https://github.com/CamouBrowser/camoucore.git#v0.1.1&path:/typescript
+        version: https://codeload.github.com/CamouBrowser/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript
       commander:
         specifier: ^14.0.0
         version: 14.0.3
@@ -299,8 +299,8 @@ packages:
     resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
     engines: {node: 20 || >=22}
 
-  camoucore@https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript:
-    resolution: {gitHosted: true, path: /typescript, tarball: https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30}
+  camoucore@https://codeload.github.com/CamouBrowser/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript:
+    resolution: {gitHosted: true, path: /typescript, tarball: https://codeload.github.com/CamouBrowser/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30}
     version: 0.1.1
     engines: {node: '>=22.15'}
 
@@ -874,7 +874,7 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
-  camoucore@https://codeload.github.com/CamoufoxCloud/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript:
+  camoucore@https://codeload.github.com/CamouBrowser/camoucore/tar.gz/068edd76281f2347a4c5211476cc00e876582d30#path:/typescript:
     dependencies:
       adm-zip: 0.6.1
       cli-progress: 3.12.0
