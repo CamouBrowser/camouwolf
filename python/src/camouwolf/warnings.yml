@@ -28,6 +28,10 @@ no_region: >-
     Because you did not pass in a locale region, Camouwolf will generate one for you.
     This can cause suspicion if your IP does not match your locale region.
 
+webrtc_beside_proxy: >-
+    block_webrtc=False with a proxy lets WebRTC send UDP straight from this host,
+    so a STUN server sees its real public IP beside the proxy's.
+
 block_webgl: >-
     Disabling WebGL is not recommended. Many WAFs will check if WebGL is enabled.
 

@@ -1298,7 +1298,8 @@ export interface LaunchOptions {
 	os?: string | string[];
 	/** Whether to block all images. */
 	block_images?: boolean;
-	/** Keep WebRTC from using any route but the proxy's. */
+	/** Keep WebRTC from using any route but the proxy's. On by default with a
+	 * proxy; false with a proxy warns. */
 	block_webrtc?: boolean;
 	/** Whether to block WebGL. To prevent leaks, only use this for special cases. */
 	block_webgl?: boolean;
@@ -1757,7 +1758,14 @@ export async function launchOptions({
 		LeakWarning.warn("block_images", i_know_what_im_doing);
 		args.push("--blink-settings=imagesEnabled=false");
 	}
-	if (block_webrtc) {
+	// Chromium sends WebRTC's UDP around the proxy, and STUN then reports the
+	// host's public IP; with a proxy, only the proxied route is left by default.
+	if (block_webrtc === false && pyTruthy(proxy))
+		LeakWarning.warn("webrtc_beside_proxy", i_know_what_im_doing);
+	if (
+		block_webrtc ||
+		((block_webrtc === undefined || block_webrtc === null) && pyTruthy(proxy))
+	) {
 		args.push("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
 	}
 	if (block_webgl) {

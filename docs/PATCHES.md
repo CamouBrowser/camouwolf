@@ -599,9 +599,9 @@ rewritten address has to be unroutable-but-plausible or connectivity checks
 change shape. It should be written against a build that can run a loopback
 `RTCPeerConnection` test, not blind.
 
-Until then the launcher's `block_webrtc`, or
-`--force-webrtc-ip-handling-policy=disable_non_proxied_udp` with a proxy, are
-the controls; `webrtc:ipv4` stays in `KNOWN_DEAD` in `check-config-keys.py`.
+Until then the control is `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`,
+which the launcher passes with `block_webrtc`, and by default whenever there is
+a proxy; `webrtc:ipv4` stays in `KNOWN_DEAD` in `check-config-keys.py`.
 
 ### WebGL context attributes, `:blockIfNotDefined`
 

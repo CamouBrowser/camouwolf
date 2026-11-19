@@ -445,6 +445,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
      "--disk-cache-size=1",
      "--window-size=1519,740",
      "--window-position=0,4",
@@ -546,6 +547,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
      "--disk-cache-size=1",
      "--window-size=1920,1050",
      "--window-position=0,0"
@@ -597,6 +599,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
      "--disk-cache-size=1",
      "--window-size=2788,1684",
      "--window-position=8,1"
