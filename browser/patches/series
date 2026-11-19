@@ -85,3 +85,10 @@
 # getter is only one of its readers: matchMedia resolution queries, srcset and
 # layout snapping all have to move with it.
 0025-device-scale-factor.patch
+
+# --- IPv4-only network ------------------------------------------------------
+# Without a proxy a site sees this host's IPv6 address, which can place it
+# somewhere the IPv4 identity is not. network:ipv4Only makes the browser behave
+# as on an IPv4-only network: no AAAA lookups, IPv6 connects fail as
+# ENETUNREACH does, and WebRTC gathers no IPv6 address.
+0028-ipv4-only-network.patch

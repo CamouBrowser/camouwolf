@@ -13,6 +13,7 @@ import {
 	InvalidIP,
 	NonChromeFingerprint,
 	NotImplementedError,
+	UnknownIPLocation,
 	ValueError,
 } from "../src/exceptions.js";
 import { MODEL } from "./fpgen-setup.js";
@@ -551,5 +552,58 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 			other: 1,
 			credentials_enable_service: false,
 		});
+	});
+});
+
+describe.skipIf(!MODEL.ok)("geoip without a proxy", () => {
+	const BERLIN = { timezone: "Europe/Berlin", "locale:region": "DE" };
+	const AMSTERDAM = { timezone: "Europe/Amsterdam", "locale:region": "NL" };
+	let places: Record<string, Record<string, string>>;
+	let ipv6: string | null;
+	beforeEach(() => {
+		places = { "203.0.113.5": BERLIN };
+		ipv6 = null;
+		utils.utilsDeps.geoipAllowed = () => undefined;
+		utils.utilsDeps.publicIpv6 = async () => ipv6;
+		utils.utilsDeps.getGeolocation = (async (ip: string) => {
+			if (!(ip in places)) throw new UnknownIPLocation(ip);
+			return {
+				latitude: 52.5,
+				longitude: 13.4,
+				asConfig: () => ({ ...places[ip] }),
+			};
+		}) as any;
+	});
+	const launch = async (extra: Record<string, unknown> = {}) =>
+		configOf(
+			await utils.launchOptions({ ...base(), geoip: "203.0.113.5", ...extra }),
+		);
+
+	it("is an IPv4-only network on a host without IPv6", async () => {
+		expect((await launch())["network:ipv4Only"]).toBe(true);
+	});
+
+	it("keeps IPv6 that geolocates with the identity", async () => {
+		ipv6 = "2001:db8::5";
+		places[ipv6] = BERLIN;
+		expect(await launch()).not.toHaveProperty("network:ipv4Only");
+	});
+
+	it("turns off IPv6 that geolocates elsewhere, and warns", async () => {
+		// An IPv4-only VPN: sites with an IPv6 address would see the host's own.
+		ipv6 = "2001:db8::5";
+		places[ipv6] = AMSTERDAM;
+		const warn = vi.spyOn(warnings.LeakWarning, "warn");
+		expect((await launch())["network:ipv4Only"]).toBe(true);
+		expect(warn).toHaveBeenCalledWith("ipv6_elsewhere", false);
+	});
+
+	it("leaves IPv6 alone behind a proxy", async () => {
+		utils.utilsDeps.publicIpv6 = async () => {
+			throw new Error("looked up the host IPv6 behind a proxy");
+		};
+		vi.spyOn(warnings.LeakWarning, "warn").mockImplementation(() => {});
+		const config = await launch({ proxy: { server: "http://203.0.113.9:1" } });
+		expect(config).not.toHaveProperty("network:ipv4Only");
 	});
 });

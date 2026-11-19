@@ -122,6 +122,7 @@ export function stubHost(
 		height: host.display[1],
 	});
 	deps.publicIp = async () => host.publicIp;
+	deps.publicIpv6 = async () => null;
 	deps.geoipAllowed = () => undefined;
 	const geo = host.geolocation;
 	deps.getGeolocation = async () =>

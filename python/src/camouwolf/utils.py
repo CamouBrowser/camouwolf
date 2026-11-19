@@ -21,6 +21,7 @@ from .addons import DefaultAddons, add_default_addons, confirm_paths
 from .display import has_display, largest_display
 from .exceptions import (
     IncoherentIdentity,
+    UnknownIPLocation,
     InvalidOS,
     InvalidPropertyType,
     NonChromeFingerprint,
@@ -48,7 +49,7 @@ from .geolocation import geoip_allowed, get_geolocation
 from .gpudisplay import GPU_SWITCHES, GpuDisplay, async_prove_gpu, prove_gpu, select_gpu
 from .humanize import HumanizeSetting
 from .humanize import normalize as normalize_humanize
-from .ip import Proxy, public_ip
+from .ip import Proxy, public_ip, public_ipv6, valid_ipv4
 from .locales import handle_locales
 from .pkgman import (
     INSTALL_DIR,
@@ -693,6 +694,22 @@ def context_defaults(geolocation: Optional[Dict[str, float]]) -> Any:
 PER_CONTEXT_FINGERPRINT_OPTIONS = ('preset', 'os', 'ff_version', 'chrome_version', 'webrtc_ip')
 
 
+def keeps_ipv6(geo_config: Dict[str, Any], geoip_db: Optional[str], i_know_what_im_doing: Optional[bool]) -> bool:
+    """Whether this host has a public IPv6 address that geolocates where the
+    IPv4 identity does. Warns when it has one that does not."""
+    ipv6 = public_ipv6()
+    if ipv6 is None:
+        return False
+    try:
+        ipv6_config = get_geolocation(ipv6, geoip_db=geoip_db).as_config()
+    except UnknownIPLocation:
+        ipv6_config = {}
+    if all(ipv6_config.get(key) == geo_config.get(key) for key in ('timezone', 'locale:region')):
+        return True
+    LeakWarning.warn('ipv6_elsewhere', i_know_what_im_doing)
+    return False
+
+
 def place_at_exit(
     proxy: Optional[Dict[str, str]],
     geolocation: Optional[Dict[str, float]],
@@ -1261,13 +1278,19 @@ def launch_options(
         geoip_allowed()  # Assert that geoip is allowed
         if geoip is True:
             geoip = public_ip(Proxy(**proxy).as_string()) if proxy else public_ip()
-        for key, value in get_geolocation(geoip, geoip_db=geoip_db).as_config().items():
+        geo_config = get_geolocation(geoip, geoip_db=geoip_db).as_config()
+        for key, value in geo_config.items():
             if key.startswith('locale:'):
                 locale_config[key] = value
             elif key == 'timezone':
                 config.setdefault(key, value)
             else:
                 config[key] = value
+        # Without a proxy, a site that has an IPv6 address sees this host's,
+        # not the IPv4 address the identity was drawn from. Keep IPv6 only when
+        # it places the host where the identity does.
+        if not proxy and valid_ipv4(geoip) and not keeps_ipv6(geo_config, geoip_db, i_know_what_im_doing):
+            config['network:ipv4Only'] = True
     elif (
         proxy
         and 'localhost' not in proxy.get('server', '')

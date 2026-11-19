@@ -200,6 +200,10 @@
     "type": "double"
   },
   {
+    "property": "network:ipv4Only",
+    "type": "bool"
+  },
+  {
     "property": "keyboard.layoutMap",
     "type": "array"
   },
