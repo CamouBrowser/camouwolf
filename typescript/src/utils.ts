@@ -1340,7 +1340,19 @@ export async function drawFingerprint(
 		const platform = navigator.platform ?? null;
 		const expected = drawnOs ? clienthints.NAV_PLATFORM[drawnOs] : null;
 		if (platform !== expected) continue;
-		if (usableGpu(fingerprint.gpu, drawnOs)) return fingerprint;
+		if (!usableGpu(fingerprint.gpu, drawnOs)) continue;
+		const drawnScreen = pyTruthy(fingerprint.screen) ? fingerprint.screen : {};
+		if (
+			coherence.machineMisfit(
+				fingerprint.gpu.renderer,
+				drawnOs ?? "",
+				navigator.hardwareConcurrency,
+				drawnScreen.width,
+				drawnScreen.height,
+			)
+		)
+			continue;
+		return fingerprint;
 	}
 	throw new Error(
 		`fpgen drew no desktop Chrome fingerprint with a usable GPU for os=${pyRepr(os ?? null)} in ` +

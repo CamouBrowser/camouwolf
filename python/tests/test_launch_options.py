@@ -478,3 +478,13 @@ def test_chromium_prefs_are_written_to_the_profile(options, tmp_path):
 def test_chromium_prefs_without_a_profile_name_args(options):
     with pytest.raises(ValueError, match='persistent_context=True.*`args`'):
         options(os='linux', chromium_prefs={'a': 1})
+
+
+def test_a_drawn_mac_is_a_machine_apple_made(monkeypatch):
+    real = utils.draw_fingerprint('macos', None, None, None)
+    apple = 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)'
+    record = lambda cores: {**real, 'gpu': {**real['gpu'], 'renderer': apple},
+                            'navigator': {**real['navigator'], 'hardwareConcurrency': cores}}
+    draws = iter([record(5), record(10)])
+    monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
+    assert utils.draw_fingerprint('macos', None, None, None)['navigator']['hardwareConcurrency'] == 10

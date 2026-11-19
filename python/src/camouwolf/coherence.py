@@ -36,6 +36,21 @@ PLAUSIBLE_DEVICE_MEMORY: Tuple[float, ...] = (0.25, 0.5, 1, 2, 4, 8, 16, 32)
 # machine has more than this.
 MAX_PLAUSIBLE_CORES = 256
 
+# Core counts Apple Silicon ships; Chrome reports every core, as there is no
+# SMT. 9, 13 and 15 are not Apple parts, which is why this is a list.
+APPLE_SILICON_CORES = frozenset(LAUNCHER_CONSTANTS['appleSiliconCores'])
+
+# Logical core counts of Intel Macs whose WebGL runs on the integrated GPU, and
+# with a discrete one, up to the 28-core Mac Pro. An eGPU can sit behind any.
+INTEL_MAC_IGP_CORES = frozenset(LAUNCHER_CONSTANTS['intelMacIgpCores'])
+INTEL_MAC_DGPU_CORES = INTEL_MAC_IGP_CORES | frozenset(LAUNCHER_CONSTANTS['intelMacDgpuExtraCores'])
+
+# The notched MacBook panels' scaled resolutions and the 24" iMac's default,
+# which only Apple Silicon Macs have.
+APPLE_SILICON_PANELS = frozenset(
+    (width, height) for panels in LAUNCHER_CONSTANTS['appleSiliconPanels'].values() for width, height in panels
+)
+
 # window.devicePixelRatio: the scaling steps each OS's display settings offer.
 # Scraped records also carry ratios such as 1.0909, which are a browser zoom
 # folded into the display's scale.
@@ -105,6 +120,34 @@ def _apple_gpu(config: Dict[str, Any]) -> bool:
     return 'Apple M' in _renderer(config)
 
 
+def machine_misfit(renderer: Optional[str], target_os: str, cores: Any, width: Any, height: Any) -> Optional[str]:
+    """Why no Mac with this GPU has these cores and this screen, or None.
+
+    It checks drawn records, which are rejected, as well as finished identities.
+    fpgen's records include browsers that randomise hardwareConcurrency.
+    """
+    renderer = str(renderer or '')
+    if target_os != 'mac' or not renderer or not isinstance(cores, int):
+        return None
+    if 'Apple M' in renderer:
+        if cores not in APPLE_SILICON_CORES:
+            return f'"{renderer}" with hardwareConcurrency {cores}; Apple Silicon ships {sorted(APPLE_SILICON_CORES)}'
+        return None
+    allowed = INTEL_MAC_IGP_CORES if 'Intel' in renderer else INTEL_MAC_DGPU_CORES
+    if cores not in allowed:
+        return f'"{renderer}" with hardwareConcurrency {cores}; no Intel Mac with that GPU reports it'
+    if (width, height) in APPLE_SILICON_PANELS:
+        return f'"{renderer}" behind a {width}x{height} panel, which only Apple Silicon Macs have'
+    return None
+
+
+def _check_mac_hardware(config: Dict[str, Any], target_os: str) -> Optional[str]:
+    return machine_misfit(
+        _renderer(config), target_os, config.get('navigator.hardwareConcurrency'),
+        config.get('screen.width'), config.get('screen.height'),
+    )
+
+
 def _check_mac_architecture(config: Dict[str, Any], target_os: str) -> Optional[str]:
     arch = config.get('userAgentData.architecture')
     renderer = _renderer(config)
@@ -132,6 +175,28 @@ def _check_color_depth(config: Dict[str, Any], target_os: str) -> Optional[str]:
 
 def _repair_color_depth(config: Dict[str, Any], target_os: str) -> None:
     config['screen.colorDepth'] = 24
+
+
+def _check_pixel_depth(config: Dict[str, Any], target_os: str) -> Optional[str]:
+    pixel, color = config.get('screen.pixelDepth'), config.get('screen.colorDepth')
+    if pixel is not None and color is not None and pixel != color:
+        return f'screen.pixelDepth {pixel} differs from colorDepth {color}; Chrome reports one number for both'
+    return None
+
+
+def _repair_pixel_depth(config: Dict[str, Any], target_os: str) -> None:
+    config['screen.pixelDepth'] = config['screen.colorDepth']
+
+
+def _check_touch_points(config: Dict[str, Any], target_os: str) -> Optional[str]:
+    touch = config.get('navigator.maxTouchPoints')
+    if target_os == 'mac' and touch:
+        return f'macOS identity with maxTouchPoints {touch}; no Mac has a touchscreen'
+    return None
+
+
+def _repair_touch_points(config: Dict[str, Any], target_os: str) -> None:
+    config['navigator.maxTouchPoints'] = 0
 
 
 def _check_device_memory(config: Dict[str, Any], target_os: str) -> Optional[str]:
@@ -238,7 +303,10 @@ RULES: List[Rule] = [
     Rule('target-os', _check_target_os, None),
     Rule('gpu-matches-os', _check_gpu_matches_os, None),
     Rule('mac-architecture', _check_mac_architecture, _repair_mac_architecture),
+    Rule('mac-hardware', _check_mac_hardware, None),
     Rule('color-depth', _check_color_depth, _repair_color_depth),
+    Rule('pixel-depth', _check_pixel_depth, _repair_pixel_depth),
+    Rule('touch-points', _check_touch_points, _repair_touch_points),
     Rule('device-memory', _check_device_memory, _repair_device_memory),
     Rule('hardware-concurrency', _check_cores, None),
     Rule('device-pixel-ratio', _check_device_pixel_ratio, repair_device_pixel_ratio, CSS_GEOMETRY_KEYS),

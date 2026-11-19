@@ -1,6 +1,16 @@
 {
   "plausibleCoreCounts": [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32],
   "taskbarHeight": {"win": 40, "mac": 25, "lin": 27},
+  "appleSiliconCores": [8, 10, 11, 12, 14, 16, 20, 24, 28, 32],
+  "intelMacIgpCores": [2, 4, 6, 8, 12, 16],
+  "intelMacDgpuExtraCores": [10, 14, 18, 20, 24, 28, 32, 36, 48, 56],
+  "appleSiliconPanels": {
+    "MacBook Air 13.6\"": [[1024, 665], [1280, 832], [1470, 956], [1710, 1112]],
+    "MacBook Air 15.3\"": [[1280, 828], [1440, 932], [1710, 1107]],
+    "MacBook Pro 14\"": [[1147, 745], [1352, 878], [1512, 982], [1800, 1169]],
+    "MacBook Pro 16\"": [[1312, 848], [1496, 967], [1728, 1117], [2056, 1329]],
+    "iMac 24\"": [[2240, 1260]]
+  },
   "plausibleDpr": {"win": [1, 1.25, 1.5, 1.75, 2, 2.5, 3], "mac": [1, 2], "lin": [1, 1.25, 1.5, 1.75, 2]},
   "essentialFonts": {
     "win": ["Arial", "Calibri", "Cambria", "Cambria Math", "Consolas", "Courier New", "Georgia", "Microsoft Sans Serif", "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"],

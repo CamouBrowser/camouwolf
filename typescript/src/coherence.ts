@@ -45,6 +45,36 @@ export const PLAUSIBLE_DEVICE_MEMORY: readonly number[] = [
 export const MAX_PLAUSIBLE_CORES = 256;
 
 /**
+ * Core counts Apple Silicon ships; Chrome reports every core, as there is no
+ * SMT. 9, 13 and 15 are not Apple parts, which is why this is a list.
+ */
+export const APPLE_SILICON_CORES: ReadonlySet<number> = new Set(
+	LAUNCHER_CONSTANTS.appleSiliconCores,
+);
+
+/**
+ * Logical core counts of Intel Macs whose WebGL runs on the integrated GPU, and
+ * with a discrete one, up to the 28-core Mac Pro. An eGPU can sit behind any.
+ */
+export const INTEL_MAC_IGP_CORES: ReadonlySet<number> = new Set(
+	LAUNCHER_CONSTANTS.intelMacIgpCores,
+);
+export const INTEL_MAC_DGPU_CORES: ReadonlySet<number> = new Set([
+	...LAUNCHER_CONSTANTS.intelMacIgpCores,
+	...LAUNCHER_CONSTANTS.intelMacDgpuExtraCores,
+]);
+
+/**
+ * The notched MacBook panels' scaled resolutions and the 24" iMac's default,
+ * which only Apple Silicon Macs have.
+ */
+const APPLE_SILICON_PANELS: ReadonlySet<string> = new Set(
+	Object.values(LAUNCHER_CONSTANTS.appleSiliconPanels).flatMap((panels) =>
+		panels.map(([width, height]) => `${width}x${height}`),
+	),
+);
+
+/**
  * window.devicePixelRatio: the scaling steps each OS's display settings offer.
  * Scraped records also carry ratios such as 1.0909, which are a browser zoom
  * folded into the display's scale.
@@ -133,6 +163,49 @@ function appleGpu(config: Config): boolean {
 	return renderer(config).includes("Apple M");
 }
 
+/**
+ * Why no Mac with this GPU has these cores and this screen, or null.
+ *
+ * It checks drawn records, which are rejected, as well as finished identities.
+ * fpgen's records include browsers that randomise hardwareConcurrency.
+ */
+export function machineMisfit(
+	gpuRenderer: unknown,
+	targetOs: string,
+	cores: unknown,
+	width: unknown,
+	height: unknown,
+): string | null {
+	const name = pyTruthy(gpuRenderer) ? pyStr(gpuRenderer) : "";
+	if (targetOs !== "mac" || !name || !isPyInt(cores)) return null;
+	const count = Number(num(cores));
+	if (name.includes("Apple M")) {
+		if (APPLE_SILICON_CORES.has(count)) return null;
+		const ships = [...APPLE_SILICON_CORES].sort((a, b) => a - b).join(", ");
+		return `"${name}" with hardwareConcurrency ${count}; Apple Silicon ships [${ships}]`;
+	}
+	const allowed = name.includes("Intel")
+		? INTEL_MAC_IGP_CORES
+		: INTEL_MAC_DGPU_CORES;
+	if (!allowed.has(count)) {
+		return `"${name}" with hardwareConcurrency ${count}; no Intel Mac with that GPU reports it`;
+	}
+	if (APPLE_SILICON_PANELS.has(`${pyStr(width)}x${pyStr(height)}`)) {
+		return `"${name}" behind a ${pyStr(width)}x${pyStr(height)} panel, which only Apple Silicon Macs have`;
+	}
+	return null;
+}
+
+function checkMacHardware(config: Config, targetOs: string): string | null {
+	return machineMisfit(
+		renderer(config),
+		targetOs,
+		config["navigator.hardwareConcurrency"],
+		config["screen.width"],
+		config["screen.height"],
+	);
+}
+
 function checkMacArchitecture(config: Config, targetOs: string): string | null {
 	const arch = config["userAgentData.architecture"];
 	const r = renderer(config);
@@ -176,6 +249,31 @@ function checkColorDepth(config: Config, _targetOs: string): string | null {
 
 function repairColorDepth(config: Config, _targetOs: string): void {
 	config["screen.colorDepth"] = 24;
+}
+
+function checkPixelDepth(config: Config, _targetOs: string): string | null {
+	const pixel = config["screen.pixelDepth"];
+	const color = config["screen.colorDepth"];
+	if (!isNone(pixel) && !isNone(color) && num(pixel) !== num(color)) {
+		return `screen.pixelDepth ${pyStr(pixel)} differs from colorDepth ${pyStr(color)}; Chrome reports one number for both`;
+	}
+	return null;
+}
+
+function repairPixelDepth(config: Config, _targetOs: string): void {
+	config["screen.pixelDepth"] = config["screen.colorDepth"];
+}
+
+function checkTouchPoints(config: Config, targetOs: string): string | null {
+	const touch = config["navigator.maxTouchPoints"];
+	if (targetOs === "mac" && pyTruthy(touch)) {
+		return `macOS identity with maxTouchPoints ${pyStr(touch)}; no Mac has a touchscreen`;
+	}
+	return null;
+}
+
+function repairTouchPoints(config: Config, _targetOs: string): void {
+	config["navigator.maxTouchPoints"] = 0;
 }
 
 function checkDeviceMemory(config: Config, _targetOs: string): string | null {
@@ -324,7 +422,10 @@ export const RULES: readonly Rule[] = [
 		check: checkMacArchitecture,
 		repair: repairMacArchitecture,
 	},
+	{ name: "mac-hardware", check: checkMacHardware, repair: null },
 	{ name: "color-depth", check: checkColorDepth, repair: repairColorDepth },
+	{ name: "pixel-depth", check: checkPixelDepth, repair: repairPixelDepth },
+	{ name: "touch-points", check: checkTouchPoints, repair: repairTouchPoints },
 	{
 		name: "device-memory",
 		check: checkDeviceMemory,

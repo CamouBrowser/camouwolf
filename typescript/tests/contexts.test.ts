@@ -607,3 +607,20 @@ describe.skipIf(!MODEL.ok)("geoip without a proxy", () => {
 		expect(config).not.toHaveProperty("network:ipv4Only");
 	});
 });
+
+describe.skipIf(!MODEL.ok)("drawFingerprint", () => {
+	it("draws a Mac that Apple made", async () => {
+		const real = await utils.drawFingerprint("macos", null, null, null);
+		const apple =
+			"ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)";
+		const record = (cores: number) => ({
+			...real,
+			gpu: { ...real.gpu, renderer: apple },
+			navigator: { ...real.navigator, hardwareConcurrency: cores },
+		});
+		const draws = [record(5), record(10)];
+		utils.utilsDeps.generateFingerprint = (() => draws.shift()) as any;
+		const drawn = await utils.drawFingerprint("macos", null, null, null);
+		expect(drawn.navigator.hardwareConcurrency).toBe(10);
+	});
+});
