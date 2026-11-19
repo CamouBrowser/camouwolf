@@ -1722,7 +1722,11 @@ export async function launchOptions({
 
 	// ---- geometry ----------------------------------------------------------
 	if (!userSetScreenWindow) {
-		coherence.repairDevicePixelRatio(config, targetOs);
+		coherence.repairDevicePixelRatio(
+			config,
+			targetOs,
+			window ? ["window.outerWidth", "window.outerHeight"] : [],
+		);
 		raiseScreenToModernFloor(config);
 		coherence.repairScreenOrientation(config);
 		if (displayBound !== null) {

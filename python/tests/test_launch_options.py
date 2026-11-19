@@ -14,7 +14,7 @@ from camouwolf.exceptions import (
     NonChromeFingerprint,
     UnsupportedOSSpoof,
 )
-from camouwolf.fingerprints import Screen, generate_fingerprint
+from camouwolf.fingerprints import Screen
 
 
 @pytest.fixture(autouse=True)
@@ -101,7 +101,9 @@ def test_another_milestone_warns_and_is_claimed_consistently(options):
 
 
 def test_a_passed_fingerprint_is_used(options):
-    fingerprint = generate_fingerprint(os='windows')
+    # The launcher's own draw: a raw fpgen record may have a software GPU,
+    # which a passed fingerprint is refused for.
+    fingerprint = utils.draw_fingerprint('windows', None, None, None)
     with pytest.warns(LeakWarning):
         config = config_of(options(fingerprint=fingerprint))
     assert config['webGl:renderer'] == fingerprint['gpu']['renderer']
@@ -175,6 +177,18 @@ def test_the_window_is_carried_by_switches_and_fits_the_screen(options):
 
 def test_a_fixed_window_size(options):
     launch = options(os='windows', window=(1200, 800), screen=Screen(min_width=1920, min_height=1080))
+    assert '--window-size=1200,800' in launch['args']
+
+
+def test_a_fixed_window_is_kept_when_a_zoomed_ratio_is_repaired(options):
+    # The repair rescales the record's CSS sizes to the display's scale; the
+    # caller's window is not the record's and stays as asked.
+    fingerprint = utils.draw_fingerprint('windows', Screen(min_width=1920, min_height=1080), None, None)
+    fingerprint = {**fingerprint, 'window': {**fingerprint['window'], 'devicePixelRatio': 1.1}}
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        launch = options(fingerprint=fingerprint, window=(1200, 800))
+    assert config_of(launch)['window.devicePixelRatio'] == 1
     assert '--window-size=1200,800' in launch['args']
 
 
@@ -259,7 +273,7 @@ def test_the_block_options_and_the_cache(options):
 def test_the_voices_are_always_sent_so_the_hosts_never_show(options):
     # Patch 0012 shows the host's voices when the key is absent: a record
     # without voices, and a caller's user agent (no draw), must still send it.
-    fingerprint = {**generate_fingerprint(os='windows'), 'voices': []}
+    fingerprint = {**utils.draw_fingerprint('windows', None, None, None), 'voices': []}
     assert config_of(options(os=None, fingerprint=fingerprint))['voices'] == []
     ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
     with warnings.catch_warnings():

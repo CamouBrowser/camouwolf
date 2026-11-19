@@ -294,7 +294,13 @@ function checkDevicePixelRatio(
  * the zoom that was folded in, so the screen is still the display behind it:
  * 1760x990 at 1.0909 is a 1920x1080 monitor at 1.
  */
-export function repairDevicePixelRatio(config: Config, targetOs: string): void {
+/** `keep` names sizes that are not the record's (a caller's window) and stay
+ * as they are. */
+export function repairDevicePixelRatio(
+	config: Config,
+	targetOs: string,
+	keep: readonly string[] = [],
+): void {
 	const dpr = config["window.devicePixelRatio"];
 	if (!isZoomedRatio(dpr, targetOs)) return;
 	const step = PLAUSIBLE_DPR[targetOs].reduce((best, v) =>
@@ -304,7 +310,8 @@ export function repairDevicePixelRatio(config: Config, targetOs: string): void {
 	const scale = dpr / step;
 	for (const key of CSS_GEOMETRY_KEYS) {
 		const value = config[key];
-		if (typeof value === "number") config[key] = pyRound(value * scale);
+		if (!keep.includes(key) && typeof value === "number")
+			config[key] = pyRound(value * scale);
 	}
 }
 
