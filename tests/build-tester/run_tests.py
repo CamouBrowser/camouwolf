@@ -345,6 +345,11 @@ def compare(claimed: Dict[str, Any], os_name: str, got: Dict[str, Any], probe: D
     # ---- Other surfaces the config names -------------------------------------
     c = out["Other Surfaces"] = {}
     c["canvasStable"] = check(got["canvas"][0] == got["canvas"][1], f"two reads of one drawing differ: {got['canvas']}")
+    # Chrome reports usage + 10 GiB whatever the disk (kStaticStorageQuota), so
+    # any other quota is a patch or the host showing through.
+    storage = got.get("storage") or {}
+    c["storageQuota"] = check(isinstance(storage.get("quota"), int) and storage["quota"] - storage.get("usage", 0) == 10 * 2**30,
+                              f"estimate() {storage}")
     if "mediaDevices:enumerated" in claimed:
         kinds = [str(entry).split("|")[0] for entry in claimed["mediaDevices:enumerated"]]
         c["mediaDevices"] = check(got.get("mediaDevices") == kinds, f"claimed {kinds}, saw {got.get('mediaDevices')}")

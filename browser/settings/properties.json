@@ -200,10 +200,6 @@
     "type": "double"
   },
   {
-    "property": "storage.quota",
-    "type": "double"
-  },
-  {
     "property": "keyboard.layoutMap",
     "type": "array"
   },

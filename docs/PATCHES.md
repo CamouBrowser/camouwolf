@@ -335,13 +335,6 @@ process is never asked for the host layout.
 strong residency signal beside the claimed timezone and exit IP: a "residential
 US" identity reporting 0 ms RTT is reporting a datacenter link.
 
-### 0016 — storage quota
-
-`storage_manager.cc`. Chrome sets the quota to ~60% of free disk, making
-`navigator.storage.estimate().quota` a direct read of host free space — stable,
-high-entropy, and uncorrelated with anything the identity claims. Two
-"different" browsers reporting the same odd quota are the same machine.
-
 ### 0017 — automation invisibility
 
 `runtime_enabled_features.json5`. Makes `AutomationControlled` non-public and
