@@ -16,6 +16,7 @@ from .utils import (
     launch_options,
     launch_os,
     new_context_options,
+    place_at_exit,
     persistent_context_options,
     start_virtual_display,
     warn_addons_without_profile,
@@ -184,7 +185,11 @@ def NewContext(
 
     Parameters:
         browser: A Browser instance from NewBrowser or Camouwolf.
-        proxy: Per-context proxy (Playwright format).
+        proxy: Per-context proxy (Playwright format). The context is placed
+            where it exits: timezone_id and geolocation default to the exit
+            IP's, looked up through the proxy (needs the geoip extra) unless
+            both are given; InvalidIP is raised if the lookup fails. The
+            locale stays the browser's identity's.
         geolocation: Per-context geolocation ({"latitude": float, "longitude": float});
             the permission is granted with it.
         **context_kwargs: Additional Playwright new_context() options, such as
@@ -193,4 +198,5 @@ def NewContext(
             IncoherentIdentity, and Camoufox's per-context identity options
             (preset, os, ff_version, webrtc_ip) raise NotImplementedError.
     """
+    geolocation, context_kwargs = place_at_exit(proxy, geolocation, context_kwargs)
     return browser.new_context(**new_context_options(context_kwargs, proxy, geolocation))

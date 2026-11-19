@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	IncoherentIdentity,
+	InvalidIP,
 	NonChromeFingerprint,
 	NotImplementedError,
 	ValueError,
@@ -314,6 +315,58 @@ describe("NewContext", () => {
 				},
 			],
 		]);
+	});
+});
+
+describe("NewContext behind a proxy", () => {
+	const proxy = {
+		server: "http://203.0.113.5:1",
+		username: "u",
+		password: "p",
+	};
+	let lookedUp: Array<string | undefined>;
+	beforeEach(() => {
+		lookedUp = [];
+		utils.utilsDeps.geoipAllowed = () => undefined;
+		utils.utilsDeps.publicIp = (async (p?: string) => {
+			lookedUp.push(p);
+			return "198.51.100.7";
+		}) as any;
+		utils.utilsDeps.getGeolocation = (async () => ({
+			longitude: 139.7,
+			latitude: 35.7,
+			timezone: "Asia/Tokyo",
+		})) as any;
+	});
+
+	it("is placed where the proxy exits", async () => {
+		// Otherwise the context keeps the launch's timezone and position beside
+		// the proxy's IP.
+		const browser = new FakeBrowser();
+		await NewContext(browser as any, { proxy });
+		await NewContext(browser as any, { proxy, timezoneId: "Asia/Osaka" });
+		expect(lookedUp).toEqual(Array(2).fill("http://u:p@203.0.113.5:1"));
+		const placed = (timezoneId: string) => [
+			"newContext",
+			{
+				proxy,
+				geolocation: { latitude: 35.7, longitude: 139.7 },
+				permissions: ["geolocation"],
+				timezoneId,
+			},
+		];
+		expect(browser.calls).toEqual([placed("Asia/Tokyo"), placed("Asia/Osaka")]);
+	});
+
+	it("throws when the exit lookup fails", async () => {
+		utils.utilsDeps.publicIp = (async () => {
+			throw new InvalidIP("Failed to get IP address");
+		}) as any;
+		const browser = new FakeBrowser();
+		await expect(NewContext(browser as any, { proxy })).rejects.toThrow(
+			InvalidIP,
+		);
+		expect(browser.calls).toEqual([]);
 	});
 });
 

@@ -156,6 +156,60 @@ def test_new_context_places_a_context(launch_kwargs):
     }]
 
 
+
+@pytest.fixture
+def exit_lookup(monkeypatch):
+    """The proxy exits at 198.51.100.7, in Tokyo; records each lookup."""
+    from camouwolf.locales import Geolocation, Locale
+
+    looked_up = []
+
+    def public_ip(proxy=None):
+        looked_up.append(proxy)
+        return '198.51.100.7'
+
+    monkeypatch.setattr(utils, 'geoip_allowed', lambda: None)
+    monkeypatch.setattr(utils, 'public_ip', public_ip)
+    monkeypatch.setattr(utils, 'get_geolocation', lambda ip, geoip_db=None: Geolocation(
+        locale=Locale(language='ja', region='JP'), longitude=139.7, latitude=35.7, timezone='Asia/Tokyo'))
+    return looked_up
+
+
+PROXY = {'server': 'http://203.0.113.5:1', 'username': 'u', 'password': 'p'}
+
+
+def test_a_proxied_context_is_placed_where_the_proxy_exits(exit_lookup):
+    # Otherwise the context keeps the launch's timezone and position beside the
+    # proxy's IP.
+    class AsyncBrowser(FakeBrowser):
+        async def new_context(self, **kwargs):
+            return super().new_context(**kwargs)
+
+    browser, async_browser = FakeBrowser(), AsyncBrowser()
+    sync_api.NewContext(browser, proxy=PROXY)
+    asyncio.run(async_api.AsyncNewContext(async_browser, proxy=PROXY, timezone_id='Asia/Osaka'))
+    assert exit_lookup == ['http://u:p@203.0.113.5:1'] * 2
+    assert browser.contexts + async_browser.contexts == [
+        {'proxy': PROXY, 'geolocation': {'latitude': 35.7, 'longitude': 139.7},
+         'permissions': ['geolocation'], 'timezone_id': 'Asia/Tokyo'},
+        {'proxy': PROXY, 'geolocation': {'latitude': 35.7, 'longitude': 139.7},
+         'permissions': ['geolocation'], 'timezone_id': 'Asia/Osaka'},
+    ]
+
+
+def test_a_failed_exit_lookup_raises(exit_lookup, monkeypatch):
+    from camouwolf.exceptions import InvalidIP
+
+    def unreachable(proxy=None):
+        raise InvalidIP('Failed to get IP address')
+
+    monkeypatch.setattr(utils, 'public_ip', unreachable)
+    browser = FakeBrowser()
+    with pytest.raises(InvalidIP):
+        sync_api.NewContext(browser, proxy=PROXY)
+    assert browser.contexts == []
+
+
 def test_the_async_api_launches_the_same_way(launch_kwargs):
     class AsyncChromium(FakeChromium):
         async def launch(self, **kwargs):

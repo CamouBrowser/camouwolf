@@ -19,6 +19,7 @@ from .utils import (
     launch_options,
     launch_os,
     new_context_options,
+    place_at_exit,
     persistent_context_options,
     start_virtual_display,
     warn_addons_without_profile,
@@ -209,4 +210,7 @@ async def AsyncNewContext(
     browser reads its identity once, per process, from the launch environment.
     See camouwolf.sync_api.NewContext for what a context may and may not set.
     """
+    geolocation, context_kwargs = await asyncio.get_running_loop().run_in_executor(
+        None, place_at_exit, proxy, geolocation, context_kwargs
+    )
     return await browser.new_context(**new_context_options(context_kwargs, proxy, geolocation))
