@@ -15,7 +15,8 @@ is stock. This script joins the three places a key lives:
             not a browser key: the launcher turns it into a switch or a context
             option.
   WRITTEN   keys the launcher names: python/src/camouwolf/{fpgen.yml,
-            clienthints.py, fingerprints.py, utils.py, locales.py, webgl.py}
+            clienthints.py, fingerprints.py, utils.py, webgl.py} and the
+            installed camoucore's locales.py
 
 and fails on:
 
@@ -36,6 +37,7 @@ Run:  python3 scripts/check-config-keys.py [--list]
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import pathlib
 import re
@@ -46,7 +48,19 @@ BROWSER = REPO / "browser"
 LAUNCHER = REPO / "python" / "src" / "camouwolf"
 SCHEMA = BROWSER / "settings" / "properties.json"
 SCHEMA_COPY = LAUNCHER / "data" / "properties.json"
-LAUNCHER_FILES = ("fpgen.yml", "clienthints.py", "fingerprints.py", "utils.py", "locales.py", "webgl.py")
+
+def _core() -> pathlib.Path:
+    """The launcher core's package directory. The locale keys are written there."""
+    spec = importlib.util.find_spec("camoucore")
+    if spec is None or spec.origin is None:
+        sys.exit("camoucore is not installed: pip install the python/ launcher first")
+    return pathlib.Path(spec.origin).parent
+
+
+LAUNCHER_FILES = [
+    *(LAUNCHER / name for name in ("fpgen.yml", "clienthints.py", "fingerprints.py", "utils.py", "webgl.py")),
+    _core() / "locales.py",
+]
 
 # Keys the launcher uses between its own modules and removes before the config
 # is sent. Each names where it is consumed. Anything the launcher names that is
@@ -134,10 +148,9 @@ def written_keys(known: set[str]) -> dict[str, set[str]]:
     produce, and as itself, with a `*`, when it can produce none.
     """
     found: dict[str, set[str]] = {}
-    for name in LAUNCHER_FILES:
-        path = LAUNCHER / name
-        rel = str(path.relative_to(REPO))
-        if name.endswith(".yml"):
+    for path in LAUNCHER_FILES:
+        rel = str(path.relative_to(REPO)) if path.is_relative_to(REPO) else f"camoucore/{path.name}"
+        if path.suffix == ".yml":
             # Mapping values, without a YAML dependency: `  field: some.key`.
             for line in path.read_text().splitlines():
                 value = line.split("#", 1)[0].partition(":")[2].strip().strip("'\"")
