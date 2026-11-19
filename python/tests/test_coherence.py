@@ -95,3 +95,28 @@ def test_a_callers_ratio_is_kept_and_reported():
 
     assert config['window.devicePixelRatio'] == 1.0909 and config['screen.width'] == 1920
     assert [v.kept for v in violations if v.rule == 'device-pixel-ratio'] == [('window.devicePixelRatio',)]
+
+
+APPLE_M2 = 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)'
+INTEL_MAC = 'ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)'
+
+
+def test_a_mac_is_a_machine_apple_made():
+    # fpgen's records include browsers that randomise hardwareConcurrency, and
+    # its screens and GPUs are drawn apart.
+    assert coherence.machine_misfit(APPLE_M2, 'mac', 8, 1512, 982) is None
+    assert coherence.machine_misfit(APPLE_M2, 'mac', 6, 1512, 982)
+    assert coherence.machine_misfit(APPLE_M2, 'mac', 9, 1512, 982)
+    assert coherence.machine_misfit(INTEL_MAC, 'mac', 8, 1440, 900) is None
+    assert coherence.machine_misfit(INTEL_MAC, 'mac', 7, 1440, 900)
+    assert coherence.machine_misfit(INTEL_MAC, 'mac', 8, 1512, 982)
+    assert coherence.machine_misfit(INTEL_MAC, 'win', 7, 1512, 982) is None
+
+
+def test_depth_and_touch_agree_with_the_machine():
+    config = {**windows(), 'screen.colorDepth': 30, 'screen.pixelDepth': 24, 'navigator.maxTouchPoints': 10}
+    assert coherence.apply(config, 'mac') and config['screen.pixelDepth'] == 30
+    assert config['navigator.maxTouchPoints'] == 0
+    assert {'pixel-depth', 'touch-points'}.isdisjoint(rules(coherence.validate(config, 'mac')))
+    # A Windows laptop can have a touchscreen.
+    assert 'touch-points' not in rules(coherence.validate({**windows(), 'navigator.maxTouchPoints': 10}, 'win'))

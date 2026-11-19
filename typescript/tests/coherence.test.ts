@@ -156,4 +156,41 @@ describe("coherence", () => {
 				.map((v) => v.kept),
 		).toEqual([["window.devicePixelRatio"]]);
 	});
+
+	const APPLE_M2 =
+		"ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)";
+	const INTEL_MAC =
+		"ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)";
+
+	it("keeps a Mac to a machine Apple made", () => {
+		// fpgen's records include browsers that randomise hardwareConcurrency,
+		// and its screens and GPUs are drawn apart.
+		const misfit = coherence.machineMisfit;
+		expect(misfit(APPLE_M2, "mac", 8, 1512, 982)).toBeNull();
+		expect(misfit(APPLE_M2, "mac", 6, 1512, 982)).toBeTruthy();
+		expect(misfit(APPLE_M2, "mac", 9, 1512, 982)).toBeTruthy();
+		expect(misfit(INTEL_MAC, "mac", 8, 1440, 900)).toBeNull();
+		expect(misfit(INTEL_MAC, "mac", 7, 1440, 900)).toBeTruthy();
+		expect(misfit(INTEL_MAC, "mac", 8, 1512, 982)).toBeTruthy();
+		expect(misfit(INTEL_MAC, "win", 7, 1512, 982)).toBeNull();
+	});
+
+	it("makes depth and touch agree with the machine", () => {
+		const config = {
+			...windows(),
+			"screen.colorDepth": 30,
+			"screen.pixelDepth": 24,
+			"navigator.maxTouchPoints": 10,
+		};
+		expect(coherence.apply(config, "mac").length).toBeGreaterThan(0);
+		expect(config["screen.pixelDepth"]).toBe(30);
+		expect(config["navigator.maxTouchPoints"]).toBe(0);
+		const left = rules(coherence.validate(config, "mac"));
+		expect(left.has("pixel-depth") || left.has("touch-points")).toBe(false);
+		// A Windows laptop can have a touchscreen.
+		const touch = { ...windows(), "navigator.maxTouchPoints": 10 };
+		expect(rules(coherence.validate(touch, "win")).has("touch-points")).toBe(
+			false,
+		);
+	});
 });

@@ -95,6 +95,10 @@ export function loadDataFile<T = any>(file: string): T {
 /** Values both launchers use, kept in one file (python/src/camouwolf/launcher-constants.json). */
 export interface LauncherConstants {
 	plausibleCoreCounts: number[];
+	appleSiliconCores: number[];
+	intelMacIgpCores: number[];
+	intelMacDgpuExtraCores: number[];
+	appleSiliconPanels: Record<string, [number, number][]>;
 	taskbarHeight: Record<"win" | "mac" | "lin", number>;
 	plausibleDpr: Record<"win" | "mac" | "lin", number[]>;
 	essentialFonts: Record<"win" | "mac" | "lin", string[]>;

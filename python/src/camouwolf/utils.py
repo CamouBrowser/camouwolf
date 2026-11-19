@@ -912,8 +912,14 @@ def draw_fingerprint(
         platform = (fingerprint.get('navigator') or {}).get('platform')
         if platform != clienthints.NAV_PLATFORM.get(drawn_os):
             continue
-        if usable_gpu(fingerprint.get('gpu'), drawn_os):
-            return fingerprint
+        if not usable_gpu(fingerprint.get('gpu'), drawn_os):
+            continue
+        if coherence.machine_misfit(
+            fingerprint['gpu']['renderer'], drawn_os, (fingerprint.get('navigator') or {}).get('hardwareConcurrency'),
+            (fingerprint.get('screen') or {}).get('width'), (fingerprint.get('screen') or {}).get('height'),
+        ):
+            continue
+        return fingerprint
     raise RuntimeError(
         f'fpgen drew no desktop Chrome fingerprint with a usable GPU for os={os!r} in '
         f'{MAX_FINGERPRINT_DRAWS} draws'
