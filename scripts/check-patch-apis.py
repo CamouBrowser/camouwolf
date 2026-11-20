@@ -35,12 +35,16 @@ Exit code is non-zero if anything is wrong, so CI can gate on it.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import pathlib
 import re
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.request
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 PATCHES = REPO / "browser" / "patches"
@@ -197,6 +201,41 @@ GENERATED_PREFIXES = (
 GENERATED_SUFFIXES = ("-blink.h", ".mojom-shared.h", "-inl.h", ".pb.h")
 
 
+class Unverifiable(RuntimeError):
+    """googlesource gave no answer, which is not the same as "no such file"."""
+
+
+def googlesource(path: str, version: str) -> str | None:
+    """A file's text at the pinned tag, or None when googlesource says 404.
+
+    Only a 404 means absent. googlesource throttles shared CI runners, and
+    reading that 429 as "absent" failed real includes and cached the wrong
+    answer. A 429 or 5xx is retried with backoff, then raised.
+    """
+    url = (
+        "https://chromium.googlesource.com/chromium/src/+/refs/tags/"
+        f"{version}/{path}?format=TEXT"
+    )
+    reason = ""
+    for attempt in range(5):
+        wait = 0
+        try:
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                return base64.b64decode(resp.read()).decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            if e.code != 429 and e.code < 500:
+                raise Unverifiable(f"{path}: HTTP {e.code}") from e
+            reason = f"HTTP {e.code}"
+            retry_after = (e.headers or {}).get("Retry-After", "")
+            wait = int(retry_after) if retry_after.isdigit() else 0
+        except urllib.error.URLError as e:
+            reason = str(e.reason)
+        time.sleep(max(wait, 5 * 2**attempt))
+    raise Unverifiable(f"{path}: {reason} after 5 attempts")
+
+
 def deps_managed_roots(version: str, cache: dict, offline: bool) -> set[str]:
     """Directories chromium/src pulls in from OTHER repos via DEPS.
 
@@ -214,18 +253,12 @@ def deps_managed_roots(version: str, cache: dict, offline: bool) -> set[str]:
     if offline:
         return set()
 
-    url = (
-        "https://chromium.googlesource.com/chromium/src/+/refs/tags/"
-        f"{version}/DEPS?format=TEXT"
-    )
-    result = subprocess.run(
-        ["bash", "-c", f"curl -sf '{url}' | base64 -d"],
-        capture_output=True,
-        text=True,
-    )
+    deps = googlesource("DEPS", version)
+    if deps is None:
+        raise Unverifiable(f"DEPS: 404 at {version}")
     roots: set[str] = set()
     # DEPS keys look like  'src/third_party/skia': { ... }  — take the path.
-    for match in re.finditer(r"['\"]src/([^'\"]+)['\"]\s*:", result.stdout):
+    for match in re.finditer(r"['\"]src/([^'\"]+)['\"]\s*:", deps):
         roots.add(match.group(1).rstrip("/"))
     cache[key] = sorted(roots)
     return roots
@@ -258,16 +291,7 @@ def exists_upstream(path: str, version: str, cache: dict, offline: bool) -> bool
     if offline:
         return None
 
-    url = (
-        "https://chromium.googlesource.com/chromium/src/+/refs/tags/"
-        f"{version}/{path}?format=TEXT"
-    )
-    result = subprocess.run(
-        ["curl", "-sfI", "-o", "/dev/null", "-w", "%{http_code}", url],
-        capture_output=True,
-        text=True,
-    )
-    ok = result.stdout.strip() == "200"
+    ok = googlesource(path, version) is not None
     cache[path] = ok
     return ok
 
@@ -517,7 +541,11 @@ def main() -> int:
         print("   ok")
 
     print()
-    includes, checked, skipped = check_includes(version, args.offline, src)
+    try:
+        includes, checked, skipped = check_includes(version, args.offline, src)
+    except Unverifiable as e:
+        print(f"!! googlesource did not answer, so the includes are unverified: {e}")
+        return 1
     where = f"against {src}" if src else "against the mirror + googlesource"
     print(f"-- added includes {where} ({checked} verified, {skipped} not checkable)")
     if includes:

@@ -398,3 +398,40 @@ def test_a_timed_out_command_takes_its_children_with_it(tmp_path: Path) -> None:
             return
         time.sleep(0.1)
     raise AssertionError("the grandchild outlived the timeout")
+
+
+def _patch_apis():
+    spec = importlib.util.spec_from_file_location("patch_apis", REPO_ROOT / "scripts" / "check-patch-apis.py")
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("code", [429, 503])
+def test_a_throttled_include_lookup_is_never_read_as_missing(monkeypatch: pytest.MonkeyPatch, code: int) -> None:
+    import urllib.error
+
+    apis = _patch_apis()
+
+    def throttled(url, timeout):
+        raise urllib.error.HTTPError(url, code, "busy", {}, None)
+
+    monkeypatch.setattr(apis.urllib.request, "urlopen", throttled)
+    monkeypatch.setattr(apis.time, "sleep", lambda _: None)
+    cache: dict = {}
+    with pytest.raises(apis.Unverifiable):
+        apis.exists_upstream("base/values.h", "1.0", cache, offline=False)
+    assert "base/values.h" not in cache
+
+
+def test_only_a_404_means_an_include_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+
+    apis = _patch_apis()
+
+    def missing(url, timeout):
+        raise urllib.error.HTTPError(url, 404, "not found", {}, None)
+
+    monkeypatch.setattr(apis.urllib.request, "urlopen", missing)
+    assert apis.exists_upstream("base/nope.h", "1.0", {}, offline=False) is False
