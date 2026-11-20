@@ -17,7 +17,7 @@ to its renderers' command lines.
 Ported from Kraft's src/switches.ts.
 """
 
-from typing import Dict, Iterable, List, NamedTuple, Tuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Tuple
 
 # Switches Playwright and Puppeteer add that mark the browser as automated.
 # Dropped from the caller's args.
@@ -44,6 +44,22 @@ IGNORED_DEFAULT_ARGS: Tuple[str, ...] = (
     '--disable-extensions',
     '--disable-popup-blocking',
 )
+
+# What Playwright's headless launch tells Blink about the pointer, since a
+# headless browser has no input device: a mouse and nothing else. The launcher
+# states it in its place (headless_pointer_settings), with the touchscreen a touch
+# identity has beside it.
+PLAYWRIGHT_HEADLESS_BLINK_SETTINGS = (
+    '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4'
+)
+
+
+def headless_pointer_settings(config: Dict[str, Any]) -> str:
+    """Playwright's headless pointer, plus the coarse pointer of the
+    touchscreen a touch identity has beside its mouse (ui::PointerType: 2
+    coarse, 4 fine; ui::HoverType: 2 hover)."""
+    pointers = 4 | (2 if config.get('navigator.maxTouchPoints') else 0)
+    return f'--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes={pointers}'
 
 # The features Playwright's Chromium launch disables (playwright-core
 # chromiumSwitches.ts, 1.59-1.62). Chromium reads only the last
@@ -146,7 +162,7 @@ BASE_SWITCHES: Tuple[str, ...] = (
 # occurrence of a repeated switch, so several are merged into one.
 LIST_SWITCHES = frozenset(
     {'--enable-features', '--disable-features', '--enable-blink-features', '--disable-blink-features',
-     '--load-extension'}
+     '--load-extension', '--blink-settings'}
 )
 
 

@@ -16,6 +16,7 @@ components/embedder_support/user_agent_utils.cc
 
 # --- display / locale --------------------------------------------------------
 third_party/blink/renderer/core/frame/screen.cc
+third_party/blink/renderer/core/css/media_values.cc
 third_party/blink/renderer/core/timezone/timezone_controller.cc
 base/i18n/icu_util.cc
 
@@ -80,6 +81,7 @@ chrome/app/chromium_strings.grd
 
 # --- touch points ------------------------------------------------------------
 third_party/blink/renderer/core/events/navigator_events.cc
+content/browser/web_contents/slow_web_preference_cache.cc
 
 # --- device scale factor (window.devicePixelRatio) ---------------------------
 ui/display/display.cc

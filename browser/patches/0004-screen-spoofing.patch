@@ -109,3 +109,38 @@ diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink
    if (!DomWindow()) {
      return false;
    }
+diff --git a/third_party/blink/renderer/core/css/media_values.cc b/third_party/blink/renderer/core/css/media_values.cc
+--- a/third_party/blink/renderer/core/css/media_values.cc
++++ b/third_party/blink/renderer/core/css/media_values.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/core/css/media_values.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/public/common/css/scripting.h"
+ #include "third_party/blink/renderer/core/css/css_resolution_units.h"
+ #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
+@@ -163,6 +164,11 @@
+ }
+ 
+ int MediaValues::CalculateDeviceWidth(LocalFrame* frame) {
++  // CAMOUWOLF: device-width is the screen.width the page reads, or a
++  // matchMedia probe finds the host's screen behind the claimed one.
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.width")) {
++    return *v;
++  }
+   DCHECK(frame && frame->View() && frame->GetSettings() && frame->GetPage());
+   const display::ScreenInfo& screen_info =
+       frame->GetPage()->GetChromeClient().GetScreenInfo(*frame);
+@@ -175,6 +181,11 @@
+ }
+ 
+ int MediaValues::CalculateDeviceHeight(LocalFrame* frame) {
++  // CAMOUWOLF: device-height is the screen.height the page reads, or a
++  // matchMedia probe finds the host's screen behind the claimed one.
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.height")) {
++    return *v;
++  }
+   DCHECK(frame && frame->View() && frame->GetSettings() && frame->GetPage());
+   const display::ScreenInfo& screen_info =
+       frame->GetPage()->GetChromeClient().GetScreenInfo(*frame);

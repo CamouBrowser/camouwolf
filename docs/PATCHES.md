@@ -125,8 +125,9 @@ and `navigator.userAgentData.brands`; `fullVersionList` feeds
 
 ### 0004 — screen
 
-`screen.cc`. Width, height, avail rect, colour depth, pixel depth,
-`isExtended`.
+`screen.cc`, `media_values.cc`. Width, height, avail rect, colour depth, pixel
+depth, `isExtended`, and the `device-width` / `device-height` media features,
+which a `matchMedia` probe would otherwise answer from the host's screen.
 
 `screen.pixelDepth` falls back to `screen.colorDepth` when absent, which is
 Chrome's own invariant; the key exists because Camoufox fingerprints carry both.
@@ -458,13 +459,17 @@ all — which is why the launcher's Windows font manifest always carries it.
 
 ### 0024 — touch points
 
-`navigator_events.cc`. `navigator.maxTouchPoints` from `navigator.maxTouchPoints`.
+`navigator_events.cc`, `slow_web_preference_cache.cc`. `navigator.maxTouchPoints`
+from `navigator.maxTouchPoints`, and the browser's pointer types with it: a
+touchscreen beside a mouse adds a coarse pointer, so a touch identity matches
+`(any-pointer: coarse)` and keeps `(pointer: fine)` and `(hover: hover)`, as on
+a touch laptop. `ontouchstart` is left off: desktop Chrome does not expose the
+touch event handlers even with a touchscreen (touch event feature detection
+defaults to disabled outside Android and iOS).
 
-The count only. `ontouchstart` and the `pointer` / `any-pointer` media features
-come from separate settings the host decides, so a non-zero value is coherent
-only for an identity whose other touch signals the launcher has arranged too
-(`--touch-events=enabled`, or a mobile emulation). Desktop identities leave the
-key out, or write 0.
+Playwright's headless launch states the pointer itself (`--blink-settings`, a
+mouse alone), which overrides these types in the renderer. The launchers drop
+that default and state the same settings with the identity's coarse pointer.
 
 ### 0025 — device scale factor
 

@@ -376,11 +376,37 @@ def test_behind_a_proxy_webrtc_has_the_exit_address(options, places):
 # ---- switches --------------------------------------------------------------
 
 
+def blink_settings(args):
+    """The settings Chromium reads: the last --blink-settings on the line."""
+    found = [a.split('=', 1)[1].split(',') for a in args if a.startswith('--blink-settings=')]
+    assert len(found) == 1, found
+    return found[0]
+
+
+@pytest.mark.parametrize('touch_points, pointers', [(10, '6'), (0, '4')])
+def test_a_headless_touch_identity_has_a_coarse_pointer_beside_its_mouse(options, touch_points, pointers):
+    # Playwright's headless launch states a mouse alone, which on a touch
+    # identity leaves (any-pointer: coarse) unmatched beside maxTouchPoints 10.
+    fingerprint = utils.draw_fingerprint('windows', Screen(min_width=1920, min_height=1080), None, None)
+    fingerprint = {**fingerprint, 'navigator': {**fingerprint['navigator'], 'maxTouchPoints': touch_points}}
+    launch = options(fingerprint=fingerprint, headless=True)
+
+    assert config_of(launch)['navigator.maxTouchPoints'] == touch_points
+    assert f'availablePointerTypes={pointers}' in blink_settings(launch['args'])
+    assert switches.PLAYWRIGHT_HEADLESS_BLINK_SETTINGS in launch['ignore_default_args']
+
+
+def test_a_headed_launch_leaves_the_pointer_to_the_browser(options):
+    launch = options(os='windows', headless=False)
+    assert not any(a.startswith('--blink-settings=') for a in launch['args'])
+    assert switches.PLAYWRIGHT_HEADLESS_BLINK_SETTINGS not in launch['ignore_default_args']
+
+
 def test_the_block_options_and_the_cache(options):
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         args = options(os='linux', block_images=True, block_webrtc=True, block_webgl=True)['args']
-    assert '--blink-settings=imagesEnabled=false' in args
+    assert 'imagesEnabled=false' in blink_settings(args)
     assert '--force-webrtc-ip-handling-policy=disable_non_proxied_udp' in args
     assert '--disable-webgl' in args and '--disable-webgl2' in args
     assert '--disk-cache-size=1' in args
