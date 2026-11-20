@@ -1,12 +1,12 @@
-"""WebRTC stays off the host's own network when the launcher says it should.
+"""WebRTC stays off UDP when the launcher says it should.
 
-With a proxy, the launcher passes `--force-webrtc-ip-handling-policy=
-disable_non_proxied_udp` (also with `block_webrtc=True`). Chrome's full browser
-used to ignore that switch, since only content_shell read it, so a proxied
-launch still sent STUN from this host and showed its public address as the
-srflx candidate (0030). A page sees the policy as the candidates it gets, so
-that is what is checked. No ICE server is needed: an unblocked launch gathers an
-mDNS host candidate with none, and a blocked one gathers nothing.
+With `block_webrtc=True` the launcher passes `--force-webrtc-ip-handling-policy=
+disable_non_proxied_udp`. Chrome's full browser used to ignore that switch,
+since only content_shell read it (0030). A page sees the policy as the
+candidates it gets, so that is what is checked. No ICE server is needed: an
+unblocked launch gathers an mDNS host candidate with none, and a blocked one
+gathers nothing. A proxy alone no longer blocks anything: its WebRTC goes
+through the proxy (0031, tests/native/test_webrtc_proxied.py).
 
 The proxy is never contacted. The policy only needs one to be configured.
 """
@@ -57,14 +57,8 @@ def test_an_unblocked_launch_gathers_a_host_candidate(binary: Path) -> None:
     assert any(" typ host " in c for c in got["candidates"]), got
 
 
-@pytest.mark.parametrize(
-    "proxy, block_webrtc",
-    [(UNREACHABLE_PROXY, None), (None, True)],
-    ids=["proxy", "block_webrtc"],
-)
-def test_a_blocked_launch_gathers_nothing(
-    binary: Path, proxy: Optional[Dict[str, str]], block_webrtc: Optional[bool]
-) -> None:
-    got = gather(binary, proxy=proxy, block_webrtc=block_webrtc)
+@pytest.mark.parametrize("proxy", [None, UNREACHABLE_PROXY], ids=["direct", "proxy"])
+def test_a_blocked_launch_gathers_nothing(binary: Path, proxy: Optional[Dict[str, str]]) -> None:
+    got = gather(binary, proxy=proxy, block_webrtc=True)
     assert got["candidates"] == [], got
     assert got["sdp"] == ["c=IN IP4 0.0.0.0"], got

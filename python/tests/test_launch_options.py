@@ -303,6 +303,18 @@ def test_behind_a_proxy_ipv6_is_left_alone(options, places, monkeypatch):
     assert 'network:ipv4Only' not in config
 
 
+def test_behind_a_proxy_webrtc_has_the_exit_address(options, places):
+    # A machine at the exit: its one adapter has the exit's address (0031).
+    proxy = {'server': 'socks5://203.0.113.9:1'}
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        proxied = config_of(options(os='linux', geoip='203.0.113.5', proxy=proxy))
+        blocked = config_of(options(os='linux', geoip='203.0.113.5', proxy=proxy, block_webrtc=True))
+        direct = config_of(options(os='linux', geoip='203.0.113.5'))
+    assert proxied['webrtc:ipv4'] == '203.0.113.5'
+    assert 'webrtc:ipv4' not in blocked and 'webrtc:ipv4' not in direct
+
+
 # ---- switches --------------------------------------------------------------
 
 
@@ -333,14 +345,13 @@ def test_the_voices_are_always_sent_so_the_hosts_never_show(options):
 POLICY = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
 
 
-def test_a_proxy_keeps_webrtc_on_the_proxied_route_by_default(options):
-    # Otherwise WebRTC's UDP goes around the proxy, and STUN reports the
-    # host's own public IP.
+def test_only_block_webrtc_takes_webrtc_off_udp(options):
+    # A proxied context's UDP goes through the proxy already (0031); the policy
+    # would leave a page no UDP at all, which a machine at the exit has.
     proxy = {'server': 'http://127.0.0.1:8080'}
-    assert POLICY in options(os='linux', proxy=proxy)['args']
+    assert POLICY not in options(os='linux', proxy=proxy)['args']
     assert POLICY not in options(os='linux')['args']
-    with pytest.warns(LeakWarning, match='block_webrtc=False'):
-        assert POLICY not in options(os='linux', proxy=proxy, block_webrtc=False)['args']
+    assert POLICY in options(os='linux', proxy=proxy, block_webrtc=True)['args']
 
 
 def test_a_conflicting_switch_is_refused_or_dropped_when_asked(options):

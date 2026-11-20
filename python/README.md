@@ -67,7 +67,7 @@ instance you own, and `launch_options(...)` returns the options for
 | `humanize` | `True`, or a dict of [myuri](https://pypi.org/project/myuri/) engines per channel. Runs in the driver, as in Camoufox. |
 | `fonts`, `custom_fonts_only` | Extra font families to report installed; or only those. |
 | `addons`, `exclude_addons` | Unpacked extension directories; `DefaultAddons.UBO` is uBlock Origin Lite. Extensions run only with `persistent_context=True`: Chromium runs none in the incognito-like contexts of a non-persistent launch (the launch warns). |
-| `block_images`, `block_webrtc`, `block_webgl`, `enable_cache` | As named. `block_webrtc` is on by default with a proxy, so STUN cannot see the host's IP; `False` warns. |
+| `block_images`, `block_webrtc`, `block_webgl`, `enable_cache` | As named. `block_webrtc` keeps WebRTC to TCP through the proxy. Without it, a proxied launch's WebRTC looks like a machine's at the proxy's exit: UDP goes through a SOCKS5 proxy's relay and through no other proxy, and with `geoip` its address is the exit's. |
 | `chromium_prefs` | Merged into the profile's `Preferences`; needs `persistent_context=True` and `user_data_dir`. |
 | `chrome_version` | Claim another Chromium milestone than the browser's (warns). |
 | `canvas_noise` | Seeded canvas readback noise. Off by default, since stock Chrome has none. |

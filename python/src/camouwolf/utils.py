@@ -1013,8 +1013,9 @@ def launch_options(
         block_images (Optional[bool]):
             Whether to block all images.
         block_webrtc (Optional[bool]):
-            Keep WebRTC from using any route but the proxy's. On by default
-            with a proxy; False with a proxy warns.
+            Keep WebRTC to TCP through the proxy, with no UDP. Without it, a
+            proxied launch's WebRTC is a machine's at the proxy's exit: UDP
+            goes through a SOCKS5 proxy's relay, and through no other proxy.
         block_webgl (Optional[bool]):
             Whether to block WebGL. To prevent leaks, only use this for special cases.
         disable_coop (Optional[bool]):
@@ -1252,6 +1253,10 @@ def launch_options(
         # it places the host where the identity does.
         if not proxy and valid_ipv4(geoip) and not keeps_ipv6(geo_config, geoip_db, i_know_what_im_doing):
             config['network:ipv4Only'] = True
+        # Behind a proxy, WebRTC sees the network of a machine at the exit
+        # (patch 0031): its one adapter has the exit's address.
+        if proxy and not block_webrtc:
+            config.setdefault('webrtc:ipv4' if valid_ipv4(geoip) else 'webrtc:ipv6', geoip)
     elif (
         proxy
         and 'localhost' not in proxy.get('server', '')
@@ -1377,11 +1382,9 @@ def launch_options(
     if block_images:
         LeakWarning.warn(WARNINGS_DATA['block_images'], i_know_what_im_doing)
         args.append('--blink-settings=imagesEnabled=false')
-    # Chromium sends WebRTC's UDP around the proxy, and STUN then reports the
-    # host's public IP; with a proxy, only the proxied route is left by default.
-    if block_webrtc is False and proxy:
-        LeakWarning.warn(WARNINGS_DATA['webrtc_beside_proxy'], i_know_what_im_doing)
-    if block_webrtc or (block_webrtc is None and proxy):
+    # A proxied context's WebRTC already leaves through the proxy (patch 0031);
+    # this keeps it to TCP through the proxy, with no UDP at all.
+    if block_webrtc:
         args.append('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
     if block_webgl:
         LeakWarning.warn(WARNINGS_DATA['block_webgl'], i_know_what_im_doing)

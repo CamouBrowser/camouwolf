@@ -567,56 +567,6 @@ Surfaces that were looked at against 158.0.8127.36 and deliberately left alone,
 with where the hook would go. Nothing here is a guess at an API — these are the
 functions read at the tag.
 
-### WebRTC local address (`webrtc:ipv4`, `webrtc:ipv6`)
-
-No patch, because there is no single place in Chromium where the address a page
-sees can be changed without also changing the address the socket binds.
-
-What a page can read, and where each comes from:
-
-- **Host candidates.** The renderer's interface list arrives in
-  `IpcNetworkManager::OnNetworkListChanged()`
-  (`third_party/blink/renderer/platform/p2p/ipc_network_manager.cc`), which
-  turns each `net::NetworkInterface` into a `webrtc::Network` (`AddIP`,
-  `set_default_local_addresses`). This looks like the hook and is not: the
-  port allocator binds its UDP/TCP sockets to those same addresses through
-  `IpcPacketSocketFactory` (`ipc_socket_factory.cc`), so a substituted address
-  that is not on the host fails to bind and the connection gathers nothing.
-- **mDNS obfuscation.** Without camera/microphone permission a stock Chrome
-  never shows the address at all: `FilteringNetworkManager`
-  (`filtering_network_manager.cc`, `GetNetworks()` / `GetMdnsResponder()`)
-  exposes only the default route, and the candidate's address is replaced by a
-  `<uuid>.local` name from `MdnsResponderAdapter` (`mdns_responder_adapter.cc`).
-  For that case — every page that has not been granted media — the unpatched
-  build already shows what Chrome shows, and there is nothing to spoof.
-- **Server-reflexive candidates.** The address is whatever the STUN server saw.
-  It can be made right only by routing (the proxy), never by a renderer patch.
-
-So the only readers of a real local address are pages holding media
-permission, and for them the value appears in three places that would each need
-the same rewrite, at the boundary to script rather than in the ICE stack:
-
-1. `RTCPeerConnectionHandler::OnIceCandidate()` → `OnIceCandidateImpl()` →
-   `DidGenerateICECandidate()` (`modules/peerconnection/rtc_peer_connection_handler.cc`)
-   — the `icecandidate` event;
-2. `RTCPeerConnectionHandler::OnSessionDescriptionsUpdated()` (same file) — the
-   `a=candidate` and `c=` lines of `localDescription`;
-3. the `local-candidate` entries of `getStats()` (`RTCPeerConnectionHandler::GetStats()`
-   and the report conversion under `modules/peerconnection/`).
-
-That is what Camoufox's `webrtc-ip-spoofing.patch` does on Gecko (rewrite SDP,
-candidates and stats; fabricate a host candidate when none was gathered). A
-Chromium port is three hooks plus the remote side's view: the peer still
-receives the rewritten candidate and will try to connect to it, so the
-rewritten address has to be unroutable-but-plausible or connectivity checks
-change shape. It should be written against a build that can run a loopback
-`RTCPeerConnection` test, not blind.
-
-Until then the control is `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`,
-which the launcher passes with `block_webrtc`, and by default whenever there is
-a proxy (0030 makes the full browser read it); `webrtc:ipv4` stays in
-`KNOWN_DEAD` in `check-config-keys.py`.
-
 ### WebGL context attributes, `:blockIfNotDefined`
 
 See 0007. Camoufox removed both; nothing to port.
@@ -639,8 +589,9 @@ names.
 
 ### 0030 — WebRTC IP handling switch
 
-`chrome/browser/renderer_preferences_util.cc`. The launcher keeps WebRTC to the
-proxy with `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, but at
+`chrome/browser/renderer_preferences_util.cc`. The launcher keeps WebRTC off UDP
+with `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` when asked
+(`block_webrtc=True`; before 0031 it did so for every proxied launch), but at
 158 only `content_shell` and the old headless shell read that switch. The full
 browser takes the policy from the `webrtc.ip_handling_policy` pref alone, so the
 switch did nothing: with a SOCKS proxy set, stock Chrome 147 and this build both
@@ -651,3 +602,48 @@ entries (`0.0.0.0` and `::`, port 9) in `getStats()`.
 
 The switch overrides the pref and clears the per-URL `WebRtcIPHandlingUrl` list,
 as in `content_shell`; a page cannot see which of the two set the policy.
+
+### 0031 — WebRTC behind a proxy (`webrtc:ipv4`, `webrtc:ipv6`)
+
+`services/network/p2p/`, plus `camouwolf_proxied_p2p.{h,cc}` from
+`browser/additions/camouwolfp2p/`. Without it a proxied browser sends STUN and
+media straight from the host, so the srflx candidate is the host's own public
+address. With it, WebRTC in a proxied context looks like Chrome on a machine at
+the proxy's exit.
+
+The browser process's `P2PSocketManager` is per network context, so the route is
+decided per context: on first use it resolves the context's proxy for a probe
+URL.
+
+- **DIRECT**: nothing changes. An unproxied launch gathers what it gathered
+  before.
+- **SOCKS5**: each UDP socket is a `ProxiedUdpSocket`, passed in through
+  `P2PSocketUdp`'s existing socket-factory constructor. It opens a SOCKS5
+  `UDP ASSOCIATE` (RFC 1928) and sends every datagram framed to the relay, so
+  STUN, TURN and media leave from the exit and the srflx candidate is the exit's
+  address. STUN and TURN names are not resolved on the host: `GetHostAddress`
+  answers a placeholder in `240.0.0.0/4`, and the socket sends to that
+  placeholder as a domain name (`ATYP 3`), so the proxy resolves it. A relay
+  that replies with an unspecified, named or private `BND` address (a public
+  proxy behind NAT) is reached at the proxy's own address. The association lives
+  as long as its control connection; when the proxy closes it, the socket fails.
+- **Any other proxy, or no answer**: nothing may leave the host. An HTTP proxy
+  cannot carry UDP, so UDP sockets open with the identity's address and send
+  nothing: the page reads a machine whose UDP is blocked. Only a TURN-over-TCP
+  server is reachable, through the proxy like any other connection.
+
+The interface list the renderer sees is the identity's network, never the
+host's: one adapter, `eth0`, carrying `webrtc:ipv4` (or `webrtc:ipv6`). Local
+sockets bind the wildcard and report that address with their real port, and TCP
+sockets report it too, so host candidates, the SDP and `getStats()` hold the
+identity address. Without media permission the host candidate is still an
+mDNS name, as in stock Chrome; a local peer resolving this browser's own
+`.local` name gets the identity address (`MdnsResponder::AddressForOwnName`).
+Datagrams between two peers on this host still flow: a send to the identity
+address goes to loopback, and loopback sources come back as the identity
+address.
+
+The launcher writes the exit IP from `geoip` to `webrtc:ipv4` or `webrtc:ipv6`
+for a proxied launch. A proxied context without either key has no network and
+gathers no host candidate. `block_webrtc=True` still passes the 0030 switch,
+which leaves a page no UDP at all.

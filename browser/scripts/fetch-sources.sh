@@ -11,6 +11,7 @@
 # Usage:  bash browser/scripts/fetch-sources.sh [dest]
 #           dest defaults to browser/.pristine/<version>
 #         CAMOUWOLF_FILELIST overrides the file list (default: browser/scripts/patched-files.txt)
+#         CAMOUWOLF_SOURCE_BASE overrides the googlesource URL (the self-tests serve one)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -19,7 +20,7 @@ source "$REPO/browser/upstream.sh"
 
 DEST="${1:-$REPO/browser/.pristine/$version}"
 FILELIST="${CAMOUWOLF_FILELIST:-$REPO/browser/scripts/patched-files.txt}"
-BASE="https://chromium.googlesource.com/chromium/src/+/refs/tags/$version"
+BASE="${CAMOUWOLF_SOURCE_BASE:-https://chromium.googlesource.com/chromium/src/+/refs/tags/$version}"
 
 mkdir -p "$DEST"
 echo "==> mirroring Chromium $version -> $DEST"
@@ -35,17 +36,26 @@ while read -r path; do
   mkdir -p "$(dirname "$out")"
   # googlesource serves base64 with ?format=TEXT; it is the only stable way to
   # get raw bytes without cloning 100GB.
-  if curl -sfS "$BASE/$path?format=TEXT" | base64 -d > "$out" 2>/dev/null && [ -s "$out" ]; then
+  # Only a 404 means the file is gone. googlesource throttles shared CI
+  # runners; curl retries its 429/5xx with backoff and Retry-After, as
+  # check-patch-apis.py does.
+  code=$(curl -sS --retry 6 --retry-max-time 300 -o "$out.b64" -w '%{http_code}' "$BASE/$path?format=TEXT" || true)
+  if [ "$code" = 200 ] && base64 -d < "$out.b64" > "$out" 2>/dev/null && [ -s "$out" ]; then
     echo "    fetched $path ($(wc -l < "$out") lines)"
-  else
+    rm -f "$out.b64"
+    continue
+  elif [ "$code" = 404 ]; then
     echo "    MISSING $path — file moved or renamed upstream" >&2
-    rm -f "$out"
+    fail=1
+  else
+    echo "    FAILED  $path — googlesource answered ${code:-nothing}" >&2
     fail=1
   fi
+  rm -f "$out" "$out.b64"
 done < "$FILELIST"
 
 if [ "$fail" != 0 ]; then
-  echo "==> some files could not be fetched; reconcile browser/scripts/patched-files.txt" >&2
+  echo "==> some files could not be fetched: reconcile browser/scripts/patched-files.txt for MISSING ones" >&2
   exit 1
 fi
 echo "==> ok"

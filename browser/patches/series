@@ -104,3 +104,10 @@
 # which only content_shell reads; the full browser reads the pref. Without this
 # a proxied launch sent STUN from the host and exposed its address.
 0030-webrtc-ip-handling-switch.patch
+
+# --- WebRTC behind a proxy ----------------------------------------------------
+# A proxied context's WebRTC is a machine's at the proxy's exit: the identity's
+# network (webrtc:ipv4, webrtc:ipv6), UDP through the SOCKS5 proxy's UDP
+# ASSOCIATE relay, names resolved by the proxy, and no UDP at all through a
+# proxy that carries none. Adds browser/additions/camouwolfp2p.
+0031-webrtc-proxied-exit.patch

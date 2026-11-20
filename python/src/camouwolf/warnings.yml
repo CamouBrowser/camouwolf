@@ -30,10 +30,6 @@ proxy_without_geoip: >-
     When using a proxy, it is heavily recommended that you pass `geoip=True`.
 
 
-webrtc_beside_proxy: >-
-    block_webrtc=False with a proxy lets WebRTC send UDP straight from this host,
-    so a STUN server sees its real public IP beside the proxy's.
-
 block_webgl: >-
     Disabling WebGL is not recommended. Many WAFs will check if WebGL is enabled.
 

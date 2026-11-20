@@ -435,3 +435,53 @@ def test_only_a_404_means_an_include_is_missing(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(apis.urllib.request, "urlopen", missing)
     assert apis.exists_upstream("base/nope.h", "1.0", {}, offline=False) is False
+
+
+# ---------------------------------------------------------------- fetch-sources
+
+
+def test_fetch_sources_retries_a_throttled_file_and_reads_only_404_as_missing(tmp_path: Path) -> None:
+    """A 429 from googlesource is the shared runner being throttled, not a moved file."""
+    import base64
+    import http.server
+    import subprocess
+    import threading
+
+    throttled = {"once": True}
+
+    class Gitiles(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path.startswith("/busy.cc") and throttled.pop("once", False):
+                self.send_response(429)
+                self.send_header("Retry-After", "0")
+                self.end_headers()
+                return
+            if self.path.startswith("/gone.cc"):
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(base64.b64encode(b"int x;\n"))
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Gitiles)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        def fetch(*paths: str) -> subprocess.CompletedProcess:
+            files = tmp_path / "files.txt"
+            files.write_text("\n".join(paths) + "\n")
+            env = {"PATH": "/usr/bin:/bin", "CAMOUWOLF_FILELIST": str(files),
+                   "CAMOUWOLF_SOURCE_BASE": f"http://127.0.0.1:{server.server_port}"}
+            return subprocess.run(["bash", str(REPO_ROOT / "browser" / "scripts" / "fetch-sources.sh"), str(tmp_path / "m")],
+                                  env=env, capture_output=True, text=True, timeout=120)
+
+        ok = fetch("busy.cc")
+        assert ok.returncode == 0, ok.stderr
+        assert (tmp_path / "m" / "busy.cc").read_text() == "int x;\n"
+        gone = fetch("gone.cc")
+        assert gone.returncode == 1 and "MISSING gone.cc" in gone.stderr, gone.stderr
+        assert not (tmp_path / "m" / "gone.cc").exists()
+    finally:
+        server.shutdown()
