@@ -595,7 +595,10 @@ describe.skipIf(!MODEL.ok)("geoip without a proxy", () => {
 		places[ipv6] = AMSTERDAM;
 		const warn = vi.spyOn(warnings.LeakWarning, "warn");
 		expect((await launch())["network:ipv4Only"]).toBe(true);
-		expect(warn).toHaveBeenCalledWith("ipv6_elsewhere", false);
+		expect(warn).toHaveBeenCalledWith(
+			warnings.loadWarnings().ipv6_elsewhere,
+			false,
+		);
 	});
 
 	it("leaves IPv6 alone behind a proxy", async () => {
