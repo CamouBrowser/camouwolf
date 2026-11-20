@@ -83,6 +83,7 @@ import {
 import {
 	auditSwitches,
 	IGNORED_DEFAULT_ARGS,
+	LAUNCHER_DISABLED_FEATURES,
 	mergeListSwitches,
 	PLAYWRIGHT_DISABLED_FEATURES,
 } from "./switches.js";
@@ -1896,13 +1897,16 @@ export async function launchOptions({
 		args.push(
 			`--load-extension=${addons.map((p) => path.resolve(p)).join(",")}`,
 		);
-		// Chrome 137+ ignores --load-extension unless this feature is off. A
-		// repeated --disable-features replaces Playwright's own list (Chromium
-		// reads the last one), so that list is restated with it.
-		args.push(
-			`--disable-features=${[...PLAYWRIGHT_DISABLED_FEATURES, "DisableLoadExtensionCommandLineSwitch"].join(",")}`,
-		);
 	}
+	// A repeated --disable-features replaces Playwright's own list (Chromium
+	// reads the last one), so that list is restated with the launcher's.
+	const disabled = [
+		...PLAYWRIGHT_DISABLED_FEATURES,
+		...LAUNCHER_DISABLED_FEATURES,
+	];
+	// Chrome 137+ ignores --load-extension unless this feature is off.
+	if (addons.length) disabled.push("DisableLoadExtensionCommandLineSwitch");
+	args.push(`--disable-features=${disabled.join(",")}`);
 
 	const audit = auditSwitches(args, !i_know_what_im_doing);
 	let launchArgs = audit.args;

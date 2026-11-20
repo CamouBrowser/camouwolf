@@ -69,6 +69,12 @@ PLAYWRIGHT_DISABLED_FEATURES: Tuple[str, ...] = (
     'msEdgeUpdateLaunchServicesPreferredVersion',
 )
 
+# Disabled by Playwright after 1.62 (microsoft/playwright#43877). Chromium 158
+# auto-enables HTTPS-First balanced mode, which upgrades an http:// navigation
+# and fails it with ERR_BLOCKED_BY_CLIENT when the upgrade does not connect.
+# The launcher restates the list with these on every launch.
+LAUNCHER_DISABLED_FEATURES: Tuple[str, ...] = ('HttpsFirstBalancedModeAutoEnable',)
+
 # Switches that change web-visible behaviour: cross-origin reads without CORS,
 # no site isolation, and so on. A page can test for each directly.
 BEHAVIOR_CHANGING_SWITCHES = frozenset(
