@@ -41,7 +41,7 @@ the launcher and is never set in a workflow.
 | `ci.run_pythonlib` | `pythonlib` | no | `python/tests` |
 | `ci.run_typescript` | `typescript` | no | `typescript/`: frozen install, `tsc`, biome, build, the pack check, vitest. Needs Node 22.15 or newer and pnpm |
 | `ci.run_prepare` | `prepare` | builds | `browser/scripts/build.sh` with `CAMOUWOLF_STAGES="sync patch"`; network failures are retried, a patch that does not apply is not |
-| `ci.run_build` | `build` | builds | `build.sh`, then `scripts/release-camouwolf.sh --skip-build --no-release`, then the archive's checksum |
+| `ci.run_build` | `build` | builds | `build.sh`, then `restore-fonts.sh`, then `scripts/release-camouwolf.sh --skip-build --no-release`, then the archive's checksum |
 | `ci.run_install` | `install` | yes | Unpacks the archive (or takes `--binary`), checks the layout and `version.json`, runs `--version`, launches once. Prints and outputs `binary` |
 | `ci.run_skiplist_audit` | `skiplist_audit` | yes | Runs every `ci/skiplist.yml` entry with the skiplist empty; an entry that passes is stale and fails the audit |
 | `ci.run_build_tester` | `build_tester` | yes | `tests/build-tester`: what a page reads against what the launcher claimed, over several drawn identities and locales (`ci/build-tester.yml`) |
@@ -128,8 +128,9 @@ Chromium checkout or a built browser runs on a self-hosted runner labelled
   under test).
 
 The runner needs `depot_tools` prerequisites, Xvfb, Python 3.11+, about 150 GB
-of disk, and the variable `CAMOUWOLF_BUILD_DIR` pointing at a directory that
-persists between runs. Branch protection requires one check, **All tests
+of disk, the variable `CAMOUWOLF_BUILD_DIR` pointing at a directory that
+persists between runs, and `CAMOUWOLF_FONT_CACHE` in its environment, naming the
+directory that holds `fonts-<os>.tar` (the build fails without it). Branch protection requires one check, **All tests
 passed** (`ci/branch-protection.json`); when the browser tiers did not run, the
 summary says so.
 
