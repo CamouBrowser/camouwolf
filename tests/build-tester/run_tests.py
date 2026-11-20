@@ -145,13 +145,41 @@ def brand_set(brands: Any) -> List[tuple]:
     return sorted((b.get("brand"), b.get("version")) for b in (brands or []))
 
 
+def served_languages(options: Dict[str, Any]) -> Optional[List[str]]:
+    """What an off-the-record context (browser.new_page) serves for the
+    --accept-lang the launcher passed: language_prefs.cc GetIncognitoLanguageList,
+    which keeps a one-language list and swaps a longer one for Chrome's default
+    list of its first language."""
+    from camouwolf.utils import CHROME_LANGUAGES  # noqa: PLC0415
+
+    passed = next((arg.split("=", 1)[1].split(",") for arg in options.get("args") or []
+                   if arg.startswith("--accept-lang=")), None)
+    if not passed or len(passed) == 1:
+        return passed
+    lists = CHROME_LANGUAGES["lists"]
+    return list(lists.get(passed[0]) or [passed[0], *lists[CHROME_LANGUAGES["fallback"]]])
+
+
+def header_languages(languages: List[str]) -> List[str]:
+    """The Accept-Language list Chrome sends for `languages`: net::HttpUtil::
+    ExpandLanguageList adds a base language after the last tag of its family."""
+    out: List[str] = []
+    for i, tag in enumerate(languages):
+        base = tag.split("-")[0]
+        nxt = languages[i + 1].split("-")[0] if i + 1 < len(languages) else None
+        for code in (tag, base) if base not in ("x", "i") and nxt != base else (tag,):
+            if code not in out:
+                out.append(code)
+    return out
+
+
 def offset_minutes(zone: str, when: dt.datetime) -> int:
     """What Date.prototype.getTimezoneOffset() returns in `zone` at `when`."""
     return -int(when.astimezone(ZoneInfo(zone)).utcoffset().total_seconds() // 60)
 
 
-def compare(claimed: Dict[str, Any], os_name: str, got: Dict[str, Any], probe: Dict[str, Any],
-            navigation: Dict[str, str]) -> Results:
+def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, got: Dict[str, Any],
+            probe: Dict[str, Any], navigation: Dict[str, str]) -> Results:
     out: Results = {}
     nav, uad, worker = got["navigator"], got.get("uad") or {}, got.get("worker") or {}
     high = uad.get("high") or {}
@@ -160,10 +188,11 @@ def compare(claimed: Dict[str, Any], os_name: str, got: Dict[str, Any], probe: D
     c = out["Navigator"] = {}
     for prop in ("userAgent", "platform", "hardwareConcurrency", "deviceMemory", "maxTouchPoints"):
         c[prop] = same(claimed, f"navigator.{prop}", nav.get(prop))
-    # Languages are only claimed when a locale was asked for; otherwise the
-    # browser's own default stands and there is nothing to compare it with.
+    # The launcher passes a language list only when a locale was asked for;
+    # otherwise the browser's own default stands and there is nothing to compare.
     c["languages"] = (same(claimed, "navigator.languages", nav.get("languages")) if "navigator.languages" in claimed
-                      else check(bool(nav.get("languages")), f"navigator.languages = {nav.get('languages')}"))
+                      else check(nav.get("languages") == served, f"expected {served}, saw {nav.get('languages')}")
+                      if served else check(bool(nav.get("languages")), f"navigator.languages = {nav.get('languages')}"))
     c["webdriver"] = check(nav.get("webdriver") is False, f"navigator.webdriver = {nav.get('webdriver')!r}")
     ua = str(nav.get("userAgent"))
     token = {"windows": "Windows NT 10.0; Win64; x64", "linux": "X11; Linux x86_64", "macos": "Macintosh; Intel Mac OS X 10_15_7"}[os_name]
@@ -205,7 +234,7 @@ def compare(claimed: Dict[str, Any], os_name: str, got: Dict[str, Any], probe: D
         c[f"{label}UserAgentHeader"] = check(headers.get("user-agent") == ua, f"header {headers.get('user-agent')!r}, navigator {ua!r}")
         c[f"{label}NoHeadlessOnTheWire"] = check("headless" not in json.dumps(headers).lower(), "a header names HeadlessChrome")
         accept = [part.split(";")[0].strip() for part in (headers.get("accept-language") or "").split(",") if part.strip()]
-        c[f"{label}AcceptLanguage"] = check(accept == list(nav.get("languages") or []),
+        c[f"{label}AcceptLanguage"] = check(accept == header_languages(list(nav.get("languages") or [])),
                                             f"header {headers.get('accept-language')!r}, navigator.languages {nav.get('languages')}")
         if label == "workerFetch":
             # Stock Chromium sends no Sec-CH-UA on a dedicated worker's fetch to
@@ -436,7 +465,8 @@ def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, ind
         })
         probe["doubleClick"] = double_click_selection(page)
         profile["results"] = {"Launch": {"launched": check(True)}, **result["checks"],
-                              **compare(claimed, os_name, result["collected"], probe, server.seen.get("navigation") or {})}
+                              **compare(claimed, served_languages(options), os_name, result["collected"], probe,
+                                        server.seen.get("navigation") or {})}
         profile["identity"] = {
             "userAgent": result["collected"]["navigator"]["userAgent"],
             "renderer": (result["collected"]["webgl"].get("webgl") or {}).get("renderer"),

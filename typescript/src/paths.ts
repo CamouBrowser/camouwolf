@@ -21,6 +21,7 @@ export const INSTALL_DIR: string = PRODUCT.cacheDir;
  */
 export const DATA_FILES: readonly string[] = [
 	"browser-pin.json",
+	"data/chrome-languages.json",
 	"data/properties.json",
 	"data/system-colors.json",
 	"data/ubo.json",

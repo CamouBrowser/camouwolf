@@ -276,6 +276,34 @@ def test_build_tester_policy_names_every_category_once() -> None:
     assert emitted == required | reported, (emitted - required - reported, (required | reported) - emitted)
 
 
+def build_tester_module():
+    spec = importlib.util.spec_from_file_location("bt", REPO_ROOT / "tests" / "build-tester" / "run_tests.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("languages, header", [
+    # Measured on Chromium 158: navigator.languages, then the Accept-Language tags.
+    (["ja-JP", "en-US", "en"], ["ja-JP", "ja", "en-US", "en"]),
+    (["fr-FR"], ["fr-FR", "fr"]),
+    (["de-DE", "de", "en-US", "en"], ["de-DE", "de", "en-US", "en"]),
+])
+def test_build_tester_expects_chromes_header_expansion(languages, header) -> None:
+    assert build_tester_module().header_languages(languages) == header
+
+
+@pytest.mark.parametrize("passed, served", [
+    ("de-DE,de", ["de-DE", "de", "en-US", "en"]),
+    ("ja-JP,ja", ["ja-JP", "en-US", "en"]),
+    ("fr-FR", ["fr-FR"]),
+])
+def test_build_tester_expects_the_off_the_record_language_list(passed, served) -> None:
+    options = {"args": ["--lang=x", f"--accept-lang={passed}"]}
+    assert build_tester_module().served_languages(options) == served
+
+
 def test_build_tester_flatten() -> None:
     report = {"profiles": [{"name": "linux-0", "results": {"A": {"x": {"passed": True, "detail": ""}, "y": {"passed": False, "detail": "d"}}}}]}
     assert run_build_tester.flatten(report) == [("linux-0", "A", "x", True, ""), ("linux-0", "A", "y", False, "d")]

@@ -755,9 +755,18 @@ export function keyboardLayoutMap(targetOs: string): string[] | null {
 	];
 }
 
+/** Chrome's default language list per first language (data/chrome-languages.json). */
+export const CHROME_LANGUAGES: {
+	readonly fallback: string;
+	readonly lists: Readonly<Record<string, string[]>>;
+} = loadDataFile("data/chrome-languages.json");
+
 /**
- * navigator.languages for a resolved locale: every listed locale, or the
- * primary one and its bare language ("en-US", "en"), as Chrome's default.
+ * The language list for a resolved locale: every listed locale, or Chrome's
+ * own default list for the primary one (data/chrome-languages.json).
+ *
+ * The default is the list an off-the-record profile serves whatever the user
+ * set, so a Playwright context and a persistent one claim the same list.
  */
 export function languagesFor(localeConfig: Config): string[] | null {
 	const listed = localeConfig["locale:all"];
@@ -770,8 +779,13 @@ export function languagesFor(localeConfig: Config): string[] | null {
 	const language = localeConfig["locale:language"];
 	const region = localeConfig["locale:region"];
 	if (!pyTruthy(language)) return null;
-	const primary = pyTruthy(region) ? `${language}-${region}` : language;
-	return [...new Set<string>([primary, language])];
+	const primary: string = pyTruthy(region) ? `${language}-${region}` : language;
+	// language_prefs.cc GetIncognitoLanguageList: a first language the table
+	// lacks is followed by the en-US list.
+	const known = CHROME_LANGUAGES.lists[primary];
+	return known
+		? [...known]
+		: [primary, ...CHROME_LANGUAGES.lists[CHROME_LANGUAGES.fallback]];
 }
 
 /**
@@ -1421,7 +1435,10 @@ export interface LaunchOptions {
 	 * validated here. */
 	humanize?: HumanizeSetting;
 	/** Locale(s) to use. The first is the browser's UI and Intl locale; all of
-	 * them are navigator.languages and the Accept-Language header. */
+	 * them are navigator.languages and the Accept-Language header. One locale
+	 * claims Chrome's default list for it ("de-DE" is de-DE, de, en-US, en). A
+	 * non-persistent context serves that default for the first of a longer
+	 * list, as Chrome does off the record. */
 	locale?: string | string[];
 	/** Unpacked Chrome extensions (directories holding a manifest.json). */
 	addons?: string[];
@@ -1731,10 +1748,12 @@ export async function launchOptions({
 		localeConfig = {};
 		await handleLocales(locale as string | string[], localeConfig);
 	}
+	// Chrome serves navigator.languages and Accept-Language from one pref, which
+	// --accept-lang sets, so the config does not repeat it: an off-the-record
+	// context swaps the pref's list, and a pinned copy would then disagree.
 	const languages: string[] | null = pyTruthy(config["navigator.languages"])
 		? config["navigator.languages"]
 		: languagesFor(localeConfig);
-	if (pyTruthy(languages)) config["navigator.languages"] = languages;
 
 	// A caller who names the user agent themselves has pinned the identity.
 	if (
