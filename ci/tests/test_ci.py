@@ -86,6 +86,33 @@ def test_merge_launch_keeps_a_tests_own_executable_and_headless() -> None:
     assert merged["ignoreDefaultArgs"] is True
 
 
+def test_remote_servers_launch_the_build_through_the_launcher(monkeypatch, tmp_path) -> None:
+    # Upstream's launch_server fixture hands cli.js a JSON config in a child
+    # process, so the launch wrapper never sees it; unwrapped, it launched a
+    # stock Chromium that was not installed and printed no endpoint.
+    import types
+
+    from ci import browser, pw_camouwolf_plugin
+
+    options = {"executable_path": "/b/camouwolf", "args": ["--a"], "env": {"CAMOU_CONFIG_1": "x"}, "headless": True}
+    monkeypatch.setattr(browser, "launcher_options", lambda *a, **k: options)
+    seen = []
+
+    class RemoteServer:
+        def __init__(self, browser_name, launch_server_options, tmpfile):
+            seen.append((browser_name, launch_server_options))
+
+    conftest = types.SimpleNamespace(RemoteServer=RemoteServer)
+    assert pw_camouwolf_plugin.install_remote_server(Path("/b/camouwolf"), "linux", [conftest])
+    RemoteServer("chromium", {"headless": True, "args": ["--t"]}, tmp_path / "s.json")
+    RemoteServer("firefox", {"headless": True}, tmp_path / "f.json")
+    assert seen[0][1]["executablePath"] == "/b/camouwolf"
+    assert seen[0][1]["args"] == ["--a", "--t"]
+    assert seen[0][1]["env"] == {"CAMOU_CONFIG_1": "x"}
+    assert seen[1][1] == {"headless": True}
+    assert not pw_camouwolf_plugin.install_remote_server(Path("/b/camouwolf"), "linux", [types.SimpleNamespace()])
+
+
 def test_shards_partition_the_suite() -> None:
     ids = [f"tests/async/test_{i}.py::test_{j}" for i in range(40) for j in range(10)]
     total = 6

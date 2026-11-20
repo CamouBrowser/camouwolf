@@ -17,7 +17,8 @@ breaking us. Three jobs:
 
    There is no second "world" to choose here. On Chromium the launcher leaves
    Playwright's evaluation where upstream expects it, so the suite runs once, as
-   shipped.
+   shipped. Upstream's `RemoteServer` launches in a child process, so its
+   config is given the same options (`install_remote_server`).
 
 2. **Apply `ci/skiplist.yml`.** Deselects, rather than xfails, the tests
    Camouwolf cannot pass by design. Deselection keeps them out of the totals
@@ -195,6 +196,41 @@ def _install_launcher(binary: Path, os_name: str) -> None:
         setattr(BrowserType, name, make(original))
 
 
+def install_remote_server(binary: Path, os_name: str, modules: Any) -> bool:  # noqa: ANN401
+    """Give upstream's `RemoteServer` the launcher's options.
+
+    The `launch_server` fixture runs `cli.js launch-server` in a child process,
+    out of reach of the launch wrapper, and the child reads camelCase keys from
+    a JSON config. Unwrapped, it starts Playwright's own Chromium. `modules` are
+    the loaded conftests; returns whether one held a `RemoteServer`.
+    """
+    from .browser import launcher_options
+
+    found = False
+    for module in modules:
+        server = getattr(module, "RemoteServer", None)
+        if not isinstance(server, type):
+            continue
+        found = True
+        if getattr(server.__init__, "_camouwolf_wrapped", False):
+            continue
+
+        def make(original: Any):  # noqa: ANN401
+            def wrapper(self, browser_name: str, launch_server_options: Dict, *args: Any, **kwargs: Any):  # noqa: ANN401
+                if browser_name == "chromium":
+                    options = launcher_options(
+                        binary, os_name=os_name, headless=launch_server_options.get("headless") is not False
+                    )
+                    launch_server_options = merge_launch(launch_server_options, options)
+                return original(self, browser_name, launch_server_options, *args, **kwargs)
+
+            wrapper._camouwolf_wrapped = True  # type: ignore[attr-defined]
+            return wrapper
+
+        server.__init__ = make(server.__init__)
+    return found
+
+
 # ---------------------------------------------------------------------------
 # hooks
 # ---------------------------------------------------------------------------
@@ -221,6 +257,19 @@ def pytest_configure(config) -> None:  # noqa: ANN001
 
 
 def pytest_collection_modifyitems(config, items) -> None:  # noqa: ANN001
+    import sys
+
+    conftests = [m for m in list(sys.modules.values()) if (getattr(m, "__file__", None) or "").endswith("conftest.py")]
+    binary = os.environ.get(_EXECUTABLE_ENV)
+    if (
+        binary
+        and not install_remote_server(Path(os.path.abspath(binary)), getattr(config, "_camouwolf_os", "linux"), conftests)
+        and any("launch_server" in getattr(item, "fixturenames", ()) for item in items)
+    ):
+        raise RuntimeError(
+            "tests use launch_server but no conftest defines RemoteServer: upstream moved it, "
+            "and its server would launch a stock Chromium"
+        )
     entries = getattr(config, "_camouwolf_skiplist", [])
     shard = getattr(config, "_camouwolf_shard", None)
     skipped: Dict[str, str] = getattr(config, "_camouwolf_skipped", {})
