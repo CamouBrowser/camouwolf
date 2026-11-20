@@ -121,50 +121,26 @@ class ProxiedUdpSocket final : public net::DatagramServerSocket {
   int GetLocalAddress(net::IPEndPoint* address) const override;
   void Close() override;
 
-  int SetReceiveBufferSize(int32_t size) override {
-    return socket_->SetReceiveBufferSize(size);
-  }
-  int SetSendBufferSize(int32_t size) override {
-    return socket_->SetSendBufferSize(size);
-  }
-  void AllowAddressReuse() override { socket_->AllowAddressReuse(); }
-  void AllowBroadcast() override { socket_->AllowBroadcast(); }
-  void AllowAddressSharingForMulticast() override {
-    socket_->AllowAddressSharingForMulticast();
-  }
-  int JoinGroup(const net::IPAddress& group_address) const override {
-    return socket_->JoinGroup(group_address);
-  }
-  int LeaveGroup(const net::IPAddress& group_address) const override {
-    return socket_->LeaveGroup(group_address);
-  }
-  int SetMulticastInterface(uint32_t interface_index) override {
-    return socket_->SetMulticastInterface(interface_index);
-  }
-  int SetMulticastTimeToLive(int time_to_live) override {
-    return socket_->SetMulticastTimeToLive(time_to_live);
-  }
-  int SetMulticastLoopbackMode(bool loopback) override {
-    return socket_->SetMulticastLoopbackMode(loopback);
-  }
-  int SetDiffServCodePoint(net::DiffServCodePoint dscp) override {
-    return socket_->SetDiffServCodePoint(dscp);
-  }
-  void DetachFromThread() override { socket_->DetachFromThread(); }
-  int GetPeerAddress(net::IPEndPoint* address) const override {
-    return socket_->GetPeerAddress(address);
-  }
-  void UseNonBlockingIO() override { socket_->UseNonBlockingIO(); }
-  int SetDoNotFragment() override { return socket_->SetDoNotFragment(); }
-  int SetRecvTos() override { return socket_->SetRecvTos(); }
-  int SetTos(net::DiffServCodePoint dscp, net::EcnCodePoint ecn) override {
-    return socket_->SetTos(dscp, ecn);
-  }
-  void SetMsgConfirm(bool confirm) override { socket_->SetMsgConfirm(confirm); }
-  const net::NetLogWithSource& NetLog() const override {
-    return socket_->NetLog();
-  }
-  net::DscpAndEcn GetLastTos() const override { return socket_->GetLastTos(); }
+  int SetReceiveBufferSize(int32_t size) override;
+  int SetSendBufferSize(int32_t size) override;
+  void AllowAddressReuse() override;
+  void AllowBroadcast() override;
+  void AllowAddressSharingForMulticast() override;
+  int JoinGroup(const net::IPAddress& group_address) const override;
+  int LeaveGroup(const net::IPAddress& group_address) const override;
+  int SetMulticastInterface(uint32_t interface_index) override;
+  int SetMulticastTimeToLive(int time_to_live) override;
+  int SetMulticastLoopbackMode(bool loopback) override;
+  int SetDiffServCodePoint(net::DiffServCodePoint dscp) override;
+  void DetachFromThread() override;
+  int GetPeerAddress(net::IPEndPoint* address) const override;
+  void UseNonBlockingIO() override;
+  int SetDoNotFragment() override;
+  int SetRecvTos() override;
+  int SetTos(net::DiffServCodePoint dscp, net::EcnCodePoint ecn) override;
+  void SetMsgConfirm(bool confirm) override;
+  const net::NetLogWithSource& NetLog() const override;
+  net::DscpAndEcn GetLastTos() const override;
 
  private:
   enum class State { kAssociating, kRelaying, kClosed };

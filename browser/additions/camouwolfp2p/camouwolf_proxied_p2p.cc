@@ -283,6 +283,86 @@ int ProxiedUdpSocket::Listen(const net::IPEndPoint& address) {
   return net::OK;
 }
 
+int ProxiedUdpSocket::SetReceiveBufferSize(int32_t size) {
+  return socket_->SetReceiveBufferSize(size);
+}
+
+int ProxiedUdpSocket::SetSendBufferSize(int32_t size) {
+  return socket_->SetSendBufferSize(size);
+}
+
+void ProxiedUdpSocket::AllowAddressReuse() {
+  socket_->AllowAddressReuse();
+}
+
+void ProxiedUdpSocket::AllowBroadcast() {
+  socket_->AllowBroadcast();
+}
+
+void ProxiedUdpSocket::AllowAddressSharingForMulticast() {
+  socket_->AllowAddressSharingForMulticast();
+}
+
+int ProxiedUdpSocket::JoinGroup(const net::IPAddress& group_address) const {
+  return socket_->JoinGroup(group_address);
+}
+
+int ProxiedUdpSocket::LeaveGroup(const net::IPAddress& group_address) const {
+  return socket_->LeaveGroup(group_address);
+}
+
+int ProxiedUdpSocket::SetMulticastInterface(uint32_t interface_index) {
+  return socket_->SetMulticastInterface(interface_index);
+}
+
+int ProxiedUdpSocket::SetMulticastTimeToLive(int time_to_live) {
+  return socket_->SetMulticastTimeToLive(time_to_live);
+}
+
+int ProxiedUdpSocket::SetMulticastLoopbackMode(bool loopback) {
+  return socket_->SetMulticastLoopbackMode(loopback);
+}
+
+int ProxiedUdpSocket::SetDiffServCodePoint(net::DiffServCodePoint dscp) {
+  return socket_->SetDiffServCodePoint(dscp);
+}
+
+void ProxiedUdpSocket::DetachFromThread() {
+  socket_->DetachFromThread();
+}
+
+int ProxiedUdpSocket::GetPeerAddress(net::IPEndPoint* address) const {
+  return socket_->GetPeerAddress(address);
+}
+
+void ProxiedUdpSocket::UseNonBlockingIO() {
+  socket_->UseNonBlockingIO();
+}
+
+int ProxiedUdpSocket::SetDoNotFragment() {
+  return socket_->SetDoNotFragment();
+}
+
+int ProxiedUdpSocket::SetRecvTos() {
+  return socket_->SetRecvTos();
+}
+
+int ProxiedUdpSocket::SetTos(net::DiffServCodePoint dscp, net::EcnCodePoint ecn) {
+  return socket_->SetTos(dscp, ecn);
+}
+
+void ProxiedUdpSocket::SetMsgConfirm(bool confirm) {
+  socket_->SetMsgConfirm(confirm);
+}
+
+const net::NetLogWithSource& ProxiedUdpSocket::NetLog() const {
+  return socket_->NetLog();
+}
+
+net::DscpAndEcn ProxiedUdpSocket::GetLastTos() const {
+  return socket_->GetLastTos();
+}
+
 void ProxiedUdpSocket::OnConnected(int result) {
   if (result != net::OK) {
     Fail();
@@ -517,7 +597,7 @@ int ProxiedUdpSocket::RecvFrom(net::IOBuffer* buf,
 int ProxiedUdpSocket::ReadDatagram() {
   while (true) {
     size_t size = static_cast<size_t>(reader_len_) + kMaxHeader;
-    if (!datagram_ || datagram_->size() < size) {
+    if (!datagram_ || static_cast<size_t>(datagram_->size()) < size) {
       datagram_ = base::MakeRefCounted<net::IOBufferWithSize>(size);
     }
     int result = socket_->RecvFrom(
