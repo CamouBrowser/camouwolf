@@ -54,6 +54,8 @@ import {
 	OS_NAMES,
 	raiseScreenToModernFloor,
 	Screen,
+	snapWindowToDevicePixels,
+	windowSwitchBounds,
 } from "./fingerprints.js";
 import { GPU_SWITCHES, GpuDisplay, proveGpu, selectGpu } from "./gpudisplay.js";
 import { type HumanizeSetting, normalize } from "./humanize.js";
@@ -1878,6 +1880,7 @@ export async function launchOptions({
 		fixScreenNoTaskbar(config, targetOs);
 		clampWindowDimensions(config);
 		clampWindowPosition(config);
+		snapWindowToDevicePixels(config);
 	}
 
 	// ---- coherence ---------------------------------------------------------
@@ -1938,21 +1941,32 @@ export async function launchOptions({
 	// The switches the audit refuses from a caller are the ones the launcher
 	// derives from the identity, so the window, the UI language and the
 	// Accept-Language header cannot disagree with it.
+	// Chrome rounds the window through device pixels, so the switches carry the
+	// input it reads back as the claimed window.
+	const dpr = num(config["window.devicePixelRatio"] || 1);
 	const outerWidth = config["window.outerWidth"];
 	const outerHeight = config["window.outerHeight"];
-	if (pyTruthy(outerWidth) && pyTruthy(outerHeight)) {
-		launchArgs.push(
-			`--window-size=${Math.trunc(num(outerWidth))},${Math.trunc(num(outerHeight))}`,
-		);
-	}
 	const screenX = config["window.screenX"];
 	const screenY = config["window.screenY"];
-	if (
+	const hasPosition =
 		screenX !== null &&
 		screenX !== undefined &&
 		screenY !== null &&
-		screenY !== undefined
-	) {
+		screenY !== undefined;
+	if (pyTruthy(outerWidth) && pyTruthy(outerHeight)) {
+		const [x, width] = windowSwitchBounds(
+			Math.trunc(num(screenX || 0)),
+			Math.trunc(num(outerWidth)),
+			dpr,
+		);
+		const [y, height] = windowSwitchBounds(
+			Math.trunc(num(screenY || 0)),
+			Math.trunc(num(outerHeight)),
+			dpr,
+		);
+		launchArgs.push(`--window-size=${width},${height}`);
+		if (hasPosition) launchArgs.push(`--window-position=${x},${y}`);
+	} else if (hasPosition) {
 		launchArgs.push(
 			`--window-position=${Math.trunc(num(screenX))},${Math.trunc(num(screenY))}`,
 		);

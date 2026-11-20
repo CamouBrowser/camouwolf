@@ -7,10 +7,12 @@ binary really is, and the client hints that milestone and OS imply
 (camouwolf.clienthints).
 """
 
+import math
 import os
+import struct
 from dataclasses import dataclass
 from random import randrange
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from camouwolf.clienthints import retarget_user_agent
 from camouwolf.pkgman import LAUNCHER_CONSTANTS, load_yaml
@@ -222,6 +224,77 @@ def clamp_window_position(config: Dict[str, Any]) -> None:
         config[pos_key] = max(0, min(pos, screen - outer))
 
 
+
+
+def _f32(value: float) -> float:
+    return struct.unpack('f', struct.pack('f', value))[0]
+
+
+def chrome_window_reports(position: int, size: int, dpr: float) -> Tuple[int, int]:
+    """The window position and size, in CSS pixels, Chrome reads back on X11
+    for a window it was asked to open at `position` and `size`.
+
+    The bounds go to device pixels as ToPixelRect (float32, enclosing rect, a
+    0.001 rounding allowance) and come back as ToDIPRect (float32 times
+    1.f/scale, enclosing rect, no allowance), so at 1.75 a 1000 px window is
+    reported 1001 px wide.
+    """
+    scale = _f32(dpr)
+
+    def outward(value: float, rounding: Callable[[float], int]) -> int:
+        nearest = round(value)
+        return nearest if abs(nearest - value) < _f32(0.001) else rounding(value)
+
+    left = _f32(_f32(position) * scale)
+    right = _f32(left + _f32(_f32(size) * scale))
+    left_px, right_px = outward(left, math.floor), outward(right, math.ceil)
+    inverse = _f32(1 / scale)
+    back = _f32(_f32(left_px) * inverse)
+    back_right = _f32(back + _f32(_f32(right_px - left_px) * inverse))
+    return math.floor(back), math.ceil(back_right) - math.floor(back)
+
+
+def _window_inputs(position: int, size: int, dpr: float) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """(switch input, what Chrome reports for it) around `position`, `size`."""
+    return [
+        ((p, z), chrome_window_reports(p, z, dpr))
+        for p in range(max(0, position - 8), position + 3)
+        for z in range(max(1, size - 16), size + 5)
+    ]
+
+
+def snap_window_to_device_pixels(config: Dict[str, Any]) -> None:
+    """Claim the nearest window Chrome can report at its devicePixelRatio.
+
+    At a fractional ratio some positions and sizes are never read back (at 1.75
+    no window reports screenX 7). The claim moves to the nearest one Chrome
+    does report, inside the drawn window's box so it still fits the screen.
+    """
+    dpr = float(config.get('window.devicePixelRatio') or 1)
+    for axis, pos_key in (('Width', 'window.screenX'), ('Height', 'window.screenY')):
+        size_key = f'window.outer{axis}'
+        size, position = config.get(size_key), config.get(pos_key) or 0
+        if not size:
+            continue
+        reachable = [
+            seen for _, seen in _window_inputs(position, size, dpr)
+            if position >= seen[0] >= 0 and seen[0] + seen[1] <= position + size
+        ]
+        if reachable:
+            seen_position, config[size_key] = min(
+                reachable, key=lambda seen: abs(position - seen[0]) + abs(size - seen[1])
+            )
+            if pos_key in config:
+                config[pos_key] = seen_position
+
+
+def window_switch_bounds(position: int, size: int, dpr: float) -> Tuple[int, int]:
+    """The --window-position/--window-size values Chrome reports back as
+    `position`, `size`; the claim itself when no input near it does."""
+    for given, seen in _window_inputs(position, size, dpr):
+        if seen == (position, size):
+            return given
+    return position, size
 
 
 MODERN_SCREEN_FLOOR: Tuple[int, int] = (1366, 768)

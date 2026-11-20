@@ -44,6 +44,8 @@ from .fingerprints import (
     generate_fingerprint,
     handle_window_size,
     raise_screen_to_modern_floor,
+    snap_window_to_device_pixels,
+    window_switch_bounds,
 )
 from camoucore.geolocation import geoip_allowed, get_geolocation
 from .gpudisplay import GPU_SWITCHES, GpuDisplay, async_prove_gpu, prove_gpu, select_gpu
@@ -1380,6 +1382,7 @@ def launch_options(
         fix_screen_no_taskbar(config, target_os)
         clamp_window_dimensions(config)
         clamp_window_position(config)
+        snap_window_to_device_pixels(config)
 
     # ---- coherence ---------------------------------------------------------
     violations = coherence.apply(config, target_os, keep=_caller_keys)
@@ -1429,11 +1432,20 @@ def launch_options(
     # The switches the audit refuses from a caller are the ones the launcher
     # derives from the identity, so the window, the UI language and the
     # Accept-Language header cannot disagree with it.
+    # Chrome rounds the window through device pixels, so the switches carry the
+    # input it reads back as the claimed window.
+    dpr = float(config.get('window.devicePixelRatio') or 1)
     outer_width, outer_height = config.get('window.outerWidth'), config.get('window.outerHeight')
-    if outer_width and outer_height:
-        launch_args.append(f'--window-size={int(outer_width)},{int(outer_height)}')
     screen_x, screen_y = config.get('window.screenX'), config.get('window.screenY')
-    if screen_x is not None and screen_y is not None:
+    if outer_width and outer_height:
+        (x, width), (y, height) = (
+            window_switch_bounds(int(screen_x or 0), int(outer_width), dpr),
+            window_switch_bounds(int(screen_y or 0), int(outer_height), dpr),
+        )
+        launch_args.append(f'--window-size={width},{height}')
+        if screen_x is not None and screen_y is not None:
+            launch_args.append(f'--window-position={x},{y}')
+    elif screen_x is not None and screen_y is not None:
         launch_args.append(f'--window-position={int(screen_x)},{int(screen_y)}')
     if languages:
         launch_args.append(f'--lang={languages[0]}')
