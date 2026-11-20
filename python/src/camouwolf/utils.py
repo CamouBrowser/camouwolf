@@ -63,7 +63,13 @@ from .pkgman import (
     selected_launch_path,
     warn_if_package_outdated,
 )
-from .switches import IGNORED_DEFAULT_ARGS, PLAYWRIGHT_DISABLED_FEATURES, audit_switches, merge_list_switches
+from .switches import (
+    IGNORED_DEFAULT_ARGS,
+    LAUNCHER_DISABLED_FEATURES,
+    PLAYWRIGHT_DISABLED_FEATURES,
+    audit_switches,
+    merge_list_switches,
+)
 from camoucore.virtdisplay import VirtualDisplay
 from .webgl import chrome_gpus, usable_gpu
 
@@ -1396,13 +1402,13 @@ def launch_options(
     if addons:
         confirm_paths(addons)
         args.append('--load-extension=' + ','.join(abspath(path) for path in addons))
-        # Chrome 137+ ignores --load-extension unless this feature is off. A
-        # repeated --disable-features replaces Playwright's own list (Chromium
-        # reads the last one), so that list is restated with it.
-        args.append(
-            '--disable-features='
-            + ','.join([*PLAYWRIGHT_DISABLED_FEATURES, 'DisableLoadExtensionCommandLineSwitch'])
-        )
+    # A repeated --disable-features replaces Playwright's own list (Chromium
+    # reads the last one), so that list is restated with the launcher's.
+    disabled = [*PLAYWRIGHT_DISABLED_FEATURES, *LAUNCHER_DISABLED_FEATURES]
+    if addons:
+        # Chrome 137+ ignores --load-extension unless this feature is off.
+        disabled.append('DisableLoadExtensionCommandLineSwitch')
+    args.append('--disable-features=' + ','.join(disabled))
 
     audit = audit_switches(args, strict=not i_know_what_im_doing)
     launch_args = audit.args

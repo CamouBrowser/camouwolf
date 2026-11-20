@@ -383,8 +383,17 @@ def test_addons_load_unpacked_and_restate_playwrights_disabled_features(options,
     assert '--disable-extensions' in launch['ignore_default_args']
 
 
-def test_no_addons_no_feature_switch(options):
-    assert not [a for a in options(os='linux')['args'] if a.startswith(('--load-extension', '--disable-features'))]
+def test_every_launch_turns_off_https_first_auto_enable(options):
+    # Chromium 158 otherwise upgrades http:// navigations and blocks them when
+    # the upgrade fails, as through an HTTP proxy that refuses CONNECT.
+    args = options(os='linux')['args']
+    assert not [a for a in args if a.startswith('--load-extension')]
+    disabled = [a for a in args if a.startswith('--disable-features=')]
+    assert len(disabled) == 1
+    features = disabled[0].split('=', 1)[1].split(',')
+    assert 'HttpsFirstBalancedModeAutoEnable' in features
+    assert set(switches.PLAYWRIGHT_DISABLED_FEATURES) <= set(features)
+    assert 'DisableLoadExtensionCommandLineSwitch' not in features
 
 
 def test_a_path_that_is_not_an_unpacked_extension_is_refused(options, tmp_path):
