@@ -204,6 +204,14 @@
     "type": "bool"
   },
   {
+    "property": "webrtc:ipv4",
+    "type": "str"
+  },
+  {
+    "property": "webrtc:ipv6",
+    "type": "str"
+  },
+  {
     "property": "keyboard.layoutMap",
     "type": "array"
   },

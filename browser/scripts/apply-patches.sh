@@ -52,6 +52,11 @@ install_if_changed "$REPO/browser/additions/camouwolfucrt/camouwolf_ucrt_math.h"
 install_if_changed "$REPO/browser/additions/camouwolfucrt/camouwolf_ucrt_atan2_tables.h" "$SRC/base/camouwolf/camouwolf_ucrt_atan2_tables.h"
 install_if_changed "$REPO/browser/additions/camouwolfucrt/camouwolf_ucrt_pow_tables.h" "$SRC/base/camouwolf/camouwolf_ucrt_pow_tables.h"
 
+# A proxied context's WebRTC (patch 0031): a SOCKS5 UDP relay socket and the
+# identity's network, whole files with no upstream counterpart.
+install_if_changed "$REPO/browser/additions/camouwolfp2p/camouwolf_proxied_p2p.h" "$SRC/services/network/p2p/camouwolf_proxied_p2p.h"
+install_if_changed "$REPO/browser/additions/camouwolfp2p/camouwolf_proxied_p2p.cc" "$SRC/services/network/p2p/camouwolf_proxied_p2p.cc"
+
 # 2. branding art
 #
 # browser/branding/ mirrors chrome/app/theme/ one-for-one, so this is a plain

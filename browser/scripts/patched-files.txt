@@ -100,3 +100,12 @@ third_party/blink/renderer/core/exported/web_view_impl.cc
 
 # --- WebRTC IP handling policy ---------------------------------------------
 chrome/browser/renderer_preferences_util.cc
+
+# --- WebRTC behind a proxy -------------------------------------------------
+services/network/BUILD.gn
+services/network/mdns_responder.h
+services/network/mdns_responder.cc
+services/network/p2p/socket_manager.h
+services/network/p2p/socket_manager.cc
+services/network/p2p/socket_tcp.h
+services/network/p2p/socket_tcp.cc

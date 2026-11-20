@@ -372,20 +372,19 @@ describe("NewContext behind a proxy", () => {
 });
 
 describe.skipIf(!MODEL.ok)("launchOptions", () => {
-	it("keeps WebRTC on the proxied route by default with a proxy", async () => {
-		// Otherwise WebRTC's UDP goes around the proxy, and STUN reports the
-		// host's own public IP.
+	it("takes WebRTC off UDP only with block_webrtc", async () => {
+		// A proxied context's UDP goes through the proxy already (0031); the
+		// policy would leave a page no UDP at all, which a machine at the exit has.
 		const policy = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp";
 		const proxy = { server: "http://127.0.0.1:8080" };
-		expect((await utils.launchOptions({ ...base(), proxy })).args).toContain(
-			policy,
-		);
+		expect(
+			(await utils.launchOptions({ ...base(), proxy })).args,
+		).not.toContain(policy);
 		expect((await utils.launchOptions(base())).args).not.toContain(policy);
-		const { result, warnings: caught } = await warnings.recordWarnings(() =>
-			utils.launchOptions({ ...base(), proxy, block_webrtc: false }),
-		);
-		expect(result?.args).not.toContain(policy);
-		expect(caught.map((w) => w.message).join()).toContain("block_webrtc=False");
+		expect(
+			(await utils.launchOptions({ ...base(), proxy, block_webrtc: true }))
+				.args,
+		).toContain(policy);
 	});
 
 	it("does not write to the caller's objects", async () => {
@@ -608,6 +607,17 @@ describe.skipIf(!MODEL.ok)("geoip without a proxy", () => {
 		vi.spyOn(warnings.LeakWarning, "warn").mockImplementation(() => {});
 		const config = await launch({ proxy: { server: "http://203.0.113.9:1" } });
 		expect(config).not.toHaveProperty("network:ipv4Only");
+	});
+
+	it("gives WebRTC the exit's address behind a proxy", async () => {
+		// A machine at the exit: its one adapter has the exit's address (0031).
+		const proxy = { server: "socks5://203.0.113.9:1" };
+		vi.spyOn(warnings.LeakWarning, "warn").mockImplementation(() => {});
+		expect((await launch({ proxy }))["webrtc:ipv4"]).toBe("203.0.113.5");
+		expect(await launch()).not.toHaveProperty("webrtc:ipv4");
+		expect(await launch({ proxy, block_webrtc: true })).not.toHaveProperty(
+			"webrtc:ipv4",
+		);
 	});
 });
 
