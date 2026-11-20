@@ -160,7 +160,7 @@ def test_new_context_places_a_context(launch_kwargs):
 @pytest.fixture
 def exit_lookup(monkeypatch):
     """The proxy exits at 198.51.100.7, in Tokyo; records each lookup."""
-    from camouwolf.locales import Geolocation, Locale
+    from camoucore.locales import Geolocation, Locale
 
     looked_up = []
 
