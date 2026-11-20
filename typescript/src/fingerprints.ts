@@ -281,6 +281,102 @@ export function clampWindowPosition(config: Config): void {
 	}
 }
 
+/**
+ * The window position and size, in CSS pixels, Chrome reads back on X11 for a
+ * window it was asked to open at `position` and `size`.
+ *
+ * The bounds go to device pixels as ToPixelRect (float32, enclosing rect, a
+ * 0.001 rounding allowance) and come back as ToDIPRect (float32 times
+ * 1.f/scale, enclosing rect, no allowance), so at 1.75 a 1000 px window is
+ * reported 1001 px wide.
+ */
+export function chromeWindowReports(
+	position: number,
+	size: number,
+	dpr: number,
+): [number, number] {
+	const f = Math.fround;
+	const scale = f(dpr);
+	const outward = (value: number, rounding: (v: number) => number): number => {
+		const nearest = Math.round(value);
+		return Math.abs(nearest - value) < f(0.001) ? nearest : rounding(value);
+	};
+	const left = f(f(position) * scale);
+	const right = f(left + f(f(size) * scale));
+	const leftPx = outward(left, Math.floor);
+	const rightPx = outward(right, Math.ceil);
+	const inverse = f(1 / scale);
+	const back = f(f(leftPx) * inverse);
+	const backRight = f(back + f(f(rightPx - leftPx) * inverse));
+	return [Math.floor(back), Math.ceil(backRight) - Math.floor(back)];
+}
+
+/** (switch input, what Chrome reports for it) around `position`, `size`. */
+function windowInputs(
+	position: number,
+	size: number,
+	dpr: number,
+): [[number, number], [number, number]][] {
+	const out: [[number, number], [number, number]][] = [];
+	for (let p = Math.max(0, position - 8); p < position + 3; p++) {
+		for (let z = Math.max(1, size - 16); z < size + 5; z++) {
+			out.push([[p, z], chromeWindowReports(p, z, dpr)]);
+		}
+	}
+	return out;
+}
+
+/**
+ * Claim the nearest window Chrome can report at its devicePixelRatio.
+ *
+ * At a fractional ratio some positions and sizes are never read back (at 1.75
+ * no window reports screenX 7). The claim moves to the nearest one Chrome
+ * does report, inside the drawn window's box so it still fits the screen.
+ */
+export function snapWindowToDevicePixels(config: Config): void {
+	const dpr = num(config["window.devicePixelRatio"] || 1);
+	for (const [axis, posKey] of [
+		["Width", "window.screenX"],
+		["Height", "window.screenY"],
+	] as const) {
+		const sizeKey = `window.outer${axis}`;
+		const size = config[sizeKey];
+		if (!pyTruthy(size)) continue;
+		const position = num(config[posKey] || 0);
+		let best: [number, number] | undefined;
+		let bestShift = Number.POSITIVE_INFINITY;
+		for (const [, seen] of windowInputs(position, num(size), dpr)) {
+			if (!(position >= seen[0] && seen[0] >= 0)) continue;
+			if (seen[0] + seen[1] > position + num(size)) continue;
+			const shift =
+				Math.abs(position - seen[0]) + Math.abs(num(size) - seen[1]);
+			if (shift < bestShift) {
+				best = seen;
+				bestShift = shift;
+			}
+		}
+		if (best) {
+			config[sizeKey] = best[1];
+			if (posKey in config) config[posKey] = best[0];
+		}
+	}
+}
+
+/**
+ * The --window-position/--window-size values Chrome reports back as
+ * `position`, `size`; the claim itself when no input near it does.
+ */
+export function windowSwitchBounds(
+	position: number,
+	size: number,
+	dpr: number,
+): [number, number] {
+	for (const [given, seen] of windowInputs(position, size, dpr)) {
+		if (seen[0] === position && seen[1] === size) return given;
+	}
+	return [position, size];
+}
+
 /** The smallest screen mainstream hardware still ships. */
 export const MODERN_SCREEN_FLOOR: readonly [number, number] = [1366, 768];
 

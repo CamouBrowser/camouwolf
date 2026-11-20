@@ -15,7 +15,7 @@ from camouwolf.exceptions import (
     UnknownIPLocation,
     UnsupportedOSSpoof,
 )
-from camouwolf.fingerprints import Screen
+from camouwolf.fingerprints import Screen, chrome_window_reports
 
 
 @pytest.fixture(autouse=True)
@@ -165,12 +165,18 @@ def test_stock_chrome_canvas_by_default_and_noise_on_request(options):
 # ---- geometry --------------------------------------------------------------
 
 
+def switch(launch, name):
+    return tuple(int(v) for v in next(a for a in launch['args'] if a.startswith(f'--{name}=')).split('=')[1].split(','))
+
+
 def test_the_window_is_carried_by_switches_and_fits_the_screen(options):
     launch = options(os='windows')
     config = config_of(launch)
 
-    assert f"--window-size={config['window.outerWidth']},{config['window.outerHeight']}" in launch['args']
-    assert f"--window-position={config['window.screenX']},{config['window.screenY']}" in launch['args']
+    dpr = config['window.devicePixelRatio']
+    (x, y), (width, height) = switch(launch, 'window-position'), switch(launch, 'window-size')
+    assert chrome_window_reports(x, width, dpr) == (config['window.screenX'], config['window.outerWidth'])
+    assert chrome_window_reports(y, height, dpr) == (config['window.screenY'], config['window.outerHeight'])
     assert config['window.outerWidth'] <= config['screen.width']
     assert config['window.outerHeight'] <= config['screen.height']
     assert config['screen.availHeight'] <= config['screen.height']
@@ -191,6 +197,37 @@ def test_a_fixed_window_is_kept_when_a_zoomed_ratio_is_repaired(options):
         launch = options(fingerprint=fingerprint, window=(1200, 800))
     assert config_of(launch)['window.devicePixelRatio'] == 1
     assert '--window-size=1200,800' in launch['args']
+
+
+# Windows Chrome opened at 1.75 on X11, (position, size) asked -> read back.
+MEASURED_AT_1_75 = [
+    ((0, 1100), (0, 1100)), ((0, 476), (0, 477)), ((0, 1000), (0, 1001)),
+    ((0, 480), (0, 481)), ((0, 484), (0, 485)), ((0, 800), (0, 801)),
+    ((8, 800), (8, 801)), ((4, 600), (4, 600)), ((0, 1096), (0, 1096)),
+    ((0, 616), (0, 616)), ((4, 476), (4, 477)), ((7, 1104), (6, 1106)),
+    ((7, 479), (6, 481)),
+]
+
+
+@pytest.mark.parametrize('given, seen', MEASURED_AT_1_75)
+def test_the_window_model_is_what_chrome_reported(given, seen):
+    assert chrome_window_reports(*given, 1.75) == seen
+
+
+@pytest.mark.parametrize('dpr', [1.25, 1.5, 1.75, 2.5])
+def test_the_claimed_window_is_the_one_chrome_reports_at_a_fractional_ratio(options, dpr):
+    fingerprint = utils.draw_fingerprint('windows', Screen(min_width=1920, min_height=1080), None, None)
+    # The window a 1.75 profile drew: Chrome opened it and reported 6, 1106.
+    window = {**fingerprint['window'], 'devicePixelRatio': dpr, 'screenX': 7, 'screenY': 7,
+              'outerWidth': 1103, 'outerHeight': 479}
+    launch = options(fingerprint={**fingerprint, 'window': window})
+    config = config_of(launch)
+    position, size = switch(launch, 'window-position'), switch(launch, 'window-size')
+
+    for axis, (pos_key, size_key) in enumerate((('window.screenX', 'window.outerWidth'),
+                                                ('window.screenY', 'window.outerHeight'))):
+        claimed = config[pos_key], config[size_key]
+        assert chrome_window_reports(position[axis], size[axis], dpr) == claimed, (pos_key, claimed)
 
 
 def test_a_fixed_window_larger_than_the_screen_is_brought_within_it(options):
