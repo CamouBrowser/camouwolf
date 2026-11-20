@@ -212,8 +212,10 @@ echo "==> built: $BIN"
 
 # A build that reports its own version but cannot start under CAMOU_CONFIG is
 # worse than one that fails to link, because it looks fine. Smoke it.
+# --no-sandbox as Playwright launches it: a host that restricts unprivileged
+# user namespaces otherwise aborts before the config is read.
 echo "==> config smoke test"
 CAMOU_CONFIG_1='{"navigator.platform":"Win32"}' \
-  "$BIN" --headless=new --disable-gpu --dump-dom about:blank >/dev/null \
+  "$BIN" --headless=new --disable-gpu --no-sandbox --dump-dom about:blank >/dev/null \
   && echo "    ok" \
   || { echo "    FAILED to start with CAMOU_CONFIG set" >&2; exit 1; }
