@@ -43,7 +43,6 @@ third_party/blink/renderer/modules/mediastream/media_devices.cc
 third_party/blink/renderer/modules/speech/speech_synthesis.cc
 third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
 third_party/blink/renderer/modules/netinfo/network_information.cc
-third_party/blink/renderer/modules/quota/storage_manager.cc
 
 # --- automation invisibility -------------------------------------------------
 third_party/blink/renderer/platform/runtime_enabled_features.json5
@@ -87,3 +86,14 @@ ui/display/display.cc
 
 # --- ICU default locale (Intl, toLocaleString) -------------------------------
 base/i18n/icubridge/default_icu_locale.cc
+
+# --- IPv4-only network -------------------------------------------------------
+net/base/ip_address.h
+net/base/ip_address.cc
+net/dns/host_resolver_manager.cc
+net/socket/tcp_client_socket.cc
+net/socket/udp_socket_posix.cc
+third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
+
+# --- platform editing behaviour ----------------------------------------------
+third_party/blink/renderer/core/exported/web_view_impl.cc
