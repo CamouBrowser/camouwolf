@@ -614,7 +614,8 @@ change shape. It should be written against a build that can run a loopback
 
 Until then the control is `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`,
 which the launcher passes with `block_webrtc`, and by default whenever there is
-a proxy; `webrtc:ipv4` stays in `KNOWN_DEAD` in `check-config-keys.py`.
+a proxy (0030 makes the full browser read it); `webrtc:ipv4` stays in
+`KNOWN_DEAD` in `check-config-keys.py`.
 
 ### WebGL context attributes, `:blockIfNotDefined`
 
@@ -635,3 +636,18 @@ editing behaviour and smart insert and delete. A Linux identity, and a launch
 with no config, keep the build's own. The key bindings themselves stay the
 host's: Blink compiles them per platform, and Playwright sends the keys a test
 names.
+
+### 0030 — WebRTC IP handling switch
+
+`chrome/browser/renderer_preferences_util.cc`. The launcher keeps WebRTC to the
+proxy with `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, but at
+158 only `content_shell` and the old headless shell read that switch. The full
+browser takes the policy from the `webrtc.ip_handling_policy` pref alone, so the
+switch did nothing: with a SOCKS proxy set, stock Chrome 147 and this build both
+sent STUN straight from the host and showed its public address as the srflx
+candidate. With the switch honoured, a proxied launch gathers what a real Chrome
+with that policy gathers: no candidates, `c=IN IP4 0.0.0.0`, and two TCP host
+entries (`0.0.0.0` and `::`, port 9) in `getStats()`.
+
+The switch overrides the pref and clears the per-URL `WebRtcIPHandlingUrl` list,
+as in `content_shell`; a page cannot see which of the two set the policy.

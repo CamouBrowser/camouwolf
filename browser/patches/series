@@ -98,3 +98,9 @@
 # Windows or macOS kept Linux's: where Ctrl+Right stops, whether a double-click
 # takes the trailing space, and a middle click that pastes the X11 selection.
 0029-platform-editing-behaviour.patch
+
+# --- WebRTC IP handling policy ----------------------------------------------
+# The launcher keeps WebRTC to the proxy with --force-webrtc-ip-handling-policy,
+# which only content_shell reads; the full browser reads the pref. Without this
+# a proxied launch sent STUN from the host and exposed its address.
+0030-webrtc-ip-handling-switch.patch

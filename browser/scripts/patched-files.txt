@@ -97,3 +97,6 @@ third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
 
 # --- platform editing behaviour ----------------------------------------------
 third_party/blink/renderer/core/exported/web_view_impl.cc
+
+# --- WebRTC IP handling policy ---------------------------------------------
+chrome/browser/renderer_preferences_util.cc
