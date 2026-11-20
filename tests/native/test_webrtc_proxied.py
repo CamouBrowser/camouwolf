@@ -40,6 +40,7 @@ STUN_ADDR = ("198.51.100.1", 3478)
 STUN_NAME = "stun.relay.test"
 MAPPED_IP = "198.51.100.20"
 COOKIE = 0x2112A442
+PAGE = "https://webrtc.test/"
 MEDIA = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"]
 
 GATHER = """async ([urls, capture]) => {
@@ -171,6 +172,7 @@ class Socks5Proxy:
         self.net = net
         self.destinations: List[Tuple[int, str, int]] = []  # (atyp, host, port) relayed
         self.relays: List[Relay] = []
+        self.associations = 0
 
     async def start(self) -> str:
         self.server = await asyncio.start_server(self.serve, "127.0.0.1", 0)
@@ -187,7 +189,9 @@ class Socks5Proxy:
             if cmd != 3:
                 writer.write(b"\x05\x07\x00\x01" + bytes(6))
                 return
-            public = (EXIT, 40000 + len(self.relays))
+            # Taken before the await, so concurrent associations get distinct exit ports.
+            public = (EXIT, 40000 + self.associations)
+            self.associations += 1
             _, relay = await asyncio.get_running_loop().create_datagram_endpoint(
                 lambda: Relay(self, public), local_addr=("127.0.0.1", 0))
             self.relays.append(relay)
@@ -248,8 +252,11 @@ def gather(binary: Path, urls: Any, capture: bool, **kwargs: Any) -> Dict[str, A
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(**launch)
         try:
-            page = browser.new_context(permissions=["microphone"] if capture else []).new_page()
-            page.goto("about:blank")
+            context = browser.new_context(permissions=["microphone"] if capture else [])
+            # getUserMedia needs a secure context; the route answers in-process, so nothing reaches the proxy.
+            context.route(PAGE, lambda route: route.fulfill(body="<!doctype html>", content_type="text/html"))
+            page = context.new_page()
+            page.goto(PAGE)
             return page.evaluate(GATHER, [urls, capture])
         finally:
             browser.close()
