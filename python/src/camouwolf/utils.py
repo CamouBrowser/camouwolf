@@ -78,6 +78,7 @@ ListOrString: TypeAlias = Union[Tuple[str, ...], List[str], str]
 # The schema of the config the browser reads: every key, with its type.
 PROPERTIES_FILE: Path = LOCAL_DATA / 'data' / 'properties.json'
 SYSTEM_COLORS: Dict[str, Dict[str, int]] = orjson.loads((LOCAL_DATA / 'data' / 'system-colors.json').read_bytes())
+CHROME_LANGUAGES: Dict[str, Any] = orjson.loads((LOCAL_DATA / 'data' / 'chrome-languages.json').read_bytes())
 
 # What this host can pass for. A Linux build can render as Windows (the bundled
 # Windows fonts, the UCRT math replica, patches 0019 and 0022); nothing makes a
@@ -483,8 +484,11 @@ def keyboard_layout_map(target_os: str) -> Optional[List[str]]:
 
 
 def languages_for(locale_config: Dict[str, Any]) -> Optional[List[str]]:
-    """navigator.languages for a resolved locale: every listed locale, or the
-    primary one and its bare language ("en-US", "en"), as Chrome's default."""
+    """The language list for a resolved locale: every listed locale, or Chrome's
+    own default list for the primary one (data/chrome-languages.json).
+
+    The default is the list an off-the-record profile serves whatever the user
+    set, so a Playwright context and a persistent one claim the same list."""
     listed = locale_config.get('locale:all')
     if listed:
         return [tag.strip() for tag in listed.split(',') if tag.strip()]
@@ -492,7 +496,9 @@ def languages_for(locale_config: Dict[str, Any]) -> Optional[List[str]]:
     if not language:
         return None
     primary = f'{language}-{region}' if region else language
-    return list(dict.fromkeys([primary, language]))
+    # language_prefs.cc GetIncognitoLanguageList: a first language the table
+    # lacks is followed by the en-US list.
+    return list(CHROME_LANGUAGES['lists'].get(primary) or [primary, *CHROME_LANGUAGES['lists'][CHROME_LANGUAGES['fallback']]])
 
 
 def write_chromium_prefs(user_data_dir: Union[str, Path], prefs: Dict[str, Any]) -> Path:
@@ -1038,7 +1044,10 @@ def launch_options(
             Applied by Camouwolf()/NewBrowser(); only validated here.
         locale (Optional[Union[str, List[str]]]):
             Locale(s) to use. The first is the browser's UI and Intl locale; all
-            of them are navigator.languages and the Accept-Language header.
+            of them are navigator.languages and the Accept-Language header. One
+            locale claims Chrome's default list for it ("de-DE" is de-DE, de,
+            en-US, en). A non-persistent context serves that default for the
+            first of a longer list, as Chrome does off the record.
         addons (Optional[List[str]]):
             Unpacked Chrome extensions (directories holding a manifest.json) to load.
             Chromium runs extensions in the browser's own profile only: use
@@ -1275,9 +1284,10 @@ def launch_options(
     if locale:
         locale_config = {}
         handle_locales(locale, locale_config)
+    # Chrome serves navigator.languages and Accept-Language from one pref, which
+    # --accept-lang sets, so the config does not repeat it: an off-the-record
+    # context swaps the pref's list, and a pinned copy would then disagree.
     languages = config.get('navigator.languages') or languages_for(locale_config)
-    if languages:
-        config['navigator.languages'] = languages
 
     # A caller who names the user agent themselves has pinned the identity.
     if fingerprint is None and 'navigator.userAgent' not in config:

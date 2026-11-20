@@ -220,18 +220,39 @@ def test_a_virtual_display_bounds_the_screen_and_takes_the_window_off_wayland(op
 # ---- locale ----------------------------------------------------------------
 
 
-def test_locale_sets_languages_ui_language_and_the_header_together(options):
-    launch = options(os='linux', locale=['de-DE', 'en-US'])
-    config = config_of(launch)
+def accept_lang(launch):
+    return next(arg.split('=', 1)[1].split(',') for arg in launch['args'] if arg.startswith('--accept-lang='))
 
-    assert config['navigator.languages'][0] == 'de-DE' and 'en-US' in config['navigator.languages']
+
+def test_locale_sets_the_ui_language_and_the_language_pref_together(options):
+    launch = options(os='linux', locale=['de-DE', 'en-US'])
+
+    assert accept_lang(launch) == ['de-DE', 'en-US']
     assert '--lang=de-DE' in launch['args']
-    assert f"--accept-lang={','.join(config['navigator.languages'])}" in launch['args']
     assert launch['env']['LANGUAGE'] == 'de_DE'
 
 
-def test_one_locale_lists_its_bare_language_as_chrome_does(options):
-    assert config_of(options(os='linux', locale='en-US'))['navigator.languages'] == ['en-US', 'en']
+def test_languages_are_left_to_the_pref_chrome_serves_them_from(options):
+    # An off-the-record context swaps the pref's list for Chrome's default; a
+    # copy pinned in the config then disagrees with the Accept-Language header.
+    assert 'navigator.languages' not in config_of(options(os='linux', locale=['de-DE', 'en-US']))
+
+
+@pytest.mark.parametrize('locale, expected', [
+    ('en-US', ['en-US', 'en']),
+    ('de-DE', ['de-DE', 'de', 'en-US', 'en']),
+    ('es-ES', ['es-ES', 'es']),
+    # Not in Chrome's table: the en-US list follows, as language_prefs.cc does.
+    ('ja-JP', ['ja-JP', 'en-US', 'en']),
+])
+def test_one_locale_claims_chromes_default_list_for_it(options, locale, expected):
+    assert accept_lang(options(os='linux', locale=locale)) == expected
+
+
+def test_every_default_list_is_what_an_off_the_record_profile_serves_for_it():
+    lists = utils.CHROME_LANGUAGES['lists']
+    for language, default in lists.items():
+        assert utils.languages_for({'locale:language': default[0]}) == default, language
 
 
 def test_a_proxy_without_geoip_warns(options):
@@ -271,7 +292,7 @@ def test_geoip_places_the_browser_at_the_ip(options, places):
     config = config_of(launch)
 
     assert config['timezone'] == 'Europe/Berlin' and launch['env']['TZ'] == 'Europe/Berlin'
-    assert config['navigator.languages'] == ['de-DE', 'de'] and '--lang=de-DE' in launch['args']
+    assert accept_lang(launch) == ['de-DE', 'de', 'en-US', 'en'] and '--lang=de-DE' in launch['args']
     assert utils.launch_geolocation(launch) == {'latitude': 52.5, 'longitude': 13.4}
 
 
