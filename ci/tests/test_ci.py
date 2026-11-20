@@ -554,3 +554,23 @@ def test_packaging_restores_the_font_bundle_first(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(run_build, "run", fake_run)
     assert run_build.main(["--results-dir", str(tmp_path)]) == 1
     assert calls[-1] == str(run_build.RESTORE_FONTS_SH)  # a failed restore stops before packaging
+
+
+def test_the_suite_interpreter_has_what_tests_native_imports() -> None:
+    # run_native runs tests/native with the suite's interpreter, which once lacked psutil.
+    import ast
+    import sys
+
+    from ci import suite
+
+    native = REPO_ROOT / "tests" / "native"
+    local = {p.stem for p in native.glob("*.py")} | {"ci", "playwright"}
+    imported = set()
+    for path in native.glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                imported |= {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+    third_party = imported - set(sys.stdlib_module_names) - local
+    assert third_party <= set(suite._REQUIRED_MODULES), third_party - set(suite._REQUIRED_MODULES)
