@@ -9,7 +9,7 @@ diff --git a/third_party/blink/renderer/core/events/navigator_events.cc b/third_
  #include "third_party/blink/renderer/core/frame/local_dom_window.h"
  #include "third_party/blink/renderer/core/frame/local_frame.h"
  #include "third_party/blink/renderer/core/frame/navigator.h"
-@@ -38,6 +39,19 @@
+@@ -38,6 +39,16 @@
  namespace blink {
  
  int32_t NavigatorEvents::maxTouchPoints(Navigator& navigator) {
@@ -17,11 +17,8 @@ diff --git a/third_party/blink/renderer/core/events/navigator_events.cc b/third_
 +  // on a server is 0 — right for most desktop identities, wrong for a
 +  // touchscreen laptop (10 on Windows) and for any mobile one. Served ahead of
 +  // the frame lookup so a detached window answers like an attached one.
-+  //
-+  // This is the count only. Whether touch EVENTS exist (`ontouchstart`) and
-+  // what `(any-pointer: coarse)` matches are separate settings the host
-+  // decides, so the launcher writes a non-zero value only for an identity
-+  // whose other touch signals it has also arranged.
++  // `(any-pointer: coarse)` follows it from the browser's pointer types;
++  // `ontouchstart` stays off, as desktop Chrome keeps it with a touchscreen.
 +  if (const auto v =
 +          base::CamouwolfConfig::Get().GetInt("navigator.maxTouchPoints")) {
 +    return *v;
@@ -29,3 +26,34 @@ diff --git a/third_party/blink/renderer/core/events/navigator_events.cc b/third_
    LocalDOMWindow* window = navigator.DomWindow();
    return window ? window->GetFrame()->GetSettings()->GetMaxTouchPoints() : 0;
  }
+diff --git a/content/browser/web_contents/slow_web_preference_cache.cc b/content/browser/web_contents/slow_web_preference_cache.cc
+--- a/content/browser/web_contents/slow_web_preference_cache.cc
++++ b/content/browser/web_contents/slow_web_preference_cache.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "content/browser/web_contents/slow_web_preference_cache.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/no_destructor.h"
+@@ -175,6 +176,19 @@
+ 
+   pointer_events_max_touch_points_ = ui::MaxTouchPoints();
+ 
++  // CAMOUWOLF: the claimed digitizer is a pointer too. A touchscreen beside a
++  // mouse adds a coarse pointer and leaves hover as it was, so a touch
++  // identity matches (any-pointer: coarse) and a touchless one does not.
++  if (const auto touch_points =
++          base::CamouwolfConfig::Get().GetInt("navigator.maxTouchPoints")) {
++    pointer_events_max_touch_points_ = *touch_points;
++    if (*touch_points > 0) {
++      available_pointer_types_ |= ui::POINTER_TYPE_COARSE;
++    } else {
++      available_pointer_types_ &= ~ui::POINTER_TYPE_COARSE;
++    }
++  }
++
+   number_of_cpu_cores_ = base::SysInfo::NumberOfProcessors();
+ 
+   AllPointerTypes all_pointer_types = AllPointerTypes::kNone;

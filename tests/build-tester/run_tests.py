@@ -199,9 +199,12 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
     c["userAgentNamesTheOs"] = check(f"({token})" in ua, f"{os_name} identity, UA {ua}")
     platform = {"windows": "Win32", "linux": "Linux x86_64", "macos": "MacIntel"}[os_name]
     c["platformNamesTheOs"] = check(nav.get("platform") == platform, f"{os_name} identity, platform {nav.get('platform')!r}")
+    # A touch laptop's Chrome reports the digitizer and a coarse pointer, but
+    # desktop Chrome never exposes ontouchstart, touchscreen or not.
     c["touchMatchesMaxTouchPoints"] = check(
-        bool(got["media"]["touchEvents"]) == bool(nav.get("maxTouchPoints")),
-        f"maxTouchPoints {nav.get('maxTouchPoints')}, ontouchstart {got['media']['touchEvents']}")
+        bool(got["media"]["coarsePointer"]) == bool(nav.get("maxTouchPoints")) and not got["media"]["touchEvents"],
+        f"maxTouchPoints {nav.get('maxTouchPoints')}, any-pointer: coarse {got['media']['coarsePointer']}, "
+        f"ontouchstart {got['media']['touchEvents']}")
 
     # ---- Client Hints: JS, and the same identity on the wire ---------------
     c = out["Client Hints"] = {}
