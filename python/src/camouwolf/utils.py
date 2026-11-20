@@ -67,9 +67,11 @@ from .pkgman import (
 )
 from .switches import (
     IGNORED_DEFAULT_ARGS,
+    PLAYWRIGHT_HEADLESS_BLINK_SETTINGS,
     LAUNCHER_DISABLED_FEATURES,
     PLAYWRIGHT_DISABLED_FEATURES,
     audit_switches,
+    headless_pointer_settings,
     merge_list_switches,
 )
 from camoucore.virtdisplay import VirtualDisplay
@@ -1401,6 +1403,8 @@ def launch_options(
     if block_images:
         LeakWarning.warn(WARNINGS_DATA['block_images'], i_know_what_im_doing)
         args.append('--blink-settings=imagesEnabled=false')
+    if headless is True:
+        args.append(headless_pointer_settings(config))
     # A proxied context's WebRTC already leaves through the proxy (patch 0031);
     # this keeps it to TCP through the proxy, with no UDP at all.
     if block_webrtc:
@@ -1483,7 +1487,9 @@ def launch_options(
     if ignored is True:
         ignore_default_args: Any = True
     else:
-        ignore_default_args = list(dict.fromkeys([*IGNORED_DEFAULT_ARGS, *(ignored or [])]))
+        ignore_default_args = list(dict.fromkeys([
+            *IGNORED_DEFAULT_ARGS, *([PLAYWRIGHT_HEADLESS_BLINK_SETTINGS] if headless is True else []), *(ignored or [])
+        ]))
 
     return {
         'executable_path': browser_binary,

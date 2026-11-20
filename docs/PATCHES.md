@@ -467,6 +467,10 @@ a touch laptop. `ontouchstart` is left off: desktop Chrome does not expose the
 touch event handlers even with a touchscreen (touch event feature detection
 defaults to disabled outside Android and iOS).
 
+Playwright's headless launch states the pointer itself (`--blink-settings`, a
+mouse alone), which overrides these types in the renderer. The launchers drop
+that default and state the same settings with the identity's coarse pointer.
+
 ### 0025 — device scale factor
 
 `ui/display/display.cc`. `window.devicePixelRatio`, delivered as the **real**

@@ -40,6 +40,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1854,976",
@@ -54,7 +55,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -82,6 +84,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1600,720",
@@ -97,7 +100,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -123,6 +127,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=2021,986",
@@ -138,7 +143,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -169,6 +175,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=2560,1392",
@@ -184,7 +191,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -213,6 +221,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=6",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1535,823",
@@ -230,7 +239,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -258,6 +268,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1535,815",
@@ -275,7 +286,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -304,6 +316,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1032",
@@ -322,7 +335,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -355,6 +369,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=2460,1155",
@@ -372,7 +387,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -401,6 +417,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=6",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1535,815",
@@ -420,7 +437,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -454,6 +472,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1694,1268",
@@ -472,7 +491,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ],
     "proxy": {
      "server": "http://proxy.example:8080",
@@ -507,6 +527,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1535,815",
@@ -526,7 +547,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -557,6 +579,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1050",
@@ -571,7 +594,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ],
     "proxy": {
      "server": "socks5://proxy.example:1080"
@@ -609,6 +633,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=2788,1684",
@@ -623,7 +648,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ],
     "proxy": {
      "server": "http://127.0.0.1:3128"
@@ -658,6 +684,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1535,815",
@@ -673,7 +700,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -705,6 +733,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=2758,1027",
@@ -719,7 +748,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -753,6 +783,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1032",
@@ -768,7 +799,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -800,6 +832,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1280,720",
@@ -815,7 +848,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -850,6 +884,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=6",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1000,700",
@@ -864,7 +899,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -1007,6 +1043,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1439,815",
@@ -1026,7 +1063,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -1059,6 +1097,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1200,800",
@@ -1073,7 +1112,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -1111,6 +1151,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable"
     ],
@@ -1124,7 +1165,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -1882,6 +1924,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable"
     ],
@@ -1898,7 +1941,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -1927,6 +1971,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1923,921",
@@ -1942,7 +1987,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -1973,6 +2019,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1036",
@@ -1987,7 +2034,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2030,6 +2078,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1535,815",
@@ -2045,7 +2094,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2078,6 +2128,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1032",
@@ -2093,7 +2144,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2126,6 +2178,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1850,1053",
@@ -2140,7 +2193,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2174,6 +2228,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1032",
@@ -2189,7 +2244,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2225,7 +2281,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
-     "--blink-settings=imagesEnabled=false",
+     "--blink-settings=imagesEnabled=false,primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
      "--disable-webgl",
      "--disable-webgl2",
@@ -2242,7 +2298,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2291,6 +2348,7 @@
      "--foo=bar",
      "--disable-features=Translate,AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--enable-features=A,B",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--window-size=1920,1040",
      "--window-position=0,0"
@@ -2306,6 +2364,7 @@
      "--enable-automation",
      "--disable-extensions",
      "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--mute-audio"
     ],
     "slow_mo": 5
@@ -2343,6 +2402,7 @@
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
      "--no-sandbox",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1694,1268",
@@ -2357,7 +2417,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2389,6 +2450,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=2788,1684",
@@ -2428,6 +2490,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1924,966",
@@ -2443,7 +2506,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2476,6 +2540,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1529,846",
@@ -2490,7 +2555,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2521,6 +2587,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1295,1413",
@@ -2535,7 +2602,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [],
@@ -2604,6 +2672,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1374,627",
@@ -2618,7 +2687,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ],
     "timeout": 12000
    },
@@ -2654,6 +2724,7 @@
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
      "--disable-features=Translate,AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable,DisableLoadExtensionCommandLineSwitch",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--load-extension=<FIXTURES>/addon",
      "--window-size=1928,965",
@@ -2669,7 +2740,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2698,6 +2770,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1694,1268",
@@ -2712,7 +2785,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2741,6 +2815,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1417,829",
@@ -2755,7 +2830,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2783,6 +2859,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1903,1552",
@@ -2797,7 +2874,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
@@ -2829,6 +2907,7 @@
      "--metrics-recording-only",
      "--disable-breakpad",
      "--disable-blink-features=AutomationControlled",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1920,1032",
@@ -2844,7 +2923,8 @@
     "ignore_default_args": [
      "--enable-automation",
      "--disable-extensions",
-     "--disable-popup-blocking"
+     "--disable-popup-blocking",
+     "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4"
     ]
    },
    "warnings": [
