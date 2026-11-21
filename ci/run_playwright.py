@@ -11,16 +11,10 @@ This is the functionality gate -- does a patched Chromium still honour the
 automation contract its users hold it to -- and, through the overlay, the
 regression check for the behaviours that are ours alone. Shardable.
 
-Each group runs once, and what failed runs again:
-
-  1. the group, as shipped. Upstream's own reruns are off, so a failure here
-     is one attempt.
-  2. only the failures, up to `--retries` times. A test that passes on a retry
-     is recorded as **flaky**: it counts as a pass for the run, and is named
-     and counted in the result so the size of that set is visible and
-     comparable between runs.
-
-A test failing on every attempt is a plain failure.
+Each group runs once. Upstream's own reruns are off and nothing is retried: a
+test that fails is a failure, and an intermittent one is a non-determinism to
+find. Each launch's identity is seeded from the test that makes it, so a test
+draws the same identity on every run.
 
 Run:
     python3 -m ci.run_playwright --binary path/to/camouwolf
@@ -73,8 +67,8 @@ GROUPS: Tuple[Group, ...] = (
 
 TARGETS: Tuple[str, ...] = tuple(t for g in GROUPS for t in g.targets)
 
-# Upstream's conftest sets `reruns = 3` under $CI, in the same browser. The
-# retry pass below does that job with a count attached.
+# Upstream's conftest sets `reruns = 3` under $CI, which would pass a test that
+# fails twice in three.
 _NO_UPSTREAM_RERUNS = {"CI": ""}
 
 # Left out on purpose, with the reason, so "not run" is never merely implied.
@@ -156,7 +150,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Per pytest invocation, and shorter than the job's timeout-minutes so it can
     # fire before the runner is killed and the uploads with it.
     parser.add_argument("--group-timeout", type=int, default=3600)
-    parser.add_argument("--retries", type=int, default=1, help="rerun failures this many times")
     args = parser.parse_args(argv)
 
     suffix = f"-{args.shard.replace('/', 'of')}" if args.shard else ""
@@ -206,7 +199,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     first_shard = not args.shard or args.shard.split("/")[0] == "1"
     outcomes: Dict[str, str] = {}
     ran: List[Group] = []
-    flaky: List[str] = []
     junits: List[str] = []
     last_code = 0
 
@@ -218,11 +210,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             if args.shard and group.sharded:
                 group_env["CI_SHARD"] = args.shard
 
-            # One pytest cache per group: `lastfailed` keeps entries a run did not
-            # collect, so a shared cache made `--last-failed` select everything or
-            # nothing instead of this group's failures.
-            cache_dir = WORK_DIR / f"pytest-cache{suffix}" / f"{name}-{index}"
-            common = [*BASE_ARGS, "-o", f"cache_dir={cache_dir}"]
+            common = [*BASE_ARGS, "-p", "no:cacheprovider"]
             targets = ", ".join(group.targets)
 
             log(f"group {index + 1}/{len(groups)}: {targets}")
@@ -245,53 +233,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 result.finish(results.ERROR).save(args.results_dir)
                 return 1
             junits.append(group_junit.name)
-            for tid, outcome in part.items():
-                if outcomes.get(tid) != results.PASS:
-                    outcomes[tid] = outcome
+            outcomes.update(part)
             ran.append(group)
-
-            failing = {t for t, o in part.items() if o in (results.FAIL, results.ERROR)}
-            # The guard is load-bearing rather than an optimisation: pytest
-            # declines to filter when nothing it collected previously failed, so
-            # a `--last-failed` pass with an empty cache runs the ENTIRE group
-            # again.
-            for attempt in range(args.retries):
-                if not failing:
-                    break
-                log(f"  retry {attempt + 1}: {len(failing)} test(s) that failed")
-                retry_junit = WORK_DIR / f"junit-{name}-{index}-retry{attempt + 1}.xml"
-                run_pytest(
-                    cwd=cwd,
-                    python=python,
-                    args=[*common, "--last-failed", *group.targets],
-                    junit=retry_junit,
-                    env=group_env,
-                    timeout=args.group_timeout,
-                )
-                junits.append(retry_junit.name)
-                retried = parse_junit(retry_junit)
-                recovered = {t for t in failing if retried.get(t) == results.PASS}
-                for tid in recovered:
-                    outcomes[tid] = results.PASS
-                flaky.extend(sorted(recovered))
-                failing -= recovered
 
     result.metrics["groups"] = len(ran)
     for tid, outcome in outcomes.items():
         result.record(tid, outcome)
-
-    # Published on purpose. These tests pass, so they are invisible in the
-    # failure count, and a suite that needs more retries every week is how an
-    # intermittent browser bug hides.
-    result.metrics["flaky_count"] = len(flaky)
-    result.metrics["flaky"] = sorted(flaky)
-    if flaky:
-        result.note(
-            f"{len(flaky)} test(s) failed once and passed on a retry. They count as passes, "
-            "and each is a failure nobody has explained yet: "
-            + ", ".join(sorted(flaky)[:8])
-            + (" ..." if len(flaky) > 8 else "")
-        )
 
     tally = result.tally()
     result.artifacts.extend(junits)

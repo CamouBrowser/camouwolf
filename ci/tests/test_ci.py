@@ -88,6 +88,28 @@ def test_merge_launch_keeps_a_tests_own_executable_and_headless() -> None:
     assert merged["ignoreDefaultArgs"] is True
 
 
+def test_a_test_draws_the_same_identity_on_every_run(monkeypatch) -> None:
+    # Each launch drew a fresh identity, so a test whose outcome depends on the
+    # drawn devicePixelRatio (wheel deltas, screenshots) passed or failed by luck.
+    import random
+
+    from ci import pw_camouwolf_plugin as plugin
+
+    def run(test: str, launches: int) -> list:
+        monkeypatch.setattr(plugin, "_LAUNCHES", {})
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", f"{test} (setup)")
+        draws = []
+        for _ in range(launches):
+            plugin.seed_draw()
+            draws.append(random.random())
+        return draws
+
+    first = run("tests/async/test_input.py::test_wheel_should_work[chromium]", 2)
+    assert first == run("tests/async/test_input.py::test_wheel_should_work[chromium]", 2)
+    assert first[0] != first[1], "a test's second launch draws its own identity"
+    assert first[0] != run("tests/async/test_input.py::test_other[chromium]", 1)[0]
+
+
 def test_remote_servers_launch_the_build_through_the_launcher(monkeypatch, tmp_path) -> None:
     # Upstream's launch_server fixture hands cli.js a JSON config in a child
     # process, so the launch wrapper never sees it; unwrapped, it launched a
@@ -204,11 +226,13 @@ def test_junit_outcomes(tmp_path: Path) -> None:
 # ------------------------------------------------------------------- results
 
 
-def test_a_pass_is_never_downgraded_within_a_gate() -> None:
+def test_a_failure_is_never_upgraded_within_a_gate() -> None:
     gate = results.GateResult(gate="g")
-    gate.record("t", results.PASS)
     gate.record("t", results.FAIL)
-    assert gate.tests["t"] == results.PASS
+    gate.record("t", results.PASS)
+    gate.record("u", results.PASS)
+    gate.record("u", results.ERROR)
+    assert gate.tests == {"t": results.FAIL, "u": results.ERROR}
 
 
 def test_summary_fails_on_a_missing_required_suite(tmp_path: Path) -> None:
@@ -221,16 +245,17 @@ def test_summary_fails_on_a_missing_required_suite(tmp_path: Path) -> None:
                            "--markdown", str(tmp_path / "s.md"), "--out", str(tmp_path / "s.json")]) == 0
 
 
-def test_summary_merges_shards_and_sums_flaky(tmp_path: Path) -> None:
-    for index, flaky in ((1, ["a"]), (2, ["b", "c"])):
+def test_summary_merges_shards(tmp_path: Path) -> None:
+    for index, outcome in ((1, results.PASS), (2, results.FAIL)):
         gate = results.GateResult(gate=f"playwright-{index}of2")
-        gate.record(f"t{index}", results.PASS)
-        gate.metrics.update(flaky_count=len(flaky), flaky=flaky)
-        gate.finish(results.PASS).save(tmp_path)
+        gate.record(f"t{index}", outcome)
+        gate.metrics.update(tag="v1")
+        gate.finish(outcome).save(tmp_path)
     merged = summarize.merge_shards(results.load_all(tmp_path))
     assert set(merged) == {"playwright"}
-    assert merged["playwright"]["metrics"]["flaky_count"] == 3
-    assert sorted(merged["playwright"]["metrics"]["flaky"]) == ["a", "b", "c"]
+    assert merged["playwright"]["tests"] == {"t1": results.PASS, "t2": results.FAIL}
+    assert merged["playwright"]["metrics"]["shards"] == 2 and merged["playwright"]["metrics"]["tag"] == "v1"
+    assert merged["playwright"]["status"] == results.FAIL
 
 
 def test_summary_treats_a_failed_suite_as_a_failure(tmp_path: Path) -> None:

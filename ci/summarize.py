@@ -41,15 +41,6 @@ from ._util import REPO_ROOT, RESULTS_DIR, SKIPLIST_PATH, log, summary, write_js
 # "playwright-3of6" -> "playwright"
 _SHARD_SUFFIX = re.compile(r"-\d+of\d+$")
 
-# Counts every shard contributes its own share of. Summing rather than taking
-# the first shard's is the difference between "6 tests needed a retry" and "1
-# did", on a six-way shard -- and this number is the one being watched over
-# time, so a sixth of it is worse than none.
-_SUMMED_METRICS = frozenset({"flaky_count"})
-
-# Lists of test identities, which are disjoint across shards by construction.
-_UNIONED_METRICS = frozenset({"flaky"})
-
 # Presented in this order; anything unexpected is appended.
 _ORDER = [
     "native_rules", "patch_guards", "pythonlib", "typescript", "prepare", "build", "install",
@@ -75,23 +66,14 @@ def merge_shards(records: Dict[str, dict]) -> Dict[str, dict]:
         statuses = []
         for part in sorted(parts, key=lambda p: str(p.get("gate"))):
             for tid, outcome in (part.get("tests") or {}).items():
-                # A test that passed on any shard passed; shards are disjoint,
-                # so this only matters if a retry moved one.
-                if tests.get(tid) != results.PASS:
-                    tests[tid] = outcome
+                tests[tid] = outcome
             notes.extend(part.get("notes") or [])
             artifacts.extend(part.get("artifacts") or [])
             statuses.append(part.get("status"))
             for key, value in (part.get("metrics") or {}).items():
-                if key in _SUMMED_METRICS and isinstance(value, (int, float)):
-                    metrics[key] = metrics.get(key, 0) + value
-                elif key in _UNIONED_METRICS and isinstance(value, list):
-                    metrics[key] = sorted(set(metrics.get(key, [])) | set(value))
-                else:
-                    # Everything else is a property of the run as a whole (the
-                    # resolved tag, the browser version) and is identical across
-                    # shards, so the first one is the answer.
-                    metrics.setdefault(key, value)
+                # A property of the run as a whole (the resolved tag, the browser
+                # version), identical across shards, so the first one is the answer.
+                metrics.setdefault(key, value)
         metrics.pop("shard", None)
         metrics["shards"] = len(parts)
         tally: Dict[str, int] = {}
@@ -198,13 +180,6 @@ def render(merged: Dict[str, dict], required: List[str], problems: List[str], me
             shards = (record.get("metrics") or {}).get("shards")
             if shards:
                 detail += f" (across {shards} shards)"
-            # Published deliberately. These tests pass, so they do not show up
-            # in the failure count -- but each is a failure nobody has
-            # explained, and a silent change in the number is what this line
-            # exists to make visible between one run and the next.
-            flaky = (record.get("metrics") or {}).get("flaky_count")
-            if flaky:
-                detail += f", {flaky} passed only on a retry"
         else:
             detail = (record.get("notes") or ["—"])[-1]
         lines.append(f"| `{name}` | {icon} {status} | {detail} |")
@@ -221,8 +196,7 @@ def render(merged: Dict[str, dict], required: List[str], problems: List[str], me
         "",
         "<sub>The Playwright suite is upstream playwright-python at the tag above, "
         "fetched fresh, with [`tests/playwright/`](tests/playwright) overlaid, and every "
-        "launch made through this tree's launcher. A test that fails once and passes on "
-        "a retry counts as a pass and is reported above. Tests Camouwolf does not pass by "
+        "launch made through this tree's launcher. No test is retried. Tests Camouwolf does not pass by "
         "design are deselected via [`ci/skiplist.yml`](ci/skiplist.yml), each with a "
         "stated reason. The stealth check reports a grade only; its per-vector detail is "
         "deliberately never published.</sub>",

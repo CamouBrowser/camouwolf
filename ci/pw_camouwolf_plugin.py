@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import random
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -170,6 +172,28 @@ def merge_launch(kwargs: Dict[str, Any], options: Dict[str, Any]) -> Dict[str, A
     return merged
 
 
+# Launches each test has made so far, so a test's second launch draws its own
+# identity rather than a copy of its first.
+_LAUNCHES: Dict[str, int] = {}
+
+
+def seed_draw() -> str:
+    """Seed the identity draw from the test making the launch.
+
+    The launcher draws from `random`. Unseeded, a test whose outcome depends on
+    the drawn identity (a fractional devicePixelRatio scales wheel deltas and
+    screenshots) passed or failed by luck; seeded by the test and its launch
+    count, it draws the same identity on every run.
+    """
+    test = os.environ.get("PYTEST_CURRENT_TEST", "").rsplit(" (", 1)[0]
+    count = _LAUNCHES.get(test, 0)
+    _LAUNCHES[test] = count + 1
+    seed = f"{test}#{count}"
+    random.seed(seed)
+    print(f"camouwolf: identity drawn from seed {seed!r}", file=sys.stderr)
+    return seed
+
+
 def _install_launcher(binary: Path, os_name: str) -> None:
     from playwright._impl._browser_type import BrowserType
 
@@ -184,7 +208,8 @@ def _install_launcher(binary: Path, os_name: str) -> None:
             async def wrapper(self, *args: Any, **kwargs: Any):  # noqa: ANN401
                 if self.name != "chromium":
                     return await original(self, *args, **kwargs)
-                # A fresh identity per launch, as a user's launch draws one.
+                # An identity per launch, as a user's launch draws one.
+                seed_draw()
                 options = launcher_options(
                     binary, os_name=os_name, headless=kwargs.get("headless") is not False
                 )
@@ -218,6 +243,7 @@ def install_remote_server(binary: Path, os_name: str, modules: Any) -> bool:  # 
         def make(original: Any):  # noqa: ANN401
             def wrapper(self, browser_name: str, launch_server_options: Dict, *args: Any, **kwargs: Any):  # noqa: ANN401
                 if browser_name == "chromium":
+                    seed_draw()
                     options = launcher_options(
                         binary, os_name=os_name, headless=launch_server_options.get("headless") is not False
                     )

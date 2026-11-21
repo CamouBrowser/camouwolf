@@ -94,9 +94,10 @@ reason. An entry is a decision that the behaviour is intended (one identity per
 browser, for example), never a way to hide a failure. `ci.run_skiplist_audit`
 keeps the list honest: once an entry passes it must be removed.
 
-A test that fails on the first pass and passes on a retry is counted as flaky
-and listed in the summary; it does not fail the run, and it is not a reason to
-skip it.
+No test is retried: a test that fails once is a failure. Each launch's
+identity is seeded from the test that makes it (`seed_draw` in
+`ci/pw_camouwolf_plugin.py`, logged as "identity drawn from seed"), so a test
+draws the same identity on every run.
 
 Tests of Camouwolf's own behaviour go in `tests/playwright/` as `test_*.py`;
 `ci.run_playwright` runs that directory with the same plugin and fixtures.
