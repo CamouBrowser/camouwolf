@@ -652,18 +652,3 @@ The launcher writes the exit IP from `geoip` to `webrtc:ipv4` or `webrtc:ipv6`
 for a proxied launch. A proxied context without either key has no network and
 gathers no host candidate. `block_webrtc=True` still passes the 0030 switch,
 which leaves a page no UDP at all.
-
-### 0032 — symbol fonts (`third_party/skia`)
-
-`src/ports/SkFontHost_FreeType.cpp`, in Skia (its own repository, at the DEPS
-`skia_revision`; `fetch-sources.sh` mirrors it from there). A font with no
-Unicode cmap gets its MS symbol (3,0) cmap selected, and that cmap keys its
-glyphs at U+F020-U+F0FF. Skia looked U+0020 up as-is and found nothing, so the
-font had no space glyph and Blink never made it the primary font. A page then
-measured no change in line height, and saw a Windows identity without MS
-Outlook, Marlett, Bookshelf Symbol 7, MT Extra or MS Reference Specialty.
-
-DirectWrite answers U+0000-U+00FF from U+F000-U+F0FF in a symbol font, and so
-do HarfBuzz and Gecko. The patch does the same when the direct lookup misses.
-No font a Linux persona reads is symbol-only, so a Linux identity renders as
-stock Linux Chrome.

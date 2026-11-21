@@ -111,6 +111,3 @@ services/network/p2p/socket_manager.h
 services/network/p2p/socket_manager.cc
 services/network/p2p/socket_tcp.h
 services/network/p2p/socket_tcp.cc
-
-# Skia (fetched from skia.googlesource.com at the DEPS skia_revision)
-third_party/skia/src/ports/SkFontHost_FreeType.cpp

@@ -111,10 +111,3 @@
 # ASSOCIATE relay, names resolved by the proxy, and no UDP at all through a
 # proxy that carries none. Adds browser/additions/camouwolfp2p.
 0031-webrtc-proxied-exit.patch
-
-# --- Symbol fonts --------------------------------------------------------------
-# Skia's FreeType port looked a symbol-only font's characters up as-is, so its
-# U+F0xx glyphs never answered U+0020-U+00FF and the font never showed. Windows'
-# DirectWrite maps them; MS Outlook, Marlett and the other Windows symbol fonts
-# now show as they do there. Linux personas read no symbol-only font.
-0032-symbol-font-cmap.patch

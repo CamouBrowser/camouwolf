@@ -59,10 +59,8 @@ for f in "${FILES[@]}"; do
   cp -p "$f" "$STASH/$f"
 done
 
-# From the file's own directory, so a path inside a DEPS submodule (Skia) is
-# restored by that submodule's repository, not refused by chromium/src's.
 for f in "${FILES[@]}"; do
-  git -C "$(dirname "$f")" checkout -f -- "$(basename "$f")" 2>/dev/null || true
+  git checkout -f -- "$f" 2>/dev/null || true
 done
 rm -f .camouwolf-patched
 
