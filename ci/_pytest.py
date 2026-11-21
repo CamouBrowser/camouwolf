@@ -91,9 +91,8 @@ def parse_junit(path: Path) -> Dict[str, str]:
             outcome = "skip"
         else:
             outcome = "pass"
-        # With --count / reruns the same id appears twice; a pass on any
-        # attempt wins, matching evidence.GateResult.record().
-        if outcomes.get(tid) == "pass":
+        # An id that appears twice keeps a failure, as GateResult.record() does.
+        if outcomes.get(tid) in ("fail", "error"):
             continue
         outcomes[tid] = outcome
     return outcomes

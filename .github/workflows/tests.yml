@@ -444,7 +444,7 @@ jobs:
         if: always()
         with:
           name: results-playwright-${{ steps.name.outputs.suffix }}
-          # The junit files hold each failure's message, retries included.
+          # The junit files hold each failure's message.
           path: |
             .ci-work/results/
             .ci-work/junit-*.xml

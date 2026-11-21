@@ -88,10 +88,9 @@ class GateResult:
         self.notes.append(msg)
 
     def record(self, test_id: str, outcome: str) -> None:
-        # A test that ran twice (retries) keeps its best outcome: a test that
-        # passes on any attempt is not a regression.
-        prior = self.tests.get(test_id)
-        if prior == PASS:
+        # A test recorded twice keeps a failure: one passing attempt does not
+        # undo another that failed.
+        if self.tests.get(test_id) in (FAIL, ERROR):
             return
         self.tests[test_id] = outcome
 
