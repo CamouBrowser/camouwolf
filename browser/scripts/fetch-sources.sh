@@ -25,6 +25,20 @@ BASE="${CAMOUWOLF_SOURCE_BASE:-https://chromium.googlesource.com/chromium/src/+/
 mkdir -p "$DEST"
 echo "==> mirroring Chromium $version -> $DEST"
 
+# Skia is its own repository, pinned by skia_revision in the tag's DEPS; a
+# third_party/skia/ path is fetched from there at that revision.
+SKIA_BASE=""
+skia_base() {
+  if [ -z "$SKIA_BASE" ]; then
+    local rev
+    rev=$(curl -sS --retry 6 --retry-max-time 300 "$BASE/DEPS?format=TEXT" | base64 -d \
+      | sed -n "s/^ *'skia_revision': '\([0-9a-f]\{40\}\)',.*/\1/p")
+    [ -n "$rev" ] || { echo "!! no skia_revision in DEPS at $version" >&2; exit 1; }
+    SKIA_BASE="https://skia.googlesource.com/skia/+/$rev"
+  fi
+  echo "$SKIA_BASE"
+}
+
 fail=0
 while read -r path; do
   case "$path" in ''|\#*) continue ;; esac
@@ -39,7 +53,11 @@ while read -r path; do
   # Only a 404 means the file is gone. googlesource throttles shared CI
   # runners; curl retries its 429/5xx with backoff and Retry-After, as
   # check-patch-apis.py does.
-  code=$(curl -sS --retry 6 --retry-max-time 300 -o "$out.b64" -w '%{http_code}' "$BASE/$path?format=TEXT" || true)
+  case "$path" in
+    third_party/skia/*) url="$(skia_base)/${path#third_party/skia/}" ;;
+    *) url="$BASE/$path" ;;
+  esac
+  code=$(curl -sS --retry 6 --retry-max-time 300 -o "$out.b64" -w '%{http_code}' "$url?format=TEXT" || true)
   if [ "$code" = 200 ] && base64 -d < "$out.b64" > "$out" 2>/dev/null && [ -s "$out" ]; then
     echo "    fetched $path ($(wc -l < "$out") lines)"
     rm -f "$out.b64"

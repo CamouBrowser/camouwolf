@@ -1,0 +1,20 @@
+diff --git a/third_party/skia/src/ports/SkFontHost_FreeType.cpp b/third_party/skia/src/ports/SkFontHost_FreeType.cpp
+--- a/third_party/skia/src/ports/SkFontHost_FreeType.cpp
++++ b/third_party/skia/src/ports/SkFontHost_FreeType.cpp
+@@ -1801,7 +1801,15 @@
+         if (index >= 0) {
+             glyphs[i] = SkTo<SkGlyphID>(index);
+         } else {
+-            glyphs[i] = SkTo<SkGlyphID>(FT_Get_Char_Index(face, c));
++            FT_UInt glyph = FT_Get_Char_Index(face, c);
++            // CAMOUWOLF: a symbol cmap's U+F0xx glyphs answer U+00xx, as DirectWrite,
++            // HarfBuzz and Gecko map them; without it a symbol-only font has no space
++            // glyph, never becomes the primary font, and so never shows on Windows.
++            if (!glyph && c <= 0xFF && face->charmap &&
++                face->charmap->encoding == FT_ENCODING_MS_SYMBOL) {
++                glyph = FT_Get_Char_Index(face, c + 0xF000);
++            }
++            glyphs[i] = SkTo<SkGlyphID>(glyph);
+             fC2GCache.insertCharAndGlyph(~index, c, glyphs[i]);
+         }
+     }
