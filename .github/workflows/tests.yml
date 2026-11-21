@@ -283,6 +283,10 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
           clean: false # browser/.pristine and the build directory survive between runs
+      - name: Results of this run only
+        # The kept workspace also keeps earlier runs' result files, which the
+        # upload below would hand to the summary as this run's.
+        run: rm -rf .ci-work/results
       - name: Pipeline dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/ci-venv"
@@ -527,7 +531,14 @@ jobs:
       - name: Collect every result file
         run: |
           mkdir -p .ci-work/results
-          find downloaded -name '*.json' -exec cp -n {} .ci-work/results/ \;
+          # Each result has one owner; two copies means a job uploaded another's.
+          dupes=$(find downloaded -name '*.json' -printf '%f\n' | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "more than one artifact holds: $dupes" >&2
+            find downloaded -name '*.json' | sort >&2
+            exit 1
+          fi
+          find downloaded -name '*.json' -exec cp {} .ci-work/results/ \;
           ls .ci-work/results
 
       - name: Verdict

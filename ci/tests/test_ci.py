@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import types
 import zipfile
 from pathlib import Path
@@ -420,6 +421,34 @@ def test_browser_jobs_cannot_run_for_a_fork() -> None:
         assert "needs.resolve.outputs.run_browser == 'true'" in str(job.get("if", "")), name
         needs = job.get("needs")
         assert "resolve" in ([needs] if isinstance(needs, str) else needs), name
+
+
+def _step(job: str, name: str) -> dict:
+    tests = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text())
+    return next(step for step in tests["jobs"][job]["steps"] if step.get("name") == name)
+
+
+def test_the_summary_refuses_two_copies_of_one_result(tmp_path: Path) -> None:
+    # A self-hosted job once uploaded a shard's result left over from an earlier
+    # run beside its own, and the summary judged whichever copy it found first.
+    script = _step("summary", "Collect every result file")["run"]
+    for artifact, tally in (("results-build", "stale"), ("results-playwright-1of4", "fresh")):
+        (tmp_path / "downloaded" / artifact).mkdir(parents=True)
+        (tmp_path / "downloaded" / artifact / "playwright-1of4.json").write_text(json.dumps({"tally": tally}))
+    proc = subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+    assert proc.returncode != 0, proc.stdout
+    assert "playwright-1of4.json" in proc.stderr
+
+
+def test_a_job_that_keeps_its_workspace_starts_with_no_results() -> None:
+    tests = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text())
+    for name, job in tests["jobs"].items():
+        steps = job.get("steps", [])
+        keeps = any((step.get("with") or {}).get("clean") is False for step in steps)
+        if keeps:
+            runs = [step.get("run", "") for step in steps]
+            first_stage = next(i for i, run in enumerate(runs) if "-m ci.run_" in run)
+            assert any("rm -rf .ci-work/results" in run for run in runs[:first_stage]), name
 
 
 def test_branch_protection_names_the_gate_job() -> None:
