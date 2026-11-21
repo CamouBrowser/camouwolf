@@ -119,9 +119,11 @@ refuses a disabled target by quoting that reason.
 ## Workflows
 
 `tests.yml` runs on pull requests and on pushes to `dev` and `main`. The static
-and launcher suites run on GitHub-hosted runners. Everything that needs a
+and launcher suites run on GitHub-hosted runners, and so do the Playwright
+shards, which need only the packaged browser: upstream's tests bind fixed ports
+that a shared build host may already hold. Everything else that needs a
 Chromium checkout or a built browser runs on a self-hosted runner labelled
-`camouwolf-build`, and only when both hold:
+`camouwolf-build`. The browser tiers run only when both hold:
 
 - the repository variable `CAMOUWOLF_BROWSER_RUNNER` is `true`, and
 - the run is not a pull request from a fork (that runner executes the commit
