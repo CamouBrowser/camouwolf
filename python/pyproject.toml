@@ -32,7 +32,7 @@ classifiers = [
 # in October 2026.
 python = "^3.11"
 # The launcher core shared with Camoufox, from PyPI.
-camoucore = "^0.1.2"
+camoucore = "^0.2.0"
 rich-click = "*"
 rich = "*"
 requests = "*"
