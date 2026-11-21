@@ -33,12 +33,14 @@ Exit code is non-zero if anything is wrong, so CI can gate on it.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 import xml.etree.ElementTree as ET
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 FONTCONFIG = REPO / "browser" / "bundle" / "fontconfig"
+BUNDLE_FONTS = REPO / "python" / "src" / "camouwolf" / "data" / "bundle-fonts.json"
 PERSONAS = ("linux", "macos", "windows")
 
 # The literal generate_fontconfig() replaces. Must match byte for byte.
@@ -76,27 +78,10 @@ def has_catch_all(root: ET.Element) -> bool:
     return False
 
 
-def bundled_families(persona: str) -> set[str] | None:
-    """Family names the persona's font dir really carries, if it is restored."""
-    fonts = REPO / "browser" / "bundle" / "fonts" / persona
-    if not fonts.is_dir() or not any(fonts.iterdir()):
-        return None
-    import shutil
-    import subprocess
-
-    if not shutil.which("fc-scan"):
-        return None
-    done = subprocess.run(
-        ["fc-scan", "--format", "%{family}\n", str(fonts)],
-        capture_output=True,
-        text=True,
-    )
-    out = set()
-    for line in done.stdout.splitlines():
-        for name in line.split(","):
-            if name.strip():
-                out.add(name.strip())
-    return out
+def bundled_families(persona: str) -> set[str]:
+    """Families the persona resolves from the pinned bundle (scripts/gen-bundle-fonts.py)."""
+    key = {"linux": "lin", "macos": "mac", "windows": "win"}[persona]
+    return set(json.loads(BUNDLE_FONTS.read_text(encoding="utf-8"))["families"][key])
 
 
 def main() -> int:
@@ -149,16 +134,12 @@ def main() -> int:
         for pref in CHROMIUM_LINUX_PREFS:
             if pref in aliased:
                 continue
-            if carried is None:
-                notes.append(f"{pref}: unverified (bundle not restored)")
-                continue
             if pref not in carried:
                 problems.append(
                     f"{label}: Chromium's Linux build asks for {pref!r}, but this "
                     "persona neither aliases it nor carries it"
                 )
-        if carried is not None:
-            notes.append(f"{len(carried)} families in bundle")
+        notes.append(f"{len(carried)} families resolve from the bundle")
 
         print(f"-- {persona}")
         for n in notes:

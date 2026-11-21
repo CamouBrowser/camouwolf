@@ -39,7 +39,7 @@ Camouwolf's patches are licensed to match so the combined work stays coherent.
 
 **Bundled fonts** (`browser/bundle/fonts/`, not committed) retain their own
 licenses. They are cross-OS fingerprinting inputs, not redistributable assets;
-see `browser/bundle/fonts/000_README.txt`.
+see `browser/bundle/FONTS-README.txt`.
 
 **Font and voice manifests** (`src/mappings/fonts-manifests.ts`,
 `src/mappings/voices-manifests.ts`) are shared with Holo, which is MPL-2.0.

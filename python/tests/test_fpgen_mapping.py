@@ -78,6 +78,24 @@ def test_fonts_voices_and_devices_take_the_browsers_formats():
     assert all(entry.endswith('|||') for entry in config['mediaDevices:enumerated'])
 
 
+@pytest.mark.parametrize('target_os', ['win', 'mac', 'lin'])
+def test_fonts_the_bundle_cannot_render_are_not_claimed(target_os):
+    # fpgen records name families no bundled OS ships (CI caught 109 of 150 on
+    # one Linux identity); each one measures as missing in the page.
+    claimed = fingerprints.font_list(['Abyssinica SIL', 'Arial', 'arial'], target_os)
+
+    assert 'Abyssinica SIL' not in claimed
+    assert claimed.count('Arial') + claimed.count('arial') == 1
+    assert {f.lower() for f in claimed} <= fingerprints.BUNDLE_FONTS[target_os]
+
+
+@pytest.mark.parametrize('target_os', ['win', 'mac', 'lin'])
+def test_every_essential_font_is_in_the_bundle(target_os):
+    missing = [f for f in fingerprints.ESSENTIAL_FONTS[target_os]
+               if f.lower() not in fingerprints.BUNDLE_FONTS[target_os]]
+    assert not missing
+
+
 def test_every_mapped_key_is_in_the_schema():
     from camouwolf import utils
 

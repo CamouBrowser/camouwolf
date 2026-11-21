@@ -14,8 +14,10 @@ from dataclasses import dataclass
 from random import randrange
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import orjson
+
 from camouwolf.clienthints import retarget_user_agent
-from camouwolf.pkgman import LAUNCHER_CONSTANTS, load_yaml
+from camouwolf.pkgman import LAUNCHER_CONSTANTS, LOCAL_DATA, load_yaml
 
 # Load the fpgen mapping file
 FPGEN_DATA = load_yaml('fpgen.yml')
@@ -379,6 +381,14 @@ def fix_screen_no_taskbar(config: Dict[str, Any], target_os: str) -> None:
 # otherwise leave a page with almost nothing to render in.
 ESSENTIAL_FONTS: Dict[str, List[str]] = LAUNCHER_CONSTANTS['essentialFonts']
 
+# The families each OS's persona can render from the shipped font bundle
+# (scripts/gen-bundle-fonts.py). A claimed family the bundle cannot render is
+# caught by one measureText call, so nothing outside this list is claimed.
+BUNDLE_FONTS: Dict[str, frozenset] = {
+    os_key: frozenset(f.lower() for f in families)
+    for os_key, families in orjson.loads((LOCAL_DATA / 'data' / 'bundle-fonts.json').read_bytes())['families'].items()
+}
+
 # The devices a machine with nothing plugged in enumerates, before the page has
 # media permission: one entry per kind, with empty id, label and group.
 MEDIA_DEVICE_KINDS: Tuple[str, ...] = ('audioinput', 'videoinput', 'audiooutput')
@@ -439,13 +449,16 @@ def webgpu_adapter(gpu_info: Any) -> Dict[str, str]:
 
 
 def font_list(fonts: Any, target_os: str) -> Optional[List[str]]:
-    """The identity's installed families: the record's, with the OS's own."""
+    """The identity's installed families: the record's, with the OS's own,
+    less any the bundle cannot render for that OS."""
     if not isinstance(fonts, list) or not fonts:
         return None
-    families = [f for f in fonts if isinstance(f, str) and f]
-    seen = {f.lower() for f in families}
-    families += [f for f in ESSENTIAL_FONTS[target_os] if f.lower() not in seen]
-    return families
+    shippable = BUNDLE_FONTS[target_os]
+    families: Dict[str, str] = {}
+    for name in [*fonts, *ESSENTIAL_FONTS[target_os]]:
+        if isinstance(name, str) and name.lower() in shippable:
+            families.setdefault(name.lower(), name)
+    return list(families.values())
 
 
 def _cast_to_properties(

@@ -1,6 +1,7 @@
 """launch_options(): the options, and what each one turns into."""
 
 import json
+import random
 import warnings
 
 import pytest
@@ -182,9 +183,19 @@ def test_the_window_is_carried_by_switches_and_fits_the_screen(options):
     assert config['screen.availHeight'] <= config['screen.height']
 
 
-def test_a_fixed_window_size(options):
+@pytest.mark.parametrize('seed', [0, 9, 10])  # 9 and 10 draw a fractional ratio
+def test_a_fixed_window_size(options, seed):
+    # At a fractional ratio the switch is whatever Chrome reports back as the
+    # asked size, not the asked size itself.
+    random.seed(seed)
     launch = options(os='windows', window=(1200, 800), screen=Screen(min_width=1920, min_height=1080))
-    assert '--window-size=1200,800' in launch['args']
+    config = config_of(launch)
+    dpr = config['window.devicePixelRatio']
+    (x, y), (width, height) = switch(launch, 'window-position'), switch(launch, 'window-size')
+
+    assert (config['window.outerWidth'], config['window.outerHeight']) == (1200, 800)
+    assert chrome_window_reports(x, width, dpr)[1] == 1200
+    assert chrome_window_reports(y, height, dpr)[1] == 800
 
 
 def test_a_fixed_window_is_kept_when_a_zoomed_ratio_is_repaired(options):
