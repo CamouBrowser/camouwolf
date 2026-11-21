@@ -543,17 +543,17 @@ def test_fetch_sources_retries_a_throttled_file_and_reads_only_404_as_missing(tm
         server.shutdown()
 
 
-def test_packaging_restores_the_font_bundle_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # A package without the bundle only warns, and every foreign-OS font check then fails on it.
+def test_packaging_fetches_the_font_bundle_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # A package without the bundle fails every foreign-OS font check.
     calls: list = []
 
     def fake_run(cmd, **_kwargs):
         calls.append(cmd[1])
-        return types.SimpleNamespace(ok=cmd[1] != str(run_build.RESTORE_FONTS_SH), code=1)
+        return types.SimpleNamespace(ok=cmd[1] != str(run_build.FETCH_FONTS), code=1)
 
     monkeypatch.setattr(run_build, "run", fake_run)
     assert run_build.main(["--results-dir", str(tmp_path)]) == 1
-    assert calls[-1] == str(run_build.RESTORE_FONTS_SH)  # a failed restore stops before packaging
+    assert calls[-1] == str(run_build.FETCH_FONTS)  # a failed fetch stops before packaging
 
 
 def test_the_suite_interpreter_has_what_tests_native_imports() -> None:
