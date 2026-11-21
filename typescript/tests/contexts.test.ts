@@ -16,6 +16,7 @@ import {
 	UnknownIPLocation,
 	ValueError,
 } from "../src/exceptions.js";
+import { Screen } from "../src/fingerprints.js";
 import { MODEL } from "./fpgen-setup.js";
 import {
 	BUNDLE_EXE,
@@ -435,7 +436,14 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 	it("keeps a fixed window when a zoomed ratio is repaired", async () => {
 		// The repair rescales the record's CSS sizes to the display's scale; the
 		// caller's window is not the record's and stays as asked.
-		const drawn = await utils.drawFingerprint("windows", null, null, null);
+		// A screen the asked window fits, as in the Python twin: a smaller one
+		// rightly clamps it.
+		const drawn = await utils.drawFingerprint(
+			"windows",
+			new Screen({ minWidth: 1920, minHeight: 1080 }),
+			null,
+			null,
+		);
 		const fingerprint = {
 			...drawn,
 			window: { ...drawn.window, devicePixelRatio: 1.1 },
