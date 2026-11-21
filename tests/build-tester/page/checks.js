@@ -357,16 +357,25 @@ const buildTester = (() => {
       }
     }
     // A family is installed when text set in it measures differently from the
-    // generic it would otherwise fall back to, for at least one generic.
+    // generic it would otherwise fall back to, for at least one generic and
+    // one text. The second text holds every printable ASCII character: a
+    // symbol font such as MS Outlook has none of the first text's characters
+    // and a shorter line than the fallback, so only its own glyphs show it.
     const span = document.createElement("span");
-    span.textContent = "mmmmmmmmmmlli1WQ@#0O";
     span.style.cssText = "position:absolute;left:-9999px;top:0;font-size:72px;white-space:nowrap;font-variant:normal;font-style:normal;font-weight:400";
     document.body.appendChild(span);
-    const width = (family) => { span.style.fontFamily = family; return `${span.offsetWidth}x${span.offsetHeight}`; };
+    const ascii = String.fromCharCode(...Array.from({ length: 0x7f - 0x20 }, (_, i) => 0x20 + i));
+    const texts = ["mmmmmmmmmmlli1WQ@#0O", ascii];
+    const size = (family, text) => {
+      span.textContent = text;
+      span.style.fontFamily = family;
+      return `${span.offsetWidth}x${span.offsetHeight}`;
+    };
     const generics = ["monospace", "serif", "sans-serif"];
-    const base = Object.fromEntries(generics.map((g) => [g, width(g)]));
+    const base = Object.fromEntries(generics.map((g) => [g, texts.map((t) => size(g, t))]));
     for (const family of request.fonts || []) {
-      out.fonts[family] = generics.some((g) => width(`"${family.replace(/"/g, "")}", ${g}`) !== base[g]);
+      const quoted = `"${family.replace(/"/g, "")}"`;
+      out.fonts[family] = generics.some((g) => texts.some((t, i) => size(`${quoted}, ${g}`, t) !== base[g][i]));
     }
     span.remove();
     const swatch = document.createElement("div");

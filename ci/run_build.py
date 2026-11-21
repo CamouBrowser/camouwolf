@@ -5,6 +5,9 @@ Two steps, each recorded:
 
   build     browser/scripts/build.sh with CAMOUWOLF_STAGES (default
             "sync patch build"; "build" alone after ci.run_prepare)
+  fonts     browser/scripts/fetch-fonts.py --extract: camoufox's pinned font
+            bundle, cached in CAMOUWOLF_FONT_CACHE; a package without it
+            cannot render the fonts its identities claim
   package   scripts/release-camouwolf.sh --skip-build --no-release, which
             writes browser/dist/camouwolf-<version>-<release>-<target>.zip and
             its .sha256
@@ -32,6 +35,7 @@ from .run_prepare import BUILD_SH, build_env
 from .targets import archive_name, require_enabled
 
 PACKAGE_SH = REPO_ROOT / "scripts" / "release-camouwolf.sh"
+FETCH_FONTS = BROWSER_ROOT / "scripts" / "fetch-fonts.py"
 DIST = BROWSER_ROOT / "dist"
 
 
@@ -61,11 +65,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     target = require_enabled(args.target)
     env = build_env(args.stages, args.jobs)
     build_cmd = ["bash", str(BUILD_SH)]
+    fonts_cmd = [sys.executable, str(FETCH_FONTS), "--extract"]
     package_cmd = ["bash", str(PACKAGE_SH), "--target", target.name, "--skip-build", "--no-release"]
     archive = DIST / archive_name(target)
     if args.dry_run:
         print(" ".join(f"{k}={v!r}" for k, v in env.items()), " ".join(build_cmd))
         if not args.no_package:
+            print(" ".join(fonts_cmd))
             print(" ".join(package_cmd))
             print(f"expects {archive}")
         return 0
@@ -82,6 +88,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.no_package:
         result.finish(results.PASS).save(args.results_dir)
         return 0
+
+    fonts = run(fonts_cmd, cwd=REPO_ROOT, timeout=1800, tee=True, capture=False)
+    result.record("fonts", results.PASS if fonts.ok else results.FAIL)
+    if not fonts.ok:
+        result.note(f"fetch-fonts.py --extract exited {fonts.code}: the pinned font bundle could not be "
+                    "fetched or did not verify")
+        result.finish(results.FAIL).save(args.results_dir)
+        return 1
 
     package = run(package_cmd, cwd=REPO_ROOT, timeout=3600, tee=True, capture=False)
     packaged = package.ok and checksum_ok(archive)

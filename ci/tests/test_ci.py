@@ -9,6 +9,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
+import types
 import zipfile
 from pathlib import Path
 
@@ -421,6 +423,34 @@ def test_browser_jobs_cannot_run_for_a_fork() -> None:
         assert "resolve" in ([needs] if isinstance(needs, str) else needs), name
 
 
+def _step(job: str, name: str) -> dict:
+    tests = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text())
+    return next(step for step in tests["jobs"][job]["steps"] if step.get("name") == name)
+
+
+def test_the_summary_refuses_two_copies_of_one_result(tmp_path: Path) -> None:
+    # A self-hosted job once uploaded a shard's result left over from an earlier
+    # run beside its own, and the summary judged whichever copy it found first.
+    script = _step("summary", "Collect every result file")["run"]
+    for artifact, tally in (("results-build", "stale"), ("results-playwright-1of4", "fresh")):
+        (tmp_path / "downloaded" / artifact).mkdir(parents=True)
+        (tmp_path / "downloaded" / artifact / "playwright-1of4.json").write_text(json.dumps({"tally": tally}))
+    proc = subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, capture_output=True, text=True)
+    assert proc.returncode != 0, proc.stdout
+    assert "playwright-1of4.json" in proc.stderr
+
+
+def test_a_job_that_keeps_its_workspace_starts_with_no_results() -> None:
+    tests = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text())
+    for name, job in tests["jobs"].items():
+        steps = job.get("steps", [])
+        keeps = any((step.get("with") or {}).get("clean") is False for step in steps)
+        if keeps:
+            runs = [step.get("run", "") for step in steps]
+            first_stage = next(i for i, run in enumerate(runs) if "-m ci.run_" in run)
+            assert any("rm -rf .ci-work/results" in run for run in runs[:first_stage]), name
+
+
 def test_branch_protection_names_the_gate_job() -> None:
     contexts = json.loads((REPO_ROOT / "ci" / "branch-protection.json").read_text())["required_status_checks"]["contexts"]
     tests = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text())
@@ -540,3 +570,36 @@ def test_fetch_sources_retries_a_throttled_file_and_reads_only_404_as_missing(tm
         assert not (tmp_path / "m" / "gone.cc").exists()
     finally:
         server.shutdown()
+
+
+def test_packaging_fetches_the_font_bundle_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # A package without the bundle fails every foreign-OS font check.
+    calls: list = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd[1])
+        return types.SimpleNamespace(ok=cmd[1] != str(run_build.FETCH_FONTS), code=1)
+
+    monkeypatch.setattr(run_build, "run", fake_run)
+    assert run_build.main(["--results-dir", str(tmp_path)]) == 1
+    assert calls[-1] == str(run_build.FETCH_FONTS)  # a failed fetch stops before packaging
+
+
+def test_the_suite_interpreter_has_what_tests_native_imports() -> None:
+    # run_native runs tests/native with the suite's interpreter, which once lacked psutil.
+    import ast
+    import sys
+
+    from ci import suite
+
+    native = REPO_ROOT / "tests" / "native"
+    local = {p.stem for p in native.glob("*.py")} | {"ci", "playwright"}
+    imported = set()
+    for path in native.glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                imported |= {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+    third_party = imported - set(sys.stdlib_module_names) - local
+    assert third_party <= set(suite._REQUIRED_MODULES), third_party - set(suite._REQUIRED_MODULES)

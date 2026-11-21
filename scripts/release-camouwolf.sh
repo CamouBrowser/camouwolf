@@ -61,7 +61,7 @@ echo "--> packaging"
 #
 # A bare `mktemp -d` lands in /tmp, and /tmp is a tmpfs on plenty of desktops —
 # 31 GB here, and usually most of the way full. The payload is a ~530 MB binary
-# plus, once the font bundle is restored, ~4 GB of fonts, which overruns it and
+# plus the font bundle (~2 GB unpacked), which overruns it and
 # fails mid-copy with "Disk quota exceeded" on a random font file. That reads as
 # a corrupt font cache rather than as a full ramdisk. browser/scripts/build.sh
 # already warns about exactly this trap for the link step; packaging has it too.
@@ -105,26 +105,16 @@ if [ "$TARGET" = linux ]; then
   chmod +x "$PKG/linux-desktop/install-desktop.sh"
 fi
 
-# Font bundle + fontconfig, when restored. Absent is not fatal: a build without
-# them is still usable for same-OS work, it just cannot spoof a foreign OS's
-# font set — so say so loudly rather than shipping a silent downgrade.
-#
-# Count actual FONT FILES rather than "any file that is not a README". The
-# directory always holds restore-fonts.sh — it is the tool that fills the
-# directory IN — so a name-based emptiness test can never fire. This shipped a
-# fonts/ directory containing zero fonts and printed no warning at all, which is
-# the same silent downgrade the paragraph above describes, one level up.
-FONT_FILES="$(find "$ROOT/browser/bundle/fonts" -type f \
-  \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.ttc' -o -iname '*.pfb' \) \
-  2>/dev/null | wc -l)"
-if [ "$FONT_FILES" -gt 0 ]; then
-  echo "    $FONT_FILES font file(s)"
-  cp -a "$ROOT/browser/bundle/fonts" "$PKG/fonts"
-  cp -a "$ROOT/browser/bundle/fontconfig" "$PKG/fontconfig" 2>/dev/null || true
-else
-  echo "!! WARNING: no font bundle — cross-OS font spoofing will be unavailable."
-  echo "   Restore with: bash browser/bundle/fonts/restore-fonts.sh"
+# Font bundle + fontconfig. Required: the launcher claims fonts on the
+# understanding that this exact bundle ships beside the binary, so a package
+# without it would claim fonts it cannot render.
+if ! python3 "$ROOT/browser/scripts/fetch-fonts.py" --check; then
+  echo "!! browser/bundle/fonts/ is not the pinned font bundle."
+  echo "   Fetch it with: python3 browser/scripts/fetch-fonts.py --extract"
+  exit 1
 fi
+cp -a "$ROOT/browser/bundle/fonts" "$PKG/fonts"
+cp -a "$ROOT/browser/bundle/fontconfig" "$PKG/fontconfig"
 
 ( cd "$STAGE" && zip -qr "$DIST/$ARCHIVE" "$PREFIX" )
 ( cd "$DIST" && sha256sum "$ARCHIVE" > "$ARCHIVE.sha256" )

@@ -15,11 +15,9 @@
 /browser/**/.camouwolf-patched
 
 # --- out-of-git build inputs ----------------------------------------------
-# Bundled fonts are large and copyrighted; only the restore script and the
-# README are tracked. See browser/bundle/fonts/000_README.txt.
-/browser/bundle/fonts/*
-!/browser/bundle/fonts/000_README.txt
-!/browser/bundle/fonts/restore-fonts.sh
+# Bundled fonts are camoufox's release asset, unpacked on demand by
+# browser/scripts/fetch-fonts.py. See browser/bundle/FONTS-README.txt.
+/browser/bundle/fonts/
 
 # --- test artifacts --------------------------------------------------------
 /tests/**/__pycache__/

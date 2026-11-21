@@ -463,6 +463,20 @@ export const ESSENTIAL_FONTS: Readonly<Record<OsKey, string[]>> =
 	LAUNCHER_CONSTANTS.essentialFonts;
 
 /**
+ * The families each OS's persona can render from the shipped font bundle
+ * (scripts/gen-bundle-fonts.py). A claimed family the bundle cannot render is
+ * caught by one measureText call, so nothing outside this list is claimed.
+ */
+const BUNDLE_FONTS: Readonly<Record<OsKey, ReadonlySet<string>>> = (() => {
+	const { families } = loadDataFile<{ families: Record<OsKey, string[]> }>(
+		"data/bundle-fonts.json",
+	);
+	const lower = (os: OsKey) =>
+		new Set(families[os].map((f) => f.toLowerCase()));
+	return { win: lower("win"), mac: lower("mac"), lin: lower("lin") };
+})();
+
+/**
  * The devices a machine with nothing plugged in enumerates, before the page
  * has media permission: one entry per kind, with empty id, label and group.
  */
@@ -539,17 +553,20 @@ export function webgpuAdapter(gpuInfo: unknown): Record<string, string> {
 	return out;
 }
 
-/** The identity's installed families: the record's, with the OS's own. */
+/**
+ * The identity's installed families: the record's, with the OS's own, less
+ * any the bundle cannot render for that OS.
+ */
 export function fontList(fonts: unknown, targetOs: OsKey): string[] | null {
 	if (!Array.isArray(fonts) || !fonts.length) return null;
-	const families: string[] = fonts.filter(
-		(f) => typeof f === "string" && f.length > 0,
-	);
-	const seen = new Set(families.map((f) => f.toLowerCase()));
-	families.push(
-		...ESSENTIAL_FONTS[targetOs].filter((f) => !seen.has(f.toLowerCase())),
-	);
-	return families;
+	const shippable = BUNDLE_FONTS[targetOs];
+	const families = new Map<string, string>();
+	for (const name of [...fonts, ...ESSENTIAL_FONTS[targetOs]]) {
+		if (typeof name !== "string") continue;
+		const key = name.toLowerCase();
+		if (shippable.has(key) && !families.has(key)) families.set(key, name);
+	}
+	return [...families.values()];
 }
 
 /** Copy the scalar fields fpgen.yml names into Camouwolf config properties. */

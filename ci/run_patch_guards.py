@@ -18,6 +18,8 @@ not found at all:
                       (browser/scripts/generate-branding.py --check)
   bundle-fontconfig   the bundled fontconfig personas parse and resolve
                       (scripts/check-bundle-fontconfig.py)
+  bundle-fonts        the launcher's per-OS font list matches the pinned bundle,
+                      and the pin is still camoufox's (scripts/gen-bundle-fonts.py)
 
 `series-applies` and `patch-apis` read the mirror of the files the series
 touches, `browser/.pristine/<version>/`. It is fetched when missing
@@ -87,6 +89,7 @@ def guards(offline: bool) -> Dict[str, Tuple[bool, Callable[[], Result]]]:
         "series-complete": (False, series_complete),
         "config-keys": (False, _script("scripts/check-config-keys.py")),
         "bundle-fontconfig": (False, _script("scripts/check-bundle-fontconfig.py")),
+        "bundle-fonts": (False, _script("scripts/gen-bundle-fonts.py", "--check")),
         "branding": (False, _script("browser/scripts/generate-branding.py", "--check")),
         "series-applies": (True, _script("scripts/check-dead-patches.py")),
         "patch-apis": (True, _script(*apis)),

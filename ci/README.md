@@ -41,7 +41,7 @@ the launcher and is never set in a workflow.
 | `ci.run_pythonlib` | `pythonlib` | no | `python/tests` |
 | `ci.run_typescript` | `typescript` | no | `typescript/`: frozen install, `tsc`, biome, build, the pack check, vitest. Needs Node 22.15 or newer and pnpm |
 | `ci.run_prepare` | `prepare` | builds | `browser/scripts/build.sh` with `CAMOUWOLF_STAGES="sync patch"`; network failures are retried, a patch that does not apply is not |
-| `ci.run_build` | `build` | builds | `build.sh`, then `scripts/release-camouwolf.sh --skip-build --no-release`, then the archive's checksum |
+| `ci.run_build` | `build` | builds | `build.sh`, then `browser/scripts/fetch-fonts.py --extract`, then `scripts/release-camouwolf.sh --skip-build --no-release`, then the archive's checksum |
 | `ci.run_install` | `install` | yes | Unpacks the archive (or takes `--binary`), checks the layout and `version.json`, runs `--version`, launches once. Prints and outputs `binary` |
 | `ci.run_skiplist_audit` | `skiplist_audit` | yes | Runs every `ci/skiplist.yml` entry with the skiplist empty; an entry that passes is stale and fails the audit |
 | `ci.run_build_tester` | `build_tester` | yes | `tests/build-tester`: what a page reads against what the launcher claimed, over several drawn identities and locales (`ci/build-tester.yml`) |
@@ -119,17 +119,21 @@ refuses a disabled target by quoting that reason.
 ## Workflows
 
 `tests.yml` runs on pull requests and on pushes to `dev` and `main`. The static
-and launcher suites run on GitHub-hosted runners. Everything that needs a
+and launcher suites run on GitHub-hosted runners, and so do the Playwright
+shards, which need only the packaged browser: upstream's tests bind fixed ports
+that a shared build host may already hold. Everything else that needs a
 Chromium checkout or a built browser runs on a self-hosted runner labelled
-`camouwolf-build`, and only when both hold:
+`camouwolf-build`. The browser tiers run only when both hold:
 
 - the repository variable `CAMOUWOLF_BROWSER_RUNNER` is `true`, and
 - the run is not a pull request from a fork (that runner executes the commit
   under test).
 
 The runner needs `depot_tools` prerequisites, Xvfb, Python 3.11+, about 150 GB
-of disk, and the variable `CAMOUWOLF_BUILD_DIR` pointing at a directory that
-persists between runs. Branch protection requires one check, **All tests
+of disk, the variable `CAMOUWOLF_BUILD_DIR` pointing at a directory that
+persists between runs, and optionally `CAMOUWOLF_FONT_CACHE` in its environment:
+where `fetch-fonts.py` keeps camoufox's font bundle archive between runs
+(default `~/.cache/camouwolf/fonts`). Branch protection requires one check, **All tests
 passed** (`ci/branch-protection.json`); when the browser tiers did not run, the
 summary says so.
 

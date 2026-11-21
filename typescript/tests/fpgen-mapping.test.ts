@@ -156,6 +156,30 @@ describe("fromFpgen", () => {
 		for (const entry of entries) expect(entry.endsWith("|||")).toBe(true);
 	});
 
+	it.each([
+		"win",
+		"mac",
+		"lin",
+	] as const)("does not claim a font the %s bundle cannot render", (os) => {
+		// fpgen records name families no bundled OS ships; each one
+		// measures as missing in the page.
+		const claimed = fingerprints.fontList(
+			["Abyssinica SIL", "Arial", "arial"],
+			os,
+		) as string[];
+		expect(claimed).not.toContain("Abyssinica SIL");
+		expect(claimed.filter((f) => f.toLowerCase() === "arial")).toHaveLength(1);
+	});
+
+	it.each([
+		"win",
+		"mac",
+		"lin",
+	] as const)("claims only essential fonts the %s bundle carries", (os) => {
+		const claimed = fingerprints.fontList(["Abyssinica SIL"], os);
+		expect(claimed).toEqual(fingerprints.ESSENTIAL_FONTS[os]);
+	});
+
 	it("maps only keys in the schema", () => {
 		utils.validateConfig(fromFpgen(WINDOWS_FINGERPRINT, 152));
 	});
