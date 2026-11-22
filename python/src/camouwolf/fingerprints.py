@@ -232,6 +232,12 @@ def _f32(value: float) -> float:
     return struct.unpack('f', struct.pack('f', value))[0]
 
 
+def _outward(value: float, rounding: Callable[[float], int]) -> int:
+    """`rounding` of a device-pixel edge, unless it is within 0.001 of a whole pixel."""
+    nearest = round(value)
+    return nearest if abs(nearest - value) < _f32(0.001) else rounding(value)
+
+
 def chrome_window_reports(position: int, size: int, dpr: float) -> Tuple[int, int]:
     """The window position and size, in CSS pixels, Chrome reads back on X11
     for a window it was asked to open at `position` and `size`.
@@ -242,18 +248,24 @@ def chrome_window_reports(position: int, size: int, dpr: float) -> Tuple[int, in
     reported 1001 px wide.
     """
     scale = _f32(dpr)
-
-    def outward(value: float, rounding: Callable[[float], int]) -> int:
-        nearest = round(value)
-        return nearest if abs(nearest - value) < _f32(0.001) else rounding(value)
-
     left = _f32(_f32(position) * scale)
     right = _f32(left + _f32(_f32(size) * scale))
-    left_px, right_px = outward(left, math.floor), outward(right, math.ceil)
+    left_px, right_px = _outward(left, math.floor), _outward(right, math.ceil)
     inverse = _f32(1 / scale)
     back = _f32(_f32(left_px) * inverse)
     back_right = _f32(back + _f32(_f32(right_px - left_px) * inverse))
     return math.floor(back), math.ceil(back_right) - math.floor(back)
+
+
+def chrome_viewport_width(width: int, dpr: float) -> int:
+    """The innerWidth Chrome reports in a window `width` CSS pixels wide.
+
+    The page spans the window, sized up to whole device pixels and read back
+    to the nearest CSS pixel, so at 1.25 a window 1537 wide reports an
+    innerWidth of 1538, wider than the window itself.
+    """
+    scale = _f32(dpr)
+    return math.floor(_outward(_f32(_f32(width) * scale), math.ceil) / scale + 0.5)
 
 
 def _window_inputs(position: int, size: int, dpr: float) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
@@ -270,7 +282,8 @@ def snap_window_to_device_pixels(config: Dict[str, Any]) -> None:
 
     At a fractional ratio some positions and sizes are never read back (at 1.75
     no window reports screenX 7). The claim moves to the nearest one Chrome
-    does report, inside the drawn window's box so it still fits the screen.
+    does report, inside the drawn window's box so it still fits the screen, and
+    no narrower than the page Chrome lays out in it.
     """
     dpr = float(config.get('window.devicePixelRatio') or 1)
     for axis, pos_key in (('Width', 'window.screenX'), ('Height', 'window.screenY')):
@@ -278,9 +291,11 @@ def snap_window_to_device_pixels(config: Dict[str, Any]) -> None:
         size, position = config.get(size_key), config.get(pos_key) or 0
         if not size:
             continue
+        # Down the window the toolbar keeps the page shorter than it; across, the page spans it.
         reachable = [
             seen for _, seen in _window_inputs(position, size, dpr)
             if position >= seen[0] >= 0 and seen[0] + seen[1] <= position + size
+            and (axis == 'Height' or chrome_viewport_width(seen[1], dpr) <= seen[1])
         ]
         if reachable:
             seen_position, config[size_key] = min(

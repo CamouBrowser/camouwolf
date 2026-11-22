@@ -281,6 +281,14 @@ export function clampWindowPosition(config: Config): void {
 	}
 }
 
+/** `rounding` of a device-pixel edge, unless it is within 0.001 of a whole pixel. */
+function outward(value: number, rounding: (v: number) => number): number {
+	const nearest = Math.round(value);
+	return Math.abs(nearest - value) < Math.fround(0.001)
+		? nearest
+		: rounding(value);
+}
+
 /**
  * The window position and size, in CSS pixels, Chrome reads back on X11 for a
  * window it was asked to open at `position` and `size`.
@@ -297,10 +305,6 @@ export function chromeWindowReports(
 ): [number, number] {
 	const f = Math.fround;
 	const scale = f(dpr);
-	const outward = (value: number, rounding: (v: number) => number): number => {
-		const nearest = Math.round(value);
-		return Math.abs(nearest - value) < f(0.001) ? nearest : rounding(value);
-	};
 	const left = f(f(position) * scale);
 	const right = f(left + f(f(size) * scale));
 	const leftPx = outward(left, Math.floor);
@@ -309,6 +313,19 @@ export function chromeWindowReports(
 	const back = f(f(leftPx) * inverse);
 	const backRight = f(back + f(f(rightPx - leftPx) * inverse));
 	return [Math.floor(back), Math.ceil(backRight) - Math.floor(back)];
+}
+
+/**
+ * The innerWidth Chrome reports in a window `width` CSS pixels wide.
+ *
+ * The page spans the window, sized up to whole device pixels and read back
+ * to the nearest CSS pixel, so at 1.25 a window 1537 wide reports an
+ * innerWidth of 1538, wider than the window itself.
+ */
+export function chromeViewportWidth(width: number, dpr: number): number {
+	const f = Math.fround;
+	const scale = f(dpr);
+	return Math.floor(outward(f(f(width) * scale), Math.ceil) / scale + 0.5);
 }
 
 /** (switch input, what Chrome reports for it) around `position`, `size`. */
@@ -331,7 +348,8 @@ function windowInputs(
  *
  * At a fractional ratio some positions and sizes are never read back (at 1.75
  * no window reports screenX 7). The claim moves to the nearest one Chrome
- * does report, inside the drawn window's box so it still fits the screen.
+ * does report, inside the drawn window's box so it still fits the screen, and
+ * no narrower than the page Chrome lays out in it.
  */
 export function snapWindowToDevicePixels(config: Config): void {
 	const dpr = num(config["window.devicePixelRatio"] || 1);
@@ -348,6 +366,9 @@ export function snapWindowToDevicePixels(config: Config): void {
 		for (const [, seen] of windowInputs(position, num(size), dpr)) {
 			if (!(position >= seen[0] && seen[0] >= 0)) continue;
 			if (seen[0] + seen[1] > position + num(size)) continue;
+			// Down the window the toolbar keeps the page shorter than it; across, the page spans it.
+			if (axis === "Width" && chromeViewportWidth(seen[1], dpr) > seen[1])
+				continue;
 			const shift =
 				Math.abs(position - seen[0]) + Math.abs(num(size) - seen[1]);
 			if (shift < bestShift) {

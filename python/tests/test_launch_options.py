@@ -16,7 +16,7 @@ from camouwolf.exceptions import (
     UnknownIPLocation,
     UnsupportedOSSpoof,
 )
-from camouwolf.fingerprints import Screen, chrome_window_reports
+from camouwolf.fingerprints import Screen, chrome_viewport_width, chrome_window_reports
 
 
 @pytest.fixture(autouse=True)
@@ -239,6 +239,29 @@ def test_the_claimed_window_is_the_one_chrome_reports_at_a_fractional_ratio(opti
                                                 ('window.screenY', 'window.outerHeight'))):
         claimed = config[pos_key], config[size_key]
         assert chrome_window_reports(position[axis], size[axis], dpr) == claimed, (pos_key, claimed)
+
+
+# Windows Chrome laid out on X11, (devicePixelRatio, outerWidth) -> innerWidth.
+MEASURED_VIEWPORTS = [
+    ((1.25, 1200), 1200), ((1.25, 1201), 1202), ((1.25, 1202), 1202), ((1.25, 1205), 1206),
+    ((1.25, 1536), 1536), ((1.25, 1537), 1538), ((1.5, 1202), 1202), ((1.75, 1201), 1201),
+    ((1.75, 1000), 1000), ((2.5, 1203), 1203), ((3, 1505), 1505),
+]
+
+
+@pytest.mark.parametrize('given, seen', MEASURED_VIEWPORTS)
+def test_the_viewport_model_is_what_chrome_reported(given, seen):
+    assert chrome_viewport_width(given[1], given[0]) == seen
+
+
+def test_the_claimed_window_is_never_narrower_than_its_page(options):
+    fingerprint = utils.draw_fingerprint('windows', Screen(min_width=1920, min_height=1080), None, None)
+    # A windows-1 build-tester profile: Chrome reported it 1537 wide with an innerWidth of 1538.
+    window = {**fingerprint['window'], 'devicePixelRatio': 1.25, 'screenX': 2, 'screenY': 0,
+              'outerWidth': 1537, 'outerHeight': 832}
+    config = config_of(options(fingerprint={**fingerprint, 'window': window}))
+
+    assert chrome_viewport_width(config['window.outerWidth'], 1.25) <= config['window.outerWidth']
 
 
 def test_a_fixed_window_larger_than_the_screen_is_brought_within_it(options):
