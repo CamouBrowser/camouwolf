@@ -25,6 +25,8 @@ required_categories:
   - Fonts
   - Voices
   - Other Surfaces
+  - Media Codecs
+  - Battery
 
 # Reported in the result, never gating, each with the reason.
 reported_categories:
