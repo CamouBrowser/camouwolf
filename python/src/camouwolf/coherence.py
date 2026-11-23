@@ -13,9 +13,9 @@ repair an identity that breaks it where a correct value is determined, and is
 checked again afterwards. `validate()` reports what is still broken; `apply()`
 repairs what it can.
 
-Camoufox's rules for Firefox-only surfaces (navigator.oscpu, cpu:arch and
-cpu:manufacturer, Firefox's sanitized renderer buckets, the 86px chrome
-height) have no Chrome counterpart and are not here.
+Camoufox's rules for Firefox-only surfaces (navigator.oscpu, Firefox's
+sanitized renderer buckets, the 86px chrome height) have no Chrome counterpart
+and are not here. Its CPU is Chrome's Sec-CH-UA-Arch.
 """
 
 from typing import AbstractSet, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
@@ -116,8 +116,88 @@ def _check_gpu_matches_os(config: Dict[str, Any], target_os: str) -> Optional[st
     return None
 
 
-def _apple_gpu(config: Dict[str, Any]) -> bool:
-    return 'Apple M' in _renderer(config)
+# The CPUs each OS runs on, by architecture: who makes them.
+CPU_ARCHES = ('x86', 'arm')
+CPU_MANUFACTURERS: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    os_key: {arch: tuple(makers) for arch, makers in by_arch.items()}
+    for os_key, by_arch in LAUNCHER_CONSTANTS['cpuManufacturers'].items()
+}
+# Logical core counts only Intel's hybrid parts report.
+INTEL_ONLY_CORE_COUNTS = frozenset(LAUNCHER_CONSTANTS['intelOnlyCoreCounts'])
+# GPUs that come only with an ARM CPU, and who makes it.
+_ARM_GPUS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ('Apple M', ('apple',)),
+    ('Apple GPU', ('apple',)),
+    ('Adreno', ('qualcomm',)),
+)
+# Integrated GPUs, which name the x86 CPU they are part of.
+_INTEL_IGPUS = ('Intel(R) HD Graphics', 'Intel(R) UHD Graphics', 'Intel(R) Iris', 'Intel(R) Graphics',
+                'Intel(R) Arc(TM) Graphics', 'Intel(R) Arc(TM) 140', 'Intel(R) Arc(TM) Pro 140')
+_AMD_IGPUS = ('AMD Radeon(TM) Graphics', 'AMD Radeon(TM) Vega', 'AMD Radeon(TM) RX Vega')
+# Renderers that draw on whatever CPU the machine has.
+_SOFTWARE_RENDERERS = ('SwiftShader', 'llvmpipe')
+
+
+def gpu_cpu(renderer: Optional[str], target_os: str) -> Tuple[Optional[str], Tuple[str, ...]]:
+    """The CPU architecture a machine with this GPU has, and its possible makers.
+
+    (None, ()) for a software renderer, which runs on any CPU. An empty tuple
+    of makers leaves the maker open within the architecture.
+    """
+    # fpgen hands its conditions the recorded renderer lowercased.
+    renderer = str(renderer or '').lower()
+    if not renderer or any(name.lower() in renderer for name in _SOFTWARE_RENDERERS):
+        return None, ()
+    for marker, makers in _ARM_GPUS:
+        if marker.lower() in renderer:
+            return 'arm', makers
+    if target_os == 'mac' or any(igpu.lower() in renderer for igpu in _INTEL_IGPUS):
+        return 'x86', ('intel',)
+    if any(igpu.lower() in renderer for igpu in _AMD_IGPUS):
+        return 'x86', ('amd',)
+    # A discrete card: no ARM machine on sale carries one Chrome would name.
+    return 'x86', ()
+
+
+def resolve_cpu(cpu: Any, target_os: str) -> Tuple[str, Optional[str]]:
+    """(arch, manufacturer) for a caller's `cpu` option on `target_os`.
+
+    Raises ValueError for anything no machine running `target_os` is: an
+    unknown key, architecture or maker, or a pair such as an AMD Mac. A maker
+    alone implies its architecture.
+    """
+    if not isinstance(cpu, dict):
+        raise ValueError(f"cpu must be a dict such as {{'arch': 'x86', 'manufacturer': 'intel'}}, not {cpu!r}")
+    unknown = sorted(set(cpu) - {'arch', 'manufacturer'})
+    if unknown:
+        raise ValueError(f"cpu takes 'arch' and 'manufacturer', not {', '.join(map(repr, unknown))}")
+    arch, maker = cpu.get('arch'), cpu.get('manufacturer')
+    if arch is not None and arch not in CPU_ARCHES:
+        raise ValueError(f'cpu arch must be one of {CPU_ARCHES}, not {arch!r}')
+    table = CPU_MANUFACTURERS[target_os]
+    name = clienthints.CH_PLATFORM[target_os]
+    if maker is not None:
+        arches = [a for a in CPU_ARCHES if maker in table.get(a, ())]
+        if not arches:
+            known = sorted({m for makers in table.values() for m in makers})
+            raise ValueError(f"no {name} identity has a CPU made by {maker!r}; on {name} it is one of {', '.join(known)}")
+        if arch is not None and arch not in arches:
+            raise ValueError(f"no {name} identity has an {arch} CPU made by {maker!r}")
+        arch = arches[0]
+    elif arch is not None and not table.get(arch):
+        raise ValueError(f'no {name} identity has an {arch} CPU')
+    return arch or 'x86', maker
+
+
+def cpu_misfit(renderer: Optional[str], cores: Any, target_os: str, arch: str, maker: Optional[str]) -> Optional[str]:
+    """Why a machine with this GPU and core count cannot have this CPU, or None."""
+    by_gpu, makers = gpu_cpu(renderer, target_os)
+    claimed = ' '.join(v for v in (maker, arch) if v)
+    if by_gpu is not None and (by_gpu != arch or (maker and makers and maker not in makers)):
+        return f'a {claimed} CPU beside the WebGL renderer "{renderer}"'
+    if arch == 'x86' and maker and maker != 'intel' and cores in INTEL_ONLY_CORE_COUNTS:
+        return f'a {claimed} CPU with hardwareConcurrency {cores}, which only Intel CPUs report'
+    return None
 
 
 def machine_misfit(renderer: Optional[str], target_os: str, cores: Any, width: Any, height: Any) -> Optional[str]:
@@ -148,22 +228,20 @@ def _check_mac_hardware(config: Dict[str, Any], target_os: str) -> Optional[str]
     )
 
 
-def _check_mac_architecture(config: Dict[str, Any], target_os: str) -> Optional[str]:
+def _check_architecture(config: Dict[str, Any], target_os: str) -> Optional[str]:
     arch = config.get('userAgentData.architecture')
     renderer = _renderer(config)
-    if target_os != 'mac' or not arch or not renderer:
-        return None
-    expected = 'arm' if _apple_gpu(config) else 'x86'
-    if arch != expected:
+    expected, _ = gpu_cpu(renderer, target_os)
+    if arch and expected and arch != expected:
         return (
             f'Sec-CH-UA-Arch is "{arch}" beside the WebGL renderer "{renderer}"; '
-            f'that GPU is in {"Apple Silicon" if expected == "arm" else "Intel"} Macs ("{expected}")'
+            f'that GPU is only in {expected} machines'
         )
     return None
 
 
-def _repair_mac_architecture(config: Dict[str, Any], target_os: str) -> None:
-    config['userAgentData.architecture'] = 'arm' if _apple_gpu(config) else 'x86'
+def _repair_architecture(config: Dict[str, Any], target_os: str) -> None:
+    config['userAgentData.architecture'] = gpu_cpu(_renderer(config), target_os)[0]
 
 
 def _check_color_depth(config: Dict[str, Any], target_os: str) -> Optional[str]:
@@ -302,7 +380,7 @@ RULES: List[Rule] = [
     Rule('client-hints', _check_client_hints, None),
     Rule('target-os', _check_target_os, None),
     Rule('gpu-matches-os', _check_gpu_matches_os, None),
-    Rule('mac-architecture', _check_mac_architecture, _repair_mac_architecture),
+    Rule('architecture', _check_architecture, _repair_architecture),
     Rule('mac-hardware', _check_mac_hardware, None),
     Rule('color-depth', _check_color_depth, _repair_color_depth),
     Rule('pixel-depth', _check_pixel_depth, _repair_pixel_depth),

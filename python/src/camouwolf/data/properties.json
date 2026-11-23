@@ -273,5 +273,25 @@
     "property": "geolocation:accuracy",
     "type": "double",
     "carriedBy": "launcher"
+  },
+  {
+    "property": "proxy:socks5Credentials",
+    "type": "dict"
+  },
+  {
+    "property": "certificates",
+    "type": "array"
+  },
+  {
+    "property": "instantAnimations",
+    "type": "bool"
+  },
+  {
+    "property": "allowAddonNewtab",
+    "type": "bool"
+  },
+  {
+    "property": "showcursor",
+    "type": "bool"
   }
 ]

@@ -1,0 +1,29 @@
+diff --git a/third_party/blink/renderer/core/animation/animation_effect.cc b/third_party/blink/renderer/core/animation/animation_effect.cc
+--- a/third_party/blink/renderer/core/animation/animation_effect.cc
++++ b/third_party/blink/renderer/core/animation/animation_effect.cc
+@@ -30,6 +30,10 @@
+ 
+ #include "third_party/blink/renderer/core/animation/animation_effect.h"
+ 
++#include <cmath>
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
++
+ #include "third_party/blink/renderer/bindings/core/v8/v8_computed_effect_timing.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_optional_effect_timing.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_union_cssnumericvalue_string_unrestricteddouble.h"
+@@ -190,6 +194,14 @@
+     normalized_->end_delay = timing_.end_delay.AsTimeValue();
+     normalized_->iteration_duration =
+         timing_.iteration_duration.value_or(AnimationTimeDelta());
++    // CAMOUWOLF: instantAnimations finishes every finite animation at once,
++    // so automation never waits on one. Off by default: a page reads the zero
++    // duration back through getComputedTiming().
++    if (std::isfinite(timing_.iteration_count) &&
++        base::CamouwolfConfig::Get().GetBool("instantAnimations").value_or(
++            false)) {
++      normalized_->iteration_duration = AnimationTimeDelta();
++    }
+   }
+ 
+   normalized_->active_duration =

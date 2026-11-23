@@ -1,6 +1,6 @@
 # The patch series
 
-27 diffs in `browser/patches/`, applied in `series` order against the Chromium
+36 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:
@@ -332,9 +332,12 @@ process is never asked for the host layout.
 
 ### 0015 — network information
 
-`network_information.cc`. `rtt` and `downlink`. Low entropy on their own, but a
-strong residency signal beside the claimed timezone and exit IP: a "residential
-US" identity reporting 0 ms RTT is reporting a datacenter link.
+`network_information.cc`. `connection.rtt` and `connection.downlink`, for a
+caller who wants a different network than the one measured. A configured value
+goes through `RoundRtt`/`RoundMbps` for the page's host, as a measured one does:
+a per-host multiplier of 0.9 to 1.1, then 50 ms or 50 kbps steps. Returned raw,
+it read the same on every origin and could sit off Chrome's grid. The launcher
+writes neither (WINDOWS-DIVERGENCE.md §2.5).
 
 ### 0017 — automation invisibility
 
@@ -652,3 +655,59 @@ The launcher writes the exit IP from `geoip` to `webrtc:ipv4` or `webrtc:ipv6`
 for a proxied launch. A proxied context without either key has no network and
 gathers no host candidate. `block_webrtc=True` still passes the 0030 switch,
 which leaves a page no UDP at all.
+
+### 0032 — SOCKS5 username and password (`proxy:socks5Credentials`)
+
+`net/socket/socks5_client_socket.{h,cc}`, `socks_connect_job.cc`, and 0031's
+`ProxiedUdpSocket`. Chromium speaks SOCKS5 without authentication only, so a
+proxy that wants a password refused every connection. The client now offers
+username/password (RFC 1929) beside no authentication when the launch gave
+credentials for that proxy, and sends them if the proxy picks that method; a
+refusal fails the connection. The page path (CONNECT) and WebRTC's relay
+(UDP ASSOCIATE) share the greeting and request builders.
+
+The launcher takes the credentials off the proxy Playwright sees and writes
+them to `proxy:socks5Credentials`, keyed by the proxy as `host:port` (lowercase,
+IPv6 in brackets, port 1080 by default), so they never appear in argv. Each
+field is 1 to 255 bytes of UTF-8, as RFC 1929 allows; the launcher refuses a
+longer one. A context-level SOCKS5 proxy with a password is still refused by
+Playwright.
+
+### 0033 — closed shadow roots for automation
+
+`element.{idl,h,cc}`. `Element.shadowRoot` returns a closed root to DevTools'
+isolated world, where Playwright's selector engine runs, so a locator reaches
+into a closed root as a user's click can. The page's own worlds still get
+`null`; no page script can run in that world.
+
+### 0034 — instant animations (`instantAnimations`)
+
+`animation_effect.cc`. Every finite CSS animation, transition and Web
+Animation gets a zero iteration duration, so it finishes at once and automation
+never waits on one. Infinite animations keep running. Off by default and the
+launcher warns: a page reads the zero duration back through
+`getComputedTiming()`.
+
+### 0035 — extension tabs (`allowAddonNewtab`)
+
+`tabs_api.cc`, `windows_api.cc`, `runtime_api.cc`. With the key false (the
+launcher's default) `chrome.tabs.create`, `chrome.windows.create` and
+`chrome.runtime.openOptionsPage` fail with "Opening a tab is disabled", so an
+extension's welcome or options page never appears beside the pages automation
+opened. The extension sees an API error, not a missing API.
+
+### 0036 — CA certificates (`certificates`)
+
+`profile_network_context_service.cc`. Each base64 DER certificate in the key is
+added as a trust anchor exactly as the `CACertificates` policy adds one, so a
+launch can trust the CA of a proxy that terminates TLS without a policy file or
+a certificate database in the user's home. The launcher turns
+`certificatePaths` (PEM or DER files) into this key.
+
+### 0037 — show cursor (`showcursor`)
+
+`web_dev_tools_agent_impl.cc`. Turns on DevTools' click visualization for every
+session an automation driver attaches: a 350 ms ripple at each mouse or pointer
+press, painted in the frame overlay a page cannot read. It shows where clicks
+land, not where the pointer rests: Chromium draws no pointer in a page, and a
+hover-only position would need a page-visible element. Off by default.

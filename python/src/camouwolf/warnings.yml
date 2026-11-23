@@ -86,3 +86,11 @@ addons_need_persistent_context: >-
     new_page() on a non-persistent launch open separate incognito-like contexts, where Chromium runs
     no extension, so pages there are not affected by them (uBlock Origin Lite included).
     Pass persistent_context=True with a user_data_dir to have them run, or exclude_addons to drop the default one.
+
+disable_coop: >-
+    disable_coop makes Chrome ignore Cross-Origin-Opener-Policy headers. A page that sends
+    COOP and COEP is then not crossOriginIsolated, which it can read, and its popups keep their opener.
+
+instant_animations: >-
+    instant_animations finishes every finite animation at once. A page that reads an animation's
+    timing back sees a duration of zero, which stock Chrome never reports.

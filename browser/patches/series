@@ -111,3 +111,34 @@
 # ASSOCIATE relay, names resolved by the proxy, and no UDP at all through a
 # proxy that carries none. Adds browser/additions/camouwolfp2p.
 0031-webrtc-proxied-exit.patch
+
+# --- SOCKS5 username/password -------------------------------------------------
+# Chromium speaks SOCKS5 without authentication only. This adds RFC 1929 for a
+# proxy the launch gave credentials for (proxy:socks5Credentials), on the TCP
+# path here and on 0031's UDP ASSOCIATE path, which shares the helpers.
+0032-socks5-password-auth.patch
+
+# --- Closed shadow roots for automation -------------------------------------
+# Element.shadowRoot returns a closed root to DevTools' isolated world, where
+# Playwright's selectors run, so locators reach into it. A page still gets null.
+0033-closed-shadow-root-automation.patch
+
+# --- Instant animations --------------------------------------------------------
+# instantAnimations: every finite animation finishes at once. Opt-in, since a
+# page reads the zero duration back.
+0034-instant-animations.patch
+
+# --- Extension tabs -------------------------------------------------------------
+# allowAddonNewtab: false stops an extension opening tabs, windows or its
+# options page, so automation sees only its own pages.
+0035-extension-new-tab.patch
+
+# --- CA certificates ------------------------------------------------------------
+# certificates: base64 DER certificates trusted as the CACertificates policy
+# trusts them, per launch, for a proxy that terminates TLS.
+0036-ca-certificates.patch
+
+# --- Show cursor ---------------------------------------------------------------
+# showcursor: DevTools' click visualization on every automation session, for
+# watching or recording a run. Opt-in.
+0037-show-cursor.patch

@@ -11,6 +11,12 @@
     "MacBook Pro 16\"": [[1312, 848], [1496, 967], [1728, 1117], [2056, 1329]],
     "iMac 24\"": [[2240, 1260]]
   },
+  "cpuManufacturers": {
+    "win": {"x86": ["intel", "amd"], "arm": ["qualcomm"]},
+    "mac": {"x86": ["intel"], "arm": ["apple"]},
+    "lin": {"x86": ["intel", "amd"]}
+  },
+  "intelOnlyCoreCounts": [10, 14, 18, 22, 28],
   "plausibleDpr": {"win": [1, 1.25, 1.5, 1.75, 2, 2.5, 3], "mac": [1, 2], "lin": [1, 1.25, 1.5, 1.75, 2]},
   "essentialFonts": {
     "win": ["Arial", "Calibri", "Cambria", "Cambria Math", "Consolas", "Courier New", "Georgia", "Microsoft Sans Serif", "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"],

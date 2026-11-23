@@ -58,6 +58,8 @@ export interface LauncherConstants {
 	taskbarHeight: Record<"win" | "mac" | "lin", number>;
 	plausibleDpr: Record<"win" | "mac" | "lin", number[]>;
 	essentialFonts: Record<"win" | "mac" | "lin", string[]>;
+	cpuManufacturers: Record<"win" | "mac" | "lin", Record<string, string[]>>;
+	intelOnlyCoreCounts: number[];
 }
 export const LAUNCHER_CONSTANTS: Readonly<LauncherConstants> = loadDataFile(
 	"launcher-constants.json",

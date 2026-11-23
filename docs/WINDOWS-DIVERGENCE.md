@@ -135,13 +135,21 @@ support at all.
 | --- | --- | --- |
 | `keyboard.layoutMap` | 0014 | `IntlBackslash` = `\` (Win) vs `<` (Lin) |
 | `mediaDevices:enumerated` | 0013 | 3 devices (audioin/videoin/audioout) vs 2 |
-| `connection.downlink` | 0015 | rtt 100/downlink 1.65 vs 50/1.5 — weak, network-derived |
+| `connection.downlink` | 0015 | rtt 100/downlink 1.65 vs 50/1.5 — network-derived, not an OS difference (below) |
 | `screen.availLeft` / `availTop` | 0004 | none here (both 0); needed for a side/top taskbar |
 | `navigator.vendor` | 0002 | none — `Google Inc.` on both |
 | `timezone` | 0006 | none here; only drawn on a geoip launch |
 
 The first two are live leaks. `check-config-keys.py` cannot catch these — it
 checks written-but-unread, and these are the mirror case.
+
+`connection.rtt`/`downlink` stay unwritten on purpose. Chrome computes both
+from the transfers it has timed, by the same code on every OS, so the two
+samples above differ because the machines were on different networks. The
+recorded fingerprints carry no connection values to draw from, and Chrome's own
+estimate already describes the path a page's requests take, through the proxy
+when there is one. A value a caller sets now goes through Chrome's per-host
+noise and rounding (0015), as a measured one does.
 
 ### 2.6 Platform-gated APIs — `0019` closes one of three
 

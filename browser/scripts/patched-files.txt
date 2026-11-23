@@ -111,3 +111,27 @@ services/network/p2p/socket_manager.h
 services/network/p2p/socket_manager.cc
 services/network/p2p/socket_tcp.h
 services/network/p2p/socket_tcp.cc
+
+# --- SOCKS5 username/password -------------------------------------------------
+net/socket/socks5_client_socket.h
+net/socket/socks5_client_socket.cc
+net/socket/socks_connect_job.cc
+
+# --- closed shadow roots for automation ---------------------------------------
+third_party/blink/renderer/core/dom/element.idl
+third_party/blink/renderer/core/dom/element.h
+third_party/blink/renderer/core/dom/element.cc
+
+# --- instant animations -------------------------------------------------------
+third_party/blink/renderer/core/animation/animation_effect.cc
+
+# --- extension tabs -----------------------------------------------------------
+chrome/browser/extensions/api/tabs/tabs_api.cc
+chrome/browser/extensions/api/tabs/windows_api.cc
+extensions/browser/api/runtime/runtime_api.cc
+
+# --- CA certificates ----------------------------------------------------------
+chrome/browser/net/profile_network_context_service.cc
+
+# --- show cursor --------------------------------------------------------------
+third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc

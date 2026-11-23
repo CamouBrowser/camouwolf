@@ -1,0 +1,72 @@
+diff --git a/chrome/browser/extensions/api/tabs/tabs_api.cc b/chrome/browser/extensions/api/tabs/tabs_api.cc
+--- a/chrome/browser/extensions/api/tabs/tabs_api.cc
++++ b/chrome/browser/extensions/api/tabs/tabs_api.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "chrome/browser/extensions/api/tabs/tabs_api.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/memory/weak_ptr.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+@@ -850,6 +851,12 @@
+ TabsCreateFunction::~TabsCreateFunction() = default;
+ 
+ ExtensionFunction::ResponseAction TabsCreateFunction::Run() {
++  // CAMOUWOLF: an extension opens no tab or window of its own (a welcome or
++  // options page) unless the launch allows it, so automation sees only the
++  // pages it opened.
++  if (!base::CamouwolfConfig::Get().GetBool("allowAddonNewtab").value_or(true)) {
++    return RespondNow(Error("Opening a tab is disabled"));
++  }
+   std::optional<tabs::Create::Params> params =
+       tabs::Create::Params::Create(args());
+   EXTENSION_FUNCTION_VALIDATE(params);
+diff --git a/chrome/browser/extensions/api/tabs/windows_api.cc b/chrome/browser/extensions/api/tabs/windows_api.cc
+--- a/chrome/browser/extensions/api/tabs/windows_api.cc
++++ b/chrome/browser/extensions/api/tabs/windows_api.cc
+@@ -13,6 +13,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/memory/raw_ref.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/types/expected.h"
+@@ -504,6 +505,12 @@
+ WindowsCreateFunction::~WindowsCreateFunction() = default;
+ 
+ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
++  // CAMOUWOLF: an extension opens no tab or window of its own (a welcome or
++  // options page) unless the launch allows it, so automation sees only the
++  // pages it opened.
++  if (!base::CamouwolfConfig::Get().GetBool("allowAddonNewtab").value_or(true)) {
++    return RespondNow(Error("Opening a tab is disabled"));
++  }
+   std::optional<windows::Create::Params> params =
+       windows::Create::Params::Create(args());
+   EXTENSION_FUNCTION_VALIDATE(params);
+diff --git a/extensions/browser/api/runtime/runtime_api.cc b/extensions/browser/api/runtime/runtime_api.cc
+--- a/extensions/browser/api/runtime/runtime_api.cc
++++ b/extensions/browser/api/runtime/runtime_api.cc
+@@ -11,6 +11,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check.h"
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+@@ -963,6 +964,12 @@
+ }
+ 
+ ExtensionFunction::ResponseAction RuntimeOpenOptionsPageFunction::Run() {
++  // CAMOUWOLF: an extension opens no tab or window of its own (a welcome or
++  // options page) unless the launch allows it, so automation sees only the
++  // pages it opened.
++  if (!base::CamouwolfConfig::Get().GetBool("allowAddonNewtab").value_or(true)) {
++    return RespondNow(Error("Opening a tab is disabled"));
++  }
+   RuntimeAPI* api = RuntimeAPI::GetFactoryInstance()->Get(browser_context());
+   api->OpenOptionsPage(
+       extension(), browser_context(),
