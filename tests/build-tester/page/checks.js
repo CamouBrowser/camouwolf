@@ -359,8 +359,9 @@ const buildTester = (() => {
     for (const [name, codec] of Object.entries(VIDEO)) {
       out.hardwareDecode[name] = await attempt(async () => (await VideoDecoder.isConfigSupported(
         { codec, codedWidth: 1920, codedHeight: 1080, hardwareAcceleration: "prefer-hardware" })).supported);
+      // VP8 has no MP4 mapping, so it is asked about in WebM.
       out.powerEfficient[name] = await attempt(async () => (await navigator.mediaCapabilities.decodingInfo({
-        type: "file", video: { contentType: `video/mp4; codecs="${codec}"`, width: 1920, height: 1080, bitrate: 2e6, framerate: 30 } })).powerEfficient);
+        type: "file", video: { contentType: `video/${name === "vp8" ? "webm" : "mp4"}; codecs="${codec}"`, width: 1920, height: 1080, bitrate: 2e6, framerate: 30 } })).powerEfficient);
     }
     for (const [name, codec] of [["h264", "avc1.640028"], ["hevc", "hvc1.1.6.L93.B0"]]) {
       out.hardwareEncode[name] = await attempt(async () => (await VideoEncoder.isConfigSupported(
