@@ -94,3 +94,17 @@ rules:
     forbidden:
       paths: ["browser/patches/*.patch", "browser/settings/properties.json", "python/src/**/*.py", "typescript/src/**/*.ts"]
       pattern: 'storage\.quota'
+
+  - id: platform-codec-claims-fail-at-use
+    decision: >-
+      A claimed platform codec the host cannot run is still claimed; it fails at
+      use, and prefer-hardware WebCodecs decode falls back to software.
+    why: >-
+      Real Chrome's platform codecs also fail at use (a busy or missing driver),
+      so a failure there is ordinary. Answering a capability query with the
+      host's hardware instead would put a Linux host's codecs under a Windows
+      GPU. The formats were never negotiable before, so nothing that worked
+      breaks.
+    required:
+      paths: [browser/patches/0032-media-platform-codecs.patch]
+      pattern: '!base::CamouwolfConfig::Get\(\)\.Has\("media:platformDecoders"\)'

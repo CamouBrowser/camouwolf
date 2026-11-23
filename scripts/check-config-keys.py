@@ -80,7 +80,7 @@ LAUNCHER_INTERNAL = {
 _DOTTED = ("navigator", "screen", "window", "userAgentData", "connection", "storage", "keyboard")
 _COLONED = (
     "locale", "geolocation", "canvas", "fonts", "webGl", "webGl2", "webGpu", "webrtc",
-    "mediaDevices", "voices", "AudioContext", "battery",
+    "mediaDevices", "voices", "AudioContext", "battery", "media",
 )
 _HEAD = r"(?:(?:%s)\.|(?:%s):)" % ("|".join(_DOTTED), "|".join(_COLONED))
 KEY_RE = re.compile(r"^%s[A-Za-z][A-Za-z0-9_]*$" % _HEAD)
@@ -90,7 +90,7 @@ PREFIX_RE = re.compile(r"^%s[A-Za-z0-9_]*$" % _HEAD)
 # Every accessor of CamouwolfConfig (browser/additions/camouwolfcfg/camouwolf_config.h).
 READ_RE = re.compile(
     r"\b(?:Get(?:String|Int|Uint32|Double|Bool|StringList|StringListLower|IntRect|Nested|List|Dict)"
-    r"|Has)\(\s*\"([^\"]+)\""
+    r"|Has|ListContains)\(\s*\"([^\"]+)\""
 )
 
 

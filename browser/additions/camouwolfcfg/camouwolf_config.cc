@@ -145,6 +145,21 @@ std::vector<std::string> CamouwolfConfig::GetStringListLower(
   return result;
 }
 
+std::optional<bool> CamouwolfConfig::ListContains(
+    std::string_view key,
+    std::string_view item) const {
+  const ListValue* list = dict_.FindList(key);
+  if (!list) {
+    return std::nullopt;
+  }
+  for (const Value& entry : *list) {
+    if (entry.is_string() && entry.GetString() == item) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const Value* CamouwolfConfig::GetNested(std::string_view domain,
                                     std::string_view key) const {
   const DictValue* nested = dict_.FindDict(domain);

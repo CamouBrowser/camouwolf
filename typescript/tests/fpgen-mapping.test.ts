@@ -211,6 +211,83 @@ describe("fromFpgen", () => {
 	});
 });
 
+const PREFER_HARDWARE = { hardwareAcceleration: "prefer-hardware" };
+const PREFER_SOFTWARE = { hardwareAcceleration: "prefer-software" };
+
+function mediaRecord(userAgent: string) {
+	const hardware = ["basic", PREFER_HARDWARE, PREFER_SOFTWARE];
+	const software = ["basic", PREFER_SOFTWARE];
+	return {
+		...WINDOWS_FINGERPRINT,
+		navigator: { ...WINDOWS_FINGERPRINT.navigator, userAgent },
+		mediaDecoderSupport: {
+			video: {
+				"avc1.42E01E": hardware,
+				"vp09.00.10.08": hardware,
+				"hvc1.1.6.L93.B0": hardware,
+				vp8: software,
+				"av01.0.04M.08": software,
+				// A config that names more than the preference is not the plain
+				// prefer-hardware probe.
+				"avc3.640028": [
+					{ codedWidth: 3840, codedHeight: 2160, ...PREFER_HARDWARE },
+				],
+			},
+		},
+		rtcCapabilities: {
+			video: {
+				codecs: [
+					{ mimeType: "video/VP8" },
+					{
+						mimeType: "video/H264",
+						sdpFmtpLine:
+							"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+					},
+					{
+						mimeType: "video/H264",
+						sdpFmtpLine:
+							"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640020",
+					},
+					{
+						mimeType: "video/H265",
+						sdpFmtpLine: "level-id=123;profile-id=1;tier-flag=0;tx-mode=SRST",
+					},
+				],
+			},
+		},
+	};
+}
+
+describe("platformCodecs", () => {
+	it("claims the record's hardware codecs", () => {
+		const config = fromFpgen(
+			mediaRecord(WINDOWS_FINGERPRINT.navigator.userAgent),
+		);
+		expect(config["media:platformDecoders"]).toEqual(["h264", "hevc", "vp9"]);
+		expect(config["media:platformEncoders"]).toEqual(["aac", "h264", "hevc"]);
+		expect(config["media:rtcEncodeFormats"]).toEqual([
+			"H264|level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640020",
+			"H265|level-id=123;profile-id=1;tier-flag=0;tx-mode=SRST",
+		]);
+		expect(config["media:rtcDecodeFormats"]).toEqual([
+			...fingerprints.RTC_DECODE_FORMATS.h264,
+			...fingerprints.RTC_DECODE_FORMATS.hevc,
+		]);
+	});
+
+	it("encodes no AAC on Linux, and claims nothing without the data", () => {
+		const linux = mediaRecord(
+			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+		);
+		expect(fromFpgen(linux)["media:platformEncoders"]).not.toContain("aac");
+		expect(
+			Object.keys(fromFpgen(WINDOWS_FINGERPRINT)).filter((key) =>
+				key.startsWith("media:"),
+			),
+		).toEqual([]);
+	});
+});
+
 describe("webgl", () => {
 	it.each([
 		[RTX, "win", true],

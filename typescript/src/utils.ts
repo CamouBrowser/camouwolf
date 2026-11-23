@@ -1839,6 +1839,10 @@ export async function launchOptions({
 	setDefault(config, "mediaDevices:enumerated", [
 		...DEFAULT_MEDIA_DEVICES[targetOs],
 	]);
+	// A desktop on mains power, as Chrome reports one with no battery. A frozen
+	// discharging level would be the tell; a caller can still claim one.
+	setDefault(config, "battery:charging", true);
+	setDefault(config, "battery:level", 1);
 	const layout = keyboardLayoutMap(targetOs);
 	if (layout) setDefault(config, "keyboard.layoutMap", layout);
 	const colors = SYSTEM_COLORS[OS_NAMES[targetOs]];

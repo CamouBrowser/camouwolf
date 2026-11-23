@@ -399,6 +399,14 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         bad = [f"{k}: claimed {v:#08x}, saw {probe['systemColors'].get(k)}" for k, v in claimed["systemColors"].items()
                if probe["systemColors"].get(k) != v]
         c["systemColors"] = check(not bad, "; ".join(bad[:8]))
+    if "media:platformDecoders" in claimed:
+        out["Media Codecs"] = compare_codecs(claimed, got.get("codecs") or {})
+    if "battery:level" in claimed:
+        battery = got.get("battery") or {}
+        full = claimed["battery:charging"] and claimed["battery:level"] >= 1
+        expected = {"charging": claimed["battery:charging"], "level": claimed["battery:level"],
+                    "chargingTime": "0" if full else "Infinity", "dischargingTime": "Infinity"}
+        out["Battery"] = {"getBattery": check(battery == expected, f"claimed {expected}, saw {battery}")}
     if "webGpu:vendor" in claimed:
         # Its own category: an adapter needs a GPU, which a CI runner on a
         # software renderer does not have (ci/build-tester.yml).
@@ -408,6 +416,38 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
                                    and gpu.get("architecture") == claimed.get("webGpu:architecture"),
                                    f"claimed {claimed['webGpu:vendor']}/{claimed.get('webGpu:architecture')}, saw {gpu}")
     return out
+
+
+def compare_codecs(claimed: Dict[str, Any], got: Dict[str, Any]) -> Dict[str, Check]:
+    """Every surface that names a platform codec answers with the claimed one."""
+    decoders, encoders = set(claimed["media:platformDecoders"]), set(claimed["media:platformEncoders"])
+    c: Dict[str, Check] = {}
+
+    def agree(name: str, seen: Dict[str, Any], claim: set) -> None:
+        expected = {codec: codec in claim for codec in seen}
+        c[name] = check(seen == expected and bool(seen), f"claimed {sorted(claim)}, saw {seen}")
+
+    agree("webCodecsHardwareDecode", got.get("hardwareDecode") or {}, decoders)
+    agree("decodingInfoPowerEfficient", got.get("powerEfficient") or {}, decoders)
+    agree("webCodecsHardwareEncode", got.get("hardwareEncode") or {}, encoders)
+    hevc = "hevc" in decoders
+    c["hevcPlayback"] = check(got.get("hevcPlayback") == {"canPlayType": "probably" if hevc else "", "mse": hevc},
+                              f"HEVC decoder claimed {hevc}, saw {got.get('hevcPlayback')}")
+    aac = "aac" in encoders
+    c["aacEncode"] = check(got.get("aacEncode") == {"audioEncoder": aac, "mediaRecorder": aac},
+                           f"AAC encoder claimed {aac}, saw {got.get('aacEncode')}")
+    c["hevcRecord"] = check(got.get("hevcRecord") == ("hevc" in encoders),
+                            f"HEVC encoder claimed {'hevc' in encoders}, saw {got.get('hevcRecord')}")
+    rtc = got.get("rtc") or {}
+    for name, key, side in (("rtcSendFormats", "media:rtcEncodeFormats", "send"),
+                            ("rtcReceiveFormats", "media:rtcDecodeFormats", "receive")):
+        missing = [entry for entry in claimed[key] if entry not in (rtc.get(side) or [])]
+        # Formats only a hardware codec offers: H264 High, and H265.
+        extra = [entry for entry in rtc.get(side) or [] if entry not in claimed[key]
+                 and (entry.startswith("H265|") or "profile-level-id=64" in entry)]
+        c[name] = check(isinstance(rtc.get(side), list) and not missing and not extra,
+                        f"missing {missing}, unclaimed {extra}")
+    return c
 
 
 def font_families(claimed: Dict[str, Any]) -> Dict[str, str]:

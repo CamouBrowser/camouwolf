@@ -212,6 +212,30 @@
     "type": "str"
   },
   {
+    "property": "media:platformDecoders",
+    "type": "array"
+  },
+  {
+    "property": "media:platformEncoders",
+    "type": "array"
+  },
+  {
+    "property": "media:rtcEncodeFormats",
+    "type": "array"
+  },
+  {
+    "property": "media:rtcDecodeFormats",
+    "type": "array"
+  },
+  {
+    "property": "battery:charging",
+    "type": "bool"
+  },
+  {
+    "property": "battery:level",
+    "type": "double"
+  },
+  {
     "property": "keyboard.layoutMap",
     "type": "array"
   },

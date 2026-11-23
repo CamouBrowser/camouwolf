@@ -340,6 +340,42 @@ const buildTester = (() => {
       const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
       out.webgpu = adapter ? { vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device } : null;
     } catch (error) { out.webgpu = { error: String(error) }; }
+    out.codecs = await codecs();
+    try {
+      const battery = await navigator.getBattery();
+      // JSON has no Infinity; the times are compared as strings.
+      out.battery = { charging: battery.charging, level: battery.level,
+                      chargingTime: String(battery.chargingTime), dischargingTime: String(battery.dischargingTime) };
+    } catch (error) { out.battery = { error: String(error) }; }
+    return out;
+  }
+
+  // Every surface that names a platform codec, by the names the launcher
+  // claims them under (media::GetCodecName).
+  async function codecs() {
+    const VIDEO = { h264: "avc1.42E01E", vp8: "vp8", vp9: "vp09.00.10.08", av1: "av01.0.04M.08", hevc: "hvc1.1.6.L93.B0" };
+    const attempt = async (fn) => { try { return await fn(); } catch (error) { return `threw ${error}`; } };
+    const out = { hardwareDecode: {}, powerEfficient: {}, hardwareEncode: {} };
+    for (const [name, codec] of Object.entries(VIDEO)) {
+      out.hardwareDecode[name] = await attempt(async () => (await VideoDecoder.isConfigSupported(
+        { codec, codedWidth: 1920, codedHeight: 1080, hardwareAcceleration: "prefer-hardware" })).supported);
+      out.powerEfficient[name] = await attempt(async () => (await navigator.mediaCapabilities.decodingInfo({
+        type: "file", video: { contentType: `video/mp4; codecs="${codec}"`, width: 1920, height: 1080, bitrate: 2e6, framerate: 30 } })).powerEfficient);
+    }
+    for (const [name, codec] of [["h264", "avc1.640028"], ["hevc", "hvc1.1.6.L93.B0"]]) {
+      out.hardwareEncode[name] = await attempt(async () => (await VideoEncoder.isConfigSupported(
+        { codec, width: 1280, height: 720, bitrate: 2e6, hardwareAcceleration: "prefer-hardware" })).supported);
+    }
+    const hevc = `video/mp4; codecs="${VIDEO.hevc}"`;
+    out.hevcPlayback = { canPlayType: document.createElement("video").canPlayType(hevc), mse: MediaSource.isTypeSupported(hevc) };
+    out.aacEncode = {
+      audioEncoder: await attempt(async () => (await AudioEncoder.isConfigSupported(
+        { codec: "mp4a.40.2", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })).supported),
+      mediaRecorder: MediaRecorder.isTypeSupported('audio/mp4; codecs="mp4a.40.2"'),
+    };
+    out.hevcRecord = MediaRecorder.isTypeSupported(`video/mp4; codecs="${VIDEO.hevc}"`);
+    const formats = (cls) => cls.getCapabilities("video").codecs.map((c) => `${c.mimeType.replace(/^video\//, "")}|${c.sdpFmtpLine || ""}`);
+    out.rtc = { send: formats(RTCRtpSender), receive: formats(RTCRtpReceiver) };
     return out;
   }
 

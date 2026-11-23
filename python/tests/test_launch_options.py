@@ -137,6 +137,20 @@ def test_caller_config_wins_and_is_kept(options):
     assert config['navigator.hardwareConcurrency'] == 6 and config['timezone'] == 'Asia/Tokyo'
 
 
+def test_the_battery_is_a_desktop_on_mains_power_unless_claimed(options):
+    config = config_of(options(os='windows'))
+    assert (config['battery:charging'], config['battery:level']) == (True, 1.0)
+
+    config = config_of(options(os='windows', config={'battery:charging': False, 'battery:level': 0.42}))
+    assert (config['battery:charging'], config['battery:level']) == (False, 0.42)
+
+
+def test_the_media_codecs_are_the_drawn_machines(options):
+    # Windows encodes AAC with Media Foundation; Chrome on Linux has no AAC encoder.
+    assert 'aac' in config_of(options(os='windows'))['media:platformEncoders']
+    assert 'aac' not in config_of(options(os='linux'))['media:platformEncoders']
+
+
 def test_a_self_contradicting_identity_is_refused(options):
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
