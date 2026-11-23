@@ -10,4 +10,3 @@ launcher against the binary under test, on the run's private display.
 
 This is not a fork of Playwright's tests. A deliberate difference from upstream
 goes in `ci/skiplist.yml` with its reason; nothing is copied or patched here.
-There are no tests in this directory yet.

@@ -111,3 +111,9 @@ services/network/p2p/socket_manager.h
 services/network/p2p/socket_manager.cc
 services/network/p2p/socket_tcp.h
 services/network/p2p/socket_tcp.cc
+
+# --- protocol input (wheel ticks, drag buttons) ------------------------------
+content/browser/devtools/protocol/input_handler.cc
+
+# --- trusted events from the automation world --------------------------------
+third_party/blink/renderer/core/dom/events/event_target.cc
