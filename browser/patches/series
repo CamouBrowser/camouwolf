@@ -111,3 +111,9 @@
 # ASSOCIATE relay, names resolved by the proxy, and no UDP at all through a
 # proxy that carries none. Adds browser/additions/camouwolfp2p.
 0031-webrtc-proxied-exit.patch
+
+# --- Canvas first read --------------------------------------------------------
+# An accelerated canvas's first getImageData unpremultiplied in a GPU shader and
+# every later one on the CPU, so low-alpha pixels (text edges) read differently
+# the first time. Real Windows Chrome returns the same bytes on every read.
+0032-canvas-cpu-unpremultiply.patch

@@ -1,0 +1,36 @@
+diff --git a/third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc b/third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc
+--- a/third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc
++++ b/third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc
+@@ -11,6 +11,7 @@
+ #include "third_party/blink/renderer/platform/graphics/skia/skia_utils.h"
+ #include "third_party/blink/renderer/platform/graphics/web_graphics_context_3d_provider_wrapper.h"
+ #include "third_party/skia/include/core/SkImage.h"
++#include "third_party/skia/include/core/SkPixmap.h"  // CAMOUWOLF
+ #include "ui/gfx/geometry/skia_conversions.h"
+ 
+ namespace blink {
+@@ -91,6 +92,24 @@
+                                        int src_y) {
+   CHECK(thread_checker_.CalledOnValidThread());
+   gpu::raster::RasterInterface* ri = context_provider_->RasterInterface();
++  // CAMOUWOLF: unpremultiply on the CPU. Ganesh would do it in a shader, which
++  // rounds low-alpha pixels differently from the CPU copy getImageData reads
++  // from its second call on, so a canvas's first read differed from its rest.
++  if (dst_info.alphaType() == kUnpremul_SkAlphaType &&
++      sk_image_info_.alphaType() == kPremul_SkAlphaType) {
++    const SkImageInfo raw_info =
++        sk_image_info_.makeDimensions(dst_info.dimensions());
++    sk_sp<SkData> raw = TryAllocateSkData(raw_info.computeMinByteSize());
++    if (!raw ||
++        !ri->ReadbackImagePixels(GetMailbox(), shared_image_->size(), raw_info,
++                                 static_cast<GLuint>(raw_info.minRowBytes()),
++                                 src_x, src_y, /*plane_index=*/0,
++                                 raw->writable_data())) {
++      return false;
++    }
++    return SkPixmap(raw_info, raw->data(), raw_info.minRowBytes())
++        .readPixels(dst_info, dst_pixels, dst_row_bytes);
++  }
+   return ri->ReadbackImagePixels(GetMailbox(), shared_image_->size(), dst_info,
+                                  static_cast<GLuint>(dst_row_bytes), src_x,
+                                  src_y, /*plane_index=*/0, dst_pixels);

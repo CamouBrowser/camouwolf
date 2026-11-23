@@ -20,7 +20,7 @@ import { type OsKey, retargetUserAgent, uaOs } from "./clienthints.js";
 import { ValueError } from "./exceptions.js";
 import { LAUNCHER_CONSTANTS, loadDataFile } from "./paths.js";
 import { isPlainObject, num, pyStr, pyStrRepr, pyTruthy } from "./pycompat.js";
-import { webglParameters } from "./webgl.js";
+import { webglIdentity } from "./webgl.js";
 
 type Config = Record<string, any>;
 
@@ -557,19 +557,54 @@ export function packVoices(voices: unknown): string[] | null {
 }
 
 /**
- * The WebGPU adapter info of an fpgen record, as webGpu:* keys.
+ * The WebGPU adapter of an fpgen record, as webGpu:* keys.
  *
- * A record whose machine had no WebGPU adapter carries an empty list, and
- * nothing is claimed for it.
+ * The preferred canvas format is the OS's, so it is claimed from any record,
+ * including one of a machine that had no adapter (an empty list), except on a
+ * Linux identity: the browser is Chrome on Linux at its own milestone, and
+ * fpgen's Linux records predate the milestone that moved Linux to rgba8unorm.
+ * The adapter is claimed only from a record of the identity's GPU, which
+ * gpuInfo names in unmaskedRenderer.
  */
-export function webgpuAdapter(gpuInfo: unknown): Record<string, string> {
-	const adapter = isPlainObject(gpuInfo) ? gpuInfo.adapter : null;
+export function webgpuAdapter(
+	gpuInfo: unknown,
+	renderer: unknown,
+	targetOs: string | null | undefined,
+): Record<string, unknown> {
+	if (!isPlainObject(gpuInfo)) return {};
+	const out: Record<string, unknown> = {};
+	const format = gpuInfo.preferredCanvasFormat;
+	if (
+		targetOs !== "lin" &&
+		(format === "bgra8unorm" || format === "rgba8unorm")
+	) {
+		out["webGpu:preferredCanvasFormat"] = format;
+	}
+	if (!renderer || gpuInfo.unmaskedRenderer !== renderer) return out;
+	const adapter = gpuInfo.adapter;
 	const dflt = isPlainObject(adapter) ? adapter.default : null;
 	const info = isPlainObject(dflt) ? dflt.info : null;
-	if (!isPlainObject(info)) return {};
-	const out: Record<string, string> = {};
+	if (!isPlainObject(info)) return out;
 	for (const key of ["vendor", "architecture", "device"]) {
 		if (typeof info[key] === "string") out[`webGpu:${key}`] = info[key];
+	}
+	for (const key of ["subgroupMinSize", "subgroupMaxSize"]) {
+		if (Number.isInteger(info[key]) && info[key] >= 0) {
+			out[`webGpu:${key}`] = info[key];
+		}
+	}
+	const features = dflt.features;
+	if (Array.isArray(features) && features.every((f) => typeof f === "string")) {
+		out["webGpu:features"] = features;
+	}
+	const limits = dflt.limits;
+	if (isPlainObject(limits)) {
+		const numeric = Object.fromEntries(
+			Object.entries(limits).filter(
+				([, v]) => Number.isInteger(v) || typeof v === "bigint",
+			),
+		);
+		if (Object.keys(numeric).length) out["webGpu:limits"] = numeric;
 	}
 	return out;
 }
@@ -681,14 +716,15 @@ export function fromFpgen(
 
 	const voices = packVoices(fingerprint.voices);
 	if (voices) camouwolfData.voices = voices;
-	const parameters = webglParameters(fingerprint.webgl, fingerprint.webgl2);
-	if (
-		Object.keys(parameters).length &&
-		pyTruthy(camouwolfData["webGl:renderer"])
-	) {
-		camouwolfData["webGl:parameters"] = parameters;
-	}
-	Object.assign(camouwolfData, webgpuAdapter(fingerprint.gpuInfo));
+	Object.assign(
+		camouwolfData,
+		webglIdentity(fingerprint, camouwolfData["webGl:renderer"]),
+		webgpuAdapter(
+			fingerprint.gpuInfo,
+			camouwolfData["webGl:renderer"],
+			targetOs,
+		),
+	);
 	const devices = mediaDevices(fingerprint.devices);
 	if (devices) camouwolfData["mediaDevices:enumerated"] = devices;
 	if (targetOs) {

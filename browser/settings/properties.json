@@ -152,6 +152,14 @@
     "type": "str"
   },
   {
+    "property": "webGpu:subgroupMinSize",
+    "type": "uint"
+  },
+  {
+    "property": "webGpu:subgroupMaxSize",
+    "type": "uint"
+  },
+  {
     "property": "webGpu:features",
     "type": "array"
   },

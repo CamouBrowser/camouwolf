@@ -6,11 +6,13 @@ desktop OpenGL or Vulkan on Linux. A renderer whose backend the claimed OS
 never uses is a contradiction a page reads in one call, so every identity's
 renderer is checked against its OS (backend_matches_os).
 
-The browser answers getParameter() for the pnames in `webGl:parameters` before
-its own lookup, for either context version and whether or not the extension a
-pname belongs to is enabled (browser/patches/0007-webgl-spoofing.patch). So
-only the limits both context versions report identically, and that need no
-extension, are sent (webgl_parameters).
+A device's WebGL identity is more than its renderer string: the limits, the
+shader precision table and the extension lists are the backend's signature
+(Direct3D 11 reports ALIASED_LINE_WIDTH_RANGE [1, 1] and MAX_VIEWPORT_DIMS
+[32767, 32767] whatever the card), so they are claimed from the same record
+(webgl_identity). The browser answers them before its own lookup
+(browser/patches/0007-webgl-spoofing.patch); an extension it lacks cannot be
+added, only one the claimed device lacks hidden.
 """
 
 import re
@@ -26,9 +28,6 @@ _BACKENDS = {
     'mac': re.compile(r'Metal|OpenGL 4\.1', re.I),
     'lin': re.compile(r'OpenGL|Mesa|Vulkan', re.I),
 }
-
-Scalar = Any  # int | float | bool | str
-
 
 def _os_key(target_os: str) -> str:
     target_os = target_os.lower()
@@ -53,42 +52,78 @@ def usable_gpu(gpu: Any, target_os: Optional[str] = None) -> bool:
     return target_os is None or backend_matches_os(gpu['renderer'], target_os)
 
 
-def _comparable(entry: Any) -> Optional[Scalar]:
-    """The scalar value of one recorded parameter, or None."""
-    if not isinstance(entry, dict) or entry.get('type') != 'Number':
+# The GL spec's implementation-dependent values: fixed per device, never state a
+# page sets. Extension limits are left out, because the browser answers a
+# configured pname whether or not its extension is enabled.
+_LIMIT_PREFIXES = ('MAX_', 'MIN_', 'ALIASED_')
+_LIMITS = frozenset({'SUBPIXEL_BITS', 'UNIFORM_BUFFER_OFFSET_ALIGNMENT'})
+_EXTENSION_SUFFIXES = ('_EXT', '_WEBGL', '_OES')
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _limit(entry: Any) -> Optional[Any]:
+    """The value of one recorded parameter if it is a device limit, or None."""
+    if not isinstance(entry, dict):
+        return None
+    name = entry.get('name') or ''
+    if name.endswith(_EXTENSION_SUFFIXES) or not (name.startswith(_LIMIT_PREFIXES) or name in _LIMITS):
         return None
     value = entry.get('value')
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return value
+    if entry.get('type') == 'Number' and _number(value):
+        return value
+    if entry.get('type') in ('Float32Array', 'Int32Array') and isinstance(value, list) \
+            and 2 <= len(value) <= 4 and all(map(_number, value)):
+        return list(value)
+    return None
 
 
-def webgl_parameters(webgl: Any, webgl2: Any) -> Dict[str, Scalar]:
-    """The `webGl:parameters` map of one recorded device: pname -> value.
-
-    Kept: the numeric MAX_* limits of the WebGL1 core that the device's WebGL2
-    context reports with the same value. Left to the real GPU: state (which a
-    page changes and reads back), arrays (the key takes scalars), strings
-    (VERSION and SHADING_LANGUAGE_VERSION differ between WebGL1 and WebGL2),
-    extension limits (null until the extension is enabled) and anything the
-    two context versions report differently.
-    """
-    params = webgl.get('params') if isinstance(webgl, dict) else None
+def webgl_parameters(context: Any) -> Dict[str, Any]:
+    """The device limits one recorded context reports: pname -> value."""
+    params = context.get('params') if isinstance(context, dict) else None
     if not isinstance(params, dict):
         return {}
-    params2 = webgl2.get('params') if isinstance(webgl2, dict) else None
-    result: Dict[str, Scalar] = {}
-    for pname, entry in params.items():
-        value = _comparable(entry)
-        name = entry.get('name', '') if isinstance(entry, dict) else ''
-        if value is None or not name.startswith('MAX_') or name.endswith(('_EXT', '_WEBGL', '_OES')):
-            continue
-        if not str(pname).isdigit():
-            continue
-        if isinstance(params2, dict) and _comparable(params2.get(pname)) != value:
-            continue
-        result[str(pname)] = value
-    return result
+    return {
+        str(pname): value
+        for pname, value in ((pname, _limit(entry)) for pname, entry in params.items())
+        if value is not None and str(pname).isdigit()
+    }
+
+
+def shader_precision_formats(context: Any) -> Dict[str, Dict[str, int]]:
+    """A recorded getShaderPrecisionFormat table, keyed "<shaderType>,<precisionType>"."""
+    formats = context.get('shaderPrecisionFormats') if isinstance(context, dict) else None
+    table: Dict[str, Dict[str, int]] = {}
+    for item in formats if isinstance(formats, list) else []:
+        spf = item.get('shaderPrecisionFormat') if isinstance(item, dict) else None
+        if isinstance(spf, dict) and all(isinstance(spf.get(k), int) for k in ('rangeMin', 'rangeMax', 'precision')):
+            table[f"{item['shaderType']},{item['precisionType']}"] = {
+                k: spf[k] for k in ('rangeMin', 'rangeMax', 'precision')
+            }
+    return table
+
+
+def webgl_identity(fingerprint: Dict[str, Any], renderer: Optional[str]) -> Dict[str, Any]:
+    """The webGl:* and webGl2:* keys of the record's WebGL1 and WebGL2 contexts.
+
+    Both are claimed or neither: fpgen occasionally pairs one device's GPU with
+    another's WebGL readout, whose limits would contradict the claimed renderer,
+    and a WebGL2 context without its own map answers from the WebGL1 one.
+    """
+    webgl, webgl2 = fingerprint.get('webgl'), fingerprint.get('webgl2')
+    if not renderer or not all(isinstance(r, dict) and r.get('renderer') == renderer for r in (webgl, webgl2)):
+        return {}
+    claimed = {
+        'webGl:parameters': webgl_parameters(webgl),
+        'webGl2:parameters': webgl_parameters(webgl2),
+        'webGl:shaderPrecisionFormats': shader_precision_formats(webgl),
+        'webGl2:shaderPrecisionFormats': shader_precision_formats(webgl2),
+        'webGl:supportedExtensions': webgl.get('supportedExtensions'),
+        'webGl2:supportedExtensions': webgl2.get('supportedExtensions'),
+    }
+    return {key: value for key, value in claimed.items() if value and isinstance(value, (dict, list))}
 
 
 @lru_cache(maxsize=None)

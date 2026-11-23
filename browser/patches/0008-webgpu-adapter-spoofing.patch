@@ -9,7 +9,7 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc b/thi
  #include "third_party/blink/renderer/modules/webgpu/gpu_memory_heap_info.h"
  #include "third_party/blink/renderer/modules/webgpu/gpu_subgroup_matrix_config.h"
  
-@@ -34,7 +35,31 @@
+@@ -34,7 +35,39 @@
        type_(type),
        d3d_shader_model_(d3d_shader_model),
        vk_driver_version_(vk_driver_version),
@@ -37,6 +37,14 @@ diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc b/thi
 +  }
 +  if (const auto v = kcfg.GetString("webGpu:device")) {
 +    device_ = String::FromUtf8(*v);
++  }
++  // Subgroup sizes differ between GPU families, so a claimed vendor reporting
++  // the host's sizes would contradict itself.
++  if (const auto v = kcfg.GetUint32("webGpu:subgroupMinSize")) {
++    subgroup_min_size_ = *v;
++  }
++  if (const auto v = kcfg.GetUint32("webGpu:subgroupMaxSize")) {
++    subgroup_max_size_ = *v;
 +  }
 +}
  

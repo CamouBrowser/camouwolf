@@ -53,6 +53,7 @@ content/child/runtime_features.cc
 
 # --- canvas 2D readback ---
 third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc
 
 # --- ucrt math (Windows libm parity) -----------------------------------------
 # Every call site that reaches the HOST libm and hands the result to content.

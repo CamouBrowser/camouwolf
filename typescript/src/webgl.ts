@@ -7,12 +7,13 @@
  * claimed OS never uses is a contradiction a page reads in one call, so every
  * identity's renderer is checked against its OS (backendMatchesOs).
  *
- * The browser answers getParameter() for the pnames in `webGl:parameters`
- * before its own lookup, for either context version and whether or not the
- * extension a pname belongs to is enabled
- * (browser/patches/0007-webgl-spoofing.patch). So only the limits both context
- * versions report identically, and that need no extension, are sent
- * (webglParameters).
+ * A device's WebGL identity is more than its renderer string: the limits, the
+ * shader precision table and the extension lists are the backend's signature
+ * (Direct3D 11 reports ALIASED_LINE_WIDTH_RANGE [1, 1] and MAX_VIEWPORT_DIMS
+ * [32767, 32767] whatever the card), so they are claimed from the same record
+ * (webglIdentity). The browser answers them before its own lookup
+ * (browser/patches/0007-webgl-spoofing.patch); an extension it lacks cannot be
+ * added, only one the claimed device lacks hidden.
  *
  * TypeScript twin of python/src/camouwolf/webgl.py.
  */
@@ -66,66 +67,136 @@ export function usableGpu(gpu: unknown, targetOs?: string | null): boolean {
 	);
 }
 
-/** The scalar value of one recorded parameter, or null. */
-function comparable(entry: unknown): Scalar | null {
-	if (!isPlainObject(entry) || entry.type !== "Number") return null;
-	const value = entry.value;
-	if (
+// The GL spec's implementation-dependent values: fixed per device, never state
+// a page sets. Extension limits are left out, because the browser answers a
+// configured pname whether or not its extension is enabled.
+const LIMIT_PREFIXES = ["MAX_", "MIN_", "ALIASED_"];
+const LIMITS = new Set(["SUBPIXEL_BITS", "UNIFORM_BUFFER_OFFSET_ALIGNMENT"]);
+const EXTENSION_SUFFIXES = ["_EXT", "_WEBGL", "_OES"];
+
+function isNumber(value: unknown): value is Scalar {
+	return (
 		typeof value === "number" ||
 		typeof value === "bigint" ||
 		value instanceof PyFloat
+	);
+}
+
+/** The value of one recorded parameter if it is a device limit, or null. */
+function limit(entry: unknown): Scalar | Scalar[] | null {
+	if (!isPlainObject(entry)) return null;
+	const name: unknown = entry.name ?? "";
+	if (
+		typeof name !== "string" ||
+		EXTENSION_SUFFIXES.some((suffix) => name.endsWith(suffix)) ||
+		!(
+			LIMIT_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
+			LIMITS.has(name)
+		)
 	) {
-		return value;
+		return null;
+	}
+	const value: unknown = entry.value;
+	if (entry.type === "Number" && isNumber(value)) {
+		// fpgen-js parses an integer beyond 2**53 (MAX_SERVER_WAIT_TIMEOUT) into
+		// a double; Python's fpgen keeps the recorded digits as an int.
+		return typeof value === "number" &&
+			Number.isInteger(value) &&
+			!Number.isSafeInteger(value)
+			? BigInt(String(value))
+			: value;
+	}
+	if (
+		(entry.type === "Float32Array" || entry.type === "Int32Array") &&
+		Array.isArray(value) &&
+		value.length >= 2 &&
+		value.length <= 4 &&
+		value.every(isNumber)
+	) {
+		return [...value];
 	}
 	return null;
 }
 
-function sameScalar(a: Scalar | null, b: Scalar | null): boolean {
-	if (a === null || b === null) return a === b;
-	return Number(a) === Number(b);
+/** The device limits one recorded context reports: pname -> value. */
+export function webglParameters(
+	context: unknown,
+): Record<string, Scalar | Scalar[]> {
+	const params = isPlainObject(context) ? context.params : null;
+	if (!isPlainObject(params)) return {};
+	const result: Record<string, Scalar | Scalar[]> = {};
+	for (const [pname, entry] of Object.entries(params)) {
+		const value = limit(entry);
+		if (value !== null && /^\d+$/.test(pname)) result[pname] = value;
+	}
+	return result;
+}
+
+type PrecisionFormat = {
+	rangeMin: number;
+	rangeMax: number;
+	precision: number;
+};
+
+/** A recorded getShaderPrecisionFormat table, keyed "<shaderType>,<precisionType>". */
+export function shaderPrecisionFormats(
+	context: unknown,
+): Record<string, PrecisionFormat> {
+	const formats = isPlainObject(context)
+		? context.shaderPrecisionFormats
+		: null;
+	const table: Record<string, PrecisionFormat> = {};
+	for (const item of Array.isArray(formats) ? formats : []) {
+		const spf = isPlainObject(item) ? item.shaderPrecisionFormat : null;
+		if (
+			isPlainObject(spf) &&
+			["rangeMin", "rangeMax", "precision"].every((k) =>
+				Number.isInteger(spf[k]),
+			)
+		) {
+			table[`${item.shaderType},${item.precisionType}`] = {
+				rangeMin: spf.rangeMin,
+				rangeMax: spf.rangeMax,
+				precision: spf.precision,
+			};
+		}
+	}
+	return table;
 }
 
 /**
- * The `webGl:parameters` map of one recorded device: pname -> value.
+ * The webGl:* and webGl2:* keys of the record's WebGL1 and WebGL2 contexts.
  *
- * Kept: the numeric MAX_* limits of the WebGL1 core that the device's WebGL2
- * context reports with the same value. Left to the real GPU: state (which a
- * page changes and reads back), arrays (the key takes scalars), strings
- * (VERSION and SHADING_LANGUAGE_VERSION differ between WebGL1 and WebGL2),
- * extension limits (null until the extension is enabled) and anything the two
- * context versions report differently.
+ * Both are claimed or neither: fpgen occasionally pairs one device's GPU with
+ * another's WebGL readout, whose limits would contradict the claimed renderer,
+ * and a WebGL2 context without its own map answers from the WebGL1 one.
  */
-export function webglParameters(
-	webgl: unknown,
-	webgl2: unknown,
-): Record<string, Scalar> {
-	const params = isPlainObject(webgl) ? webgl.params : null;
-	if (!isPlainObject(params)) return {};
-	const params2 = isPlainObject(webgl2) ? webgl2.params : null;
-	const result: Record<string, Scalar> = {};
-	for (const [pname, entry] of Object.entries(params)) {
-		const value = comparable(entry);
-		const name: unknown = isPlainObject(entry) ? (entry.name ?? "") : "";
-		if (
-			value === null ||
-			typeof name !== "string" ||
-			!name.startsWith("MAX_") ||
-			name.endsWith("_EXT") ||
-			name.endsWith("_WEBGL") ||
-			name.endsWith("_OES")
-		) {
-			continue;
-		}
-		if (!/^\d+$/.test(pname)) continue;
-		if (
-			isPlainObject(params2) &&
-			!sameScalar(comparable(params2[pname]), value)
-		) {
-			continue;
-		}
-		result[pname] = value;
+export function webglIdentity(
+	fingerprint: Record<string, any>,
+	renderer: unknown,
+): Record<string, unknown> {
+	const { webgl, webgl2 } = fingerprint;
+	if (
+		!renderer ||
+		![webgl, webgl2].every((r) => isPlainObject(r) && r.renderer === renderer)
+	) {
+		return {};
 	}
-	return result;
+	const claimed: Record<string, unknown> = {
+		"webGl:parameters": webglParameters(webgl),
+		"webGl2:parameters": webglParameters(webgl2),
+		"webGl:shaderPrecisionFormats": shaderPrecisionFormats(webgl),
+		"webGl2:shaderPrecisionFormats": shaderPrecisionFormats(webgl2),
+		"webGl:supportedExtensions": webgl.supportedExtensions,
+		"webGl2:supportedExtensions": webgl2.supportedExtensions,
+	};
+	return Object.fromEntries(
+		Object.entries(claimed).filter(([, value]) =>
+			Array.isArray(value)
+				? value.length > 0
+				: isPlainObject(value) && Object.keys(value).length > 0,
+		),
+	);
 }
 
 const traceCache = new Map<string, readonly TraceResult[]>();
