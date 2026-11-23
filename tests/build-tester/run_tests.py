@@ -400,13 +400,15 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
                if probe["systemColors"].get(k) != v]
         c["systemColors"] = check(not bad, "; ".join(bad[:8]))
     if "media:platformDecoders" in claimed:
-        out["Media Codecs"] = compare_codecs(claimed, got.get("codecs") or {})
+        c = out["Media Codecs"] = {}
+        compare_codecs(claimed, got.get("codecs") or {}, c)
     if "battery:level" in claimed:
         battery = got.get("battery") or {}
         full = claimed["battery:charging"] and claimed["battery:level"] >= 1
         expected = {"charging": claimed["battery:charging"], "level": claimed["battery:level"],
                     "chargingTime": "0" if full else "Infinity", "dischargingTime": "Infinity"}
-        out["Battery"] = {"getBattery": check(battery == expected, f"claimed {expected}, saw {battery}")}
+        c = out["Battery"] = {}
+        c["getBattery"] = check(battery == expected, f"claimed {expected}, saw {battery}")
     if "webGpu:vendor" in claimed:
         # Its own category: an adapter needs a GPU, which a CI runner on a
         # software renderer does not have (ci/build-tester.yml).
@@ -418,10 +420,9 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
     return out
 
 
-def compare_codecs(claimed: Dict[str, Any], got: Dict[str, Any]) -> Dict[str, Check]:
+def compare_codecs(claimed: Dict[str, Any], got: Dict[str, Any], c: Dict[str, Check]) -> None:
     """Every surface that names a platform codec answers with the claimed one."""
     decoders, encoders = set(claimed["media:platformDecoders"]), set(claimed["media:platformEncoders"])
-    c: Dict[str, Check] = {}
 
     def agree(name: str, seen: Dict[str, Any], claim: set) -> None:
         expected = {codec: codec in claim for codec in seen}
@@ -447,7 +448,6 @@ def compare_codecs(claimed: Dict[str, Any], got: Dict[str, Any]) -> Dict[str, Ch
                  and (entry.startswith("H265|") or "profile-level-id=64" in entry)]
         c[name] = check(isinstance(rtc.get(side), list) and not missing and not extra,
                         f"missing {missing}, unclaimed {extra}")
-    return c
 
 
 def font_families(claimed: Dict[str, Any]) -> Dict[str, str]:
