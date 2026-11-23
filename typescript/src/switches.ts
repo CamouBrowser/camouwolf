@@ -67,7 +67,9 @@ export function headlessPointerSettings(
 	config: Record<string, unknown>,
 ): string {
 	const pointers = 4 | (config["navigator.maxTouchPoints"] ? 2 : 0);
-	return `--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=${pointers}`;
+	// Pointer first: Playwright drops every argument equal to one in
+	// ignoreDefaultArgs, ours included, so this must never spell its default.
+	return `--blink-settings=primaryPointerType=4,availablePointerTypes=${pointers},primaryHoverType=2,availableHoverTypes=2`;
 }
 
 /**

@@ -205,6 +205,8 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         bool(got["media"]["coarsePointer"]) == bool(nav.get("maxTouchPoints")) and not got["media"]["touchEvents"],
         f"maxTouchPoints {nav.get('maxTouchPoints')}, any-pointer: coarse {got['media']['coarsePointer']}, "
         f"ontouchstart {got['media']['touchEvents']}")
+    # Every identity is a desktop driven by a mouse, headless or not.
+    c["primaryPointerIsAMouse"] = check(got["media"]["mouse"], "(pointer: fine) and (hover: hover)")
 
     # ---- Client Hints: JS, and the same identity on the wire ---------------
     c = out["Client Hints"] = {}

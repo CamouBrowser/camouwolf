@@ -428,6 +428,9 @@ def test_a_headless_touch_identity_has_a_coarse_pointer_beside_its_mouse(options
     assert config_of(launch)['navigator.maxTouchPoints'] == touch_points
     assert f'availablePointerTypes={pointers}' in blink_settings(launch['args'])
     assert switches.PLAYWRIGHT_HEADLESS_BLINK_SETTINGS in launch['ignore_default_args']
+    # Playwright drops every argument equal to an ignored default, the
+    # launcher's own included: a mouse alone was dropped, (pointer: none).
+    assert not set(launch['args']) & set(launch['ignore_default_args'])
 
 
 def test_a_headed_launch_leaves_the_pointer_to_the_browser(options):

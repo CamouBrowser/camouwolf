@@ -59,7 +59,9 @@ def headless_pointer_settings(config: Dict[str, Any]) -> str:
     touchscreen a touch identity has beside its mouse (ui::PointerType: 2
     coarse, 4 fine; ui::HoverType: 2 hover)."""
     pointers = 4 | (2 if config.get('navigator.maxTouchPoints') else 0)
-    return f'--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes={pointers}'
+    # Pointer first: Playwright drops every argument equal to one in
+    # ignore_default_args, ours included, so this must never spell its default.
+    return f'--blink-settings=primaryPointerType=4,availablePointerTypes={pointers},primaryHoverType=2,availableHoverTypes=2'
 
 # The features Playwright's Chromium launch disables (playwright-core
 # chromiumSwitches.ts, 1.59-1.62). Chromium reads only the last

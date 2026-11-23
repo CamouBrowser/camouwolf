@@ -143,12 +143,16 @@ describe("switches", () => {
 describe("the headless pointer", () => {
 	it("adds a touch identity's coarse pointer beside the mouse", () => {
 		expect(headlessPointerSettings({ "navigator.maxTouchPoints": 10 })).toBe(
-			"--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=6",
+			"--blink-settings=primaryPointerType=4,availablePointerTypes=6,primaryHoverType=2,availableHoverTypes=2",
 		);
 	});
-	it("is Playwright's mouse alone without a touchscreen", () => {
-		expect(headlessPointerSettings({ "navigator.maxTouchPoints": 0 })).toBe(
-			PLAYWRIGHT_HEADLESS_BLINK_SETTINGS,
+	// Playwright drops every argument equal to an ignored default, so a mouse
+	// alone spelt as its default was dropped with it: (pointer: none).
+	it("is a mouse alone without a touchscreen, never spelt as Playwright's default", () => {
+		const settings = headlessPointerSettings({ "navigator.maxTouchPoints": 0 });
+		expect(settings).toBe(
+			"--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2",
 		);
+		expect(settings).not.toBe(PLAYWRIGHT_HEADLESS_BLINK_SETTINGS);
 	});
 });
