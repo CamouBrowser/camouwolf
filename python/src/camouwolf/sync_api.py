@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional, Tuple, Union, overload
+import threading
+from typing import Any, Dict, List, Optional, Tuple, Union, overload
 
 from playwright.sync_api import (
     Browser,
@@ -15,8 +16,12 @@ from .utils import (
     attach_context_defaults,
     launch_options,
     launch_os,
+    context_identity,
+    created_context_id,
+    launch_options_of,
     new_context_options,
-    place_at_exit,
+    refuse_context_options,
+    set_context_identity_params,
     persistent_context_options,
     start_virtual_display,
     warn_addons_without_profile,
@@ -172,31 +177,66 @@ def NewContext(
     *,
     proxy: Optional[Dict[str, str]] = None,
     geolocation: Optional[Dict[str, float]] = None,
+    os: Optional[str] = None,
+    fingerprint: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    webgl_config: Optional[Tuple[str, str]] = None,
+    webrtc_ip: Optional[str] = None,
+    fonts: Optional[List[str]] = None,
+    custom_fonts_only: Optional[bool] = None,
+    locale: Optional[Union[str, List[str]]] = None,
+    timezone_id: Optional[str] = None,
+    i_know_what_im_doing: Optional[bool] = None,
     **context_kwargs: Any,
 ) -> BrowserContext:
     """
-    Creates a new browser context on a Camouwolf browser.
+    Creates a new browser context with an identity of its own.
 
-    Unlike Camoufox, a Camouwolf context has no identity of its own: the
-    browser reads its identity once, per process, from the launch environment,
-    and workers, request headers and the GPU process answer from it whatever a
-    context emulates. So a context can differ in where it is, not in what
-    machine it is.
+    The context is another machine than the rest of the browser: its pages,
+    workers, request headers, WebRTC, GPU and fonts answer with an identity
+    drawn for it. It shares the browser's OS, screen, window and core count,
+    which one browser process cannot vary. A plain browser.new_context() keeps
+    the launch's identity.
 
     Parameters:
         browser: A Browser instance from NewBrowser or Camouwolf.
         proxy: Per-context proxy (Playwright format). The context is placed
-            where it exits: timezone_id and geolocation default to the exit
-            IP's, looked up through the proxy (needs the geoip extra) unless
-            both are given; InvalidIP is raised if the lookup fails. The
-            locale stays the browser's identity's.
+            where it exits: its timezone, locale, position and WebRTC address
+            are the exit IP's, looked up through the proxy (needs the geoip
+            extra); InvalidIP is raised if the lookup fails. Without one, the
+            context leaves from the browser's address and keeps its place.
         geolocation: Per-context geolocation ({"latitude": float, "longitude": float});
             the permission is granted with it.
-        **context_kwargs: Additional Playwright new_context() options, such as
-            timezone_id and locale. Options that would change the identity
-            (user_agent, screen, device_scale_factor, is_mobile, has_touch) raise
-            IncoherentIdentity, and Camoufox's per-context identity options
-            (preset, os, ff_version, webrtc_ip) raise NotImplementedError.
+        os: The launch's OS; any other raises ValueError.
+        fingerprint, config, webgl_config, fonts, custom_fonts_only: as at
+            launch, for this context.
+        webrtc_ip: The address WebRTC reports for this context.
+        locale, timezone_id: This context's, in place of the place's.
+        **context_kwargs: Additional Playwright new_context() options. Options
+            that would make the pages disagree with the identity (user_agent,
+            screen, device_scale_factor, is_mobile, has_touch) raise
+            IncoherentIdentity; Camoufox's preset, ff_version and chrome_version
+            raise NotImplementedError.
     """
-    geolocation, context_kwargs = place_at_exit(proxy, geolocation, context_kwargs)
-    return browser.new_context(**new_context_options(context_kwargs, proxy, geolocation))
+    refuse_context_options(context_kwargs)
+    identity, languages = context_identity(
+        launch_options_of(browser), proxy=proxy, os=os, fingerprint=fingerprint, config=config,
+        webgl_config=webgl_config, webrtc_ip=webrtc_ip, fonts=fonts, custom_fonts_only=custom_fonts_only,
+        locale=locale, timezone_id=timezone_id, i_know_what_im_doing=i_know_what_im_doing,
+    )
+    options = new_context_options(context_kwargs, identity, proxy, geolocation)
+    # The new context is the one getBrowserContexts gains, and it takes its
+    # identity before its first renderer.
+    with _CONTEXT_LOCK:
+        session = browser.new_browser_cdp_session()
+        try:
+            before = session.send('Target.getBrowserContexts')
+            context = browser.new_context(**options)
+            context_id = created_context_id(before, session.send('Target.getBrowserContexts'))
+            session.send('Target.setBrowserContextIdentity', set_context_identity_params(context_id, identity, languages))
+        finally:
+            session.detach()
+    return context
+
+
+_CONTEXT_LOCK = threading.Lock()

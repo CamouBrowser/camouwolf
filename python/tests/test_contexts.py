@@ -4,6 +4,7 @@ import asyncio
 import math
 import warnings
 
+import orjson
 import pytest
 
 from camouwolf import async_api, coherence, sync_api, utils
@@ -19,14 +20,36 @@ class FakeContext:
         pass
 
 
+class FakeSession:
+    """The browser's CDP session: lists a context per new_context() and
+    records the identities set."""
+
+    def __init__(self, browser):
+        self.browser = browser
+
+    def send(self, method, params=None):
+        if method == 'Target.getBrowserContexts':
+            return {'browserContextIds': [f'ctx{i}' for i in range(len(self.browser.contexts))]}
+        assert method == 'Target.setBrowserContextIdentity'
+        self.browser.identities.append(params)
+        return {}
+
+    def detach(self):
+        pass
+
+
 class FakeBrowser:
     def __init__(self):
         self.contexts = []
+        self.identities = []
         self.closed = False
 
     def new_context(self, **kwargs):
         self.contexts.append(kwargs)
         return FakeContext(kwargs)
+
+    def new_browser_cdp_session(self):
+        return FakeSession(self)
 
     def new_page(self, **kwargs):
         self.contexts.append(kwargs)
@@ -127,34 +150,88 @@ def test_a_context_option_that_changes_the_identity_warns(launch_kwargs):
         browser.new_context(user_agent='Mozilla/5.0 other')
 
 
+@pytest.fixture
+def browser(launch_kwargs):
+    """A browser launched with a Berlin identity."""
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        return sync_api.NewBrowser(
+            FakePlaywright(), locale='de-DE', config={'timezone': 'Europe/Berlin'}, **launch_kwargs
+        )
+
+
 @pytest.mark.parametrize('option, value', [
     ('user_agent', 'Mozilla/5.0 other'), ('is_mobile', True), ('device_scale_factor', 2),
     ('screen', {'width': 800, 'height': 600}), ('has_touch', True),
 ])
-def test_new_context_refuses_an_identity_of_its_own(option, value):
-    browser = FakeBrowser()
+def test_new_context_refuses_an_option_its_pages_would_contradict(browser, option, value):
     with pytest.raises(IncoherentIdentity, match=option):
         sync_api.NewContext(browser, **{option: value})
     assert browser.contexts == []
 
 
-@pytest.mark.parametrize('option', ['preset', 'os', 'ff_version', 'webrtc_ip'])
-def test_new_context_does_not_draw_a_second_fingerprint(option):
+@pytest.mark.parametrize('option', ['preset', 'ff_version', 'chrome_version'])
+def test_new_context_runs_the_browsers_own_build(browser, option):
     with pytest.raises(NotImplementedError, match=option):
-        sync_api.NewContext(FakeBrowser(), **{option: 'x'})
+        sync_api.NewContext(browser, **{option: 'x'})
 
 
-def test_new_context_places_a_context(launch_kwargs):
-    browser = FakeBrowser()
-    sync_api.NewContext(
-        browser, proxy={'server': 'http://203.0.113.5:1'}, geolocation={'latitude': 1, 'longitude': 2},
-        timezone_id='Europe/Berlin', locale='de-DE',
-    )
-    assert browser.contexts == [{
-        'proxy': {'server': 'http://203.0.113.5:1'}, 'geolocation': {'latitude': 1, 'longitude': 2},
-        'permissions': ['geolocation'], 'timezone_id': 'Europe/Berlin', 'locale': 'de-DE',
-    }]
+def test_new_context_draws_a_machine_of_its_own_on_the_browsers_screen(browser):
+    launch = utils.launch_config(utils.launch_options_of(browser))
+    sync_api.NewContext(browser)
+    sync_api.NewContext(browser)
 
+    first_kwargs, _ = browser.contexts
+    first, second = browser.identities
+    assert (first['browserContextId'], second['browserContextId']) == ('ctx0', 'ctx1')
+    identities = [orjson.loads(params['identity']) for params in (first, second)]
+    # Each is drawn: two draws of a whole machine do not land on one GPU and one
+    # font list and one set of client hints.
+    assert identities[0] != identities[1]
+    for identity in identities:
+        assert coherence.validate(identity, 'lin') == []
+        # One browser process has one window, screen and core count.
+        for key, value in launch.items():
+            if key.startswith(('screen.', 'window.')) or key == 'navigator.hardwareConcurrency':
+                assert identity[key] == value, key
+        # Unproxied, it leaves from the browser's address: the browser's place.
+        assert identity['timezone'] == 'Europe/Berlin'
+        assert 'navigator.languages' not in identity
+    assert first['languages'] == second['languages'] == utils.launch_languages(utils.launch_options_of(browser))
+    assert first_kwargs['no_viewport'] is True
+
+
+def test_new_context_takes_a_locale_and_timezone_into_its_identity(browser):
+    sync_api.NewContext(browser, locale='fr-FR', timezone_id='Europe/Paris')
+
+    (params,) = browser.identities
+    assert orjson.loads(params['identity'])['timezone'] == 'Europe/Paris'
+    assert params['languages'][0] == 'fr-FR'
+    # Playwright's own emulation would answer in the page only, not its workers.
+    assert 'locale' not in browser.contexts[-1] and 'timezone_id' not in browser.contexts[-1]
+
+
+def test_new_context_keeps_the_browsers_os(browser):
+    with pytest.raises(ValueError, match="launched as 'linux'"):
+        sync_api.NewContext(browser, os='windows')
+    assert browser.contexts == []
+
+
+def test_new_context_refuses_local_storage_it_would_write_from_a_page(browser):
+    state = {'cookies': [], 'origins': [{'origin': 'https://example.com', 'localStorage': []}]}
+    with pytest.raises(ValueError, match='localStorage'):
+        sync_api.NewContext(browser, storage_state=state)
+    assert browser.contexts == []
+
+
+def test_new_context_refuses_to_guess_between_two_new_contexts():
+    with pytest.raises(RuntimeError, match='found 2'):
+        utils.created_context_id({'browserContextIds': ['a']}, {'browserContextIds': ['a', 'b', 'c']})
+
+
+def test_new_context_needs_a_camouwolf_browser():
+    with pytest.raises(ValueError, match='NewBrowser'):
+        sync_api.NewContext(FakeBrowser())
 
 
 @pytest.fixture
@@ -178,33 +255,49 @@ def exit_lookup(monkeypatch):
 PROXY = {'server': 'http://203.0.113.5:1', 'username': 'u', 'password': 'p'}
 
 
-def test_a_proxied_context_is_placed_where_the_proxy_exits(exit_lookup):
-    # Otherwise the context keeps the launch's timezone and position beside the
-    # proxy's IP.
+def test_a_proxied_context_is_placed_where_the_proxy_exits(browser, exit_lookup):
+    # Otherwise the context keeps the launch's place beside the proxy's IP.
     class AsyncBrowser(FakeBrowser):
         async def new_context(self, **kwargs):
             return super().new_context(**kwargs)
 
-    browser, async_browser = FakeBrowser(), AsyncBrowser()
+        async def new_browser_cdp_session(self):
+            session = FakeSession(self)
+
+            class Async:
+                async def send(self, method, params=None):
+                    return session.send(method, params)
+
+                async def detach(self):
+                    pass
+
+            return Async()
+
+    async_browser = AsyncBrowser()
+    utils.attach_context_defaults(async_browser, utils.launch_options_of(browser))
     sync_api.NewContext(browser, proxy=PROXY)
     asyncio.run(async_api.AsyncNewContext(async_browser, proxy=PROXY, timezone_id='Asia/Osaka'))
+
     assert exit_lookup == ['http://u:p@203.0.113.5:1'] * 2
-    assert browser.contexts + async_browser.contexts == [
-        {'proxy': PROXY, 'geolocation': {'latitude': 35.7, 'longitude': 139.7},
-         'permissions': ['geolocation'], 'timezone_id': 'Asia/Tokyo'},
-        {'proxy': PROXY, 'geolocation': {'latitude': 35.7, 'longitude': 139.7},
-         'permissions': ['geolocation'], 'timezone_id': 'Asia/Osaka'},
-    ]
+    (tokyo,), (osaka,) = browser.identities, async_browser.identities
+    for params, timezone in ((tokyo, 'Asia/Tokyo'), (osaka, 'Asia/Osaka')):
+        identity = orjson.loads(params['identity'])
+        assert identity['timezone'] == timezone
+        assert identity['webrtc:ipv4'] == '198.51.100.7'
+        assert params['languages'][0] == 'ja-JP'
+    for kwargs in (browser.contexts[-1], async_browser.contexts[-1]):
+        assert kwargs['proxy'] == PROXY
+        assert kwargs['geolocation'] == {'latitude': 35.7, 'longitude': 139.7}
+        assert 'geolocation' in kwargs['permissions']
 
 
-def test_a_failed_exit_lookup_raises(exit_lookup, monkeypatch):
+def test_a_failed_exit_lookup_raises(browser, exit_lookup, monkeypatch):
     from camouwolf.exceptions import InvalidIP
 
     def unreachable(proxy=None):
         raise InvalidIP('Failed to get IP address')
 
     monkeypatch.setattr(utils, 'public_ip', unreachable)
-    browser = FakeBrowser()
     with pytest.raises(InvalidIP):
         sync_api.NewContext(browser, proxy=PROXY)
     assert browser.contexts == []

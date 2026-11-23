@@ -1,0 +1,734 @@
+diff --git a/third_party/blink/public/devtools_protocol/domains/Target.pdl b/third_party/blink/public/devtools_protocol/domains/Target.pdl
+--- a/third_party/blink/public/devtools_protocol/domains/Target.pdl
++++ b/third_party/blink/public/devtools_protocol/domains/Target.pdl
+@@ -132,6 +132,16 @@
+     returns
+       # The id of the context created.
+       Browser.BrowserContextID browserContextId
++
++  # Gives a browser context created with `Target.createBrowserContext` an identity of
++  # its own, in place of the launch's. Fails once the context has a renderer process.
++  experimental command setBrowserContextIdentity
++    parameters
++      Browser.BrowserContextID browserContextId
++      # The identity, as the JSON object the launch's is given as.
++      string identity
++      # The context's language list, as --accept-lang gives the launch's.
++      array of string languages
+ 
+   # Returns all browser contexts created with `Target.createBrowserContext` method.
+   command getBrowserContexts
+diff --git a/chrome/browser/devtools/inspector_protocol_config.json b/chrome/browser/devtools/inspector_protocol_config.json
+--- a/chrome/browser/devtools/inspector_protocol_config.json
++++ b/chrome/browser/devtools/inspector_protocol_config.json
+@@ -23,7 +23,7 @@
+             },
+             {
+                 "domain": "Target",
+-                "include": [ "setRemoteLocations", "createTarget" ],
++                "include": [ "setRemoteLocations", "createTarget", "setBrowserContextIdentity" ],
+                 "include_events": []
+             },
+             {
+diff --git a/chrome/browser/devtools/protocol/target_handler.h b/chrome/browser/devtools/protocol/target_handler.h
+--- a/chrome/browser/devtools/protocol/target_handler.h
++++ b/chrome/browser/devtools/protocol/target_handler.h
+@@ -29,6 +29,10 @@
+   protocol::Response SetRemoteLocations(
+       std::unique_ptr<protocol::Array<protocol::Target::RemoteLocation>>
+           in_locations) override;
++  protocol::Response SetBrowserContextIdentity(
++      const std::string& browser_context_id,
++      const std::string& identity,
++      std::unique_ptr<protocol::Array<std::string>> languages) override;
+   protocol::Response CreateTarget(
+       const std::string& url,
+       std::optional<int> left,
+diff --git a/chrome/browser/devtools/protocol/target_handler.cc b/chrome/browser/devtools/protocol/target_handler.cc
+--- a/chrome/browser/devtools/protocol/target_handler.cc
++++ b/chrome/browser/devtools/protocol/target_handler.cc
+@@ -7,9 +7,14 @@
+ #include <ranges>
+ #include <string_view>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
++#include "base/json/json_reader.h"  // CAMOUWOLF
++#include "base/json/json_writer.h"  // CAMOUWOLF
+ #include "base/notreached.h"
++#include "base/strings/string_util.h"  // CAMOUWOLF
+ #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
+ #include "chrome/browser/devtools/devtools_browser_context_manager.h"
++#include "chrome/browser/profiles/profile.h"  // CAMOUWOLF
+ #include "chrome/browser/profiles/profile_manager.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+@@ -21,12 +26,19 @@
+ #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/common/webui_url_constants.h"
++#include "components/embedder_support/user_agent_utils.h"  // CAMOUWOLF
++#include "components/language/core/browser/pref_names.h"  // CAMOUWOLF
++#include "components/prefs/pref_service.h"  // CAMOUWOLF
+ #include "components/webapps/isolated_web_apps/scheme.h"
+ #include "content/public/browser/devtools_agent_host.h"
++#include "content/public/browser/render_process_host.h"  // CAMOUWOLF
++#include "content/public/browser/storage_partition.h"  // CAMOUWOLF
+ #include "content/public/browser/web_contents.h"
+ #include "content/public/common/url_constants.h"
+ #include "content/public/common/url_utils.h"
++#include "services/network/public/mojom/network_context.mojom.h"  // CAMOUWOLF
+ #include "ui/base/base_window.h"
++#include "ui/base/l10n/l10n_util.h"  // CAMOUWOLF
+ #include "ui/base/page_transition_types.h"
+ #include "ui/base/window_open_disposition.h"
+ #include "ui/gfx/geometry/rect.h"
+@@ -89,6 +101,66 @@
+       ChromeDevToolsManagerDelegate::GetInstance();
+   if (delegate)
+     delegate->UpdateDeviceDiscovery();
++  return protocol::Response::Success();
++}
++
++// CAMOUWOLF: a context created over CDP takes an identity of its own.
++//
++// It is accepted only before the context has a renderer process: a renderer
++// adopts its context's identity once, as it starts, and the pages of one
++// context must never disagree. The languages go to the context's own
++// accept-languages pref, which an off-the-record profile keeps in memory, so
++// the Accept-Language header and navigator.languages come from the one place
++// they come from for the launch.
++protocol::Response TargetHandler::SetBrowserContextIdentity(
++    const std::string& browser_context_id,
++    const std::string& identity,
++    std::unique_ptr<protocol::Array<std::string>> languages) {
++  if (!is_trusted_) {
++    return protocol::Response::ServerError(
++        "Cannot set an identity from untrusted client");
++  }
++  Profile* profile =
++      DevToolsBrowserContextManager::GetInstance().GetProfileById(
++          browser_context_id);
++  if (!profile || !profile->IsOffTheRecord()) {
++    return protocol::Response::InvalidParams(
++        "Only a context made by Target.createBrowserContext takes an identity");
++  }
++  if (languages->empty()) {
++    return protocol::Response::InvalidParams("languages is empty");
++  }
++  content::BrowserContext* context = profile;
++  for (auto hosts = content::RenderProcessHost::AllHostsIterator();
++       !hosts.IsAtEnd(); hosts.Advance()) {
++    if (hosts.GetCurrentValue()->GetBrowserContext() == context) {
++      return protocol::Response::ServerError(
++          "The browser context already has a renderer");
++    }
++  }
++  std::optional<base::DictValue> dict =
++      base::JSONReader::ReadDict(identity, base::JSON_PARSE_RFC);
++  if (!dict) {
++    return protocol::Response::InvalidParams("identity is not a JSON object");
++  }
++  // Intl's default locale is the UI locale Chrome would pick for the first
++  // language, as --lang makes it for the launch (see 0026).
++  if (!dict->contains("locale:intl")) {
++    dict->Set("locale:intl", l10n_util::GetApplicationLocale(
++                                 languages->front(), /*set_icu_locale=*/false));
++  }
++  CHECK(base::CamouwolfConfig::SetForContext(
++      context, base::WriteJson(*dict).value()));
++  profile->GetPrefs()->SetString(language::prefs::kAcceptLanguages,
++                                 base::JoinString(*languages, ","));
++  // The network context was made with the context, under the launch's
++  // identity; one made from now on takes the context's.
++  base::CamouwolfConfig::ScopedIdentity scoped(context);
++  const std::string user_agent = embedder_support::GetUserAgent();
++  profile->ForEachLoadedStoragePartition(
++      [&](content::StoragePartition* partition) {
++        partition->GetNetworkContext()->SetUserAgent(user_agent);
++      });
+   return protocol::Response::Success();
+ }
+ 
+diff --git a/content/browser/devtools/protocol/target_handler.h b/content/browser/devtools/protocol/target_handler.h
+--- a/content/browser/devtools/protocol/target_handler.h
++++ b/content/browser/devtools/protocol/target_handler.h
+@@ -117,6 +117,10 @@
+   Response GetBrowserContexts(
+       std::unique_ptr<protocol::Array<String>>* browser_context_ids,
+       std::optional<std::string>* default_browser_context_id) override;
++  Response SetBrowserContextIdentity(
++      const std::string& browser_context_id,
++      const std::string& identity,
++      std::unique_ptr<protocol::Array<String>> languages) override;
+   Response CreateTarget(const std::string& url,
+                         std::optional<int> left,
+                         std::optional<int> top,
+diff --git a/content/browser/devtools/protocol/target_handler.cc b/content/browser/devtools/protocol/target_handler.cc
+--- a/content/browser/devtools/protocol/target_handler.cc
++++ b/content/browser/devtools/protocol/target_handler.cc
+@@ -1204,6 +1204,15 @@
+   return Response::ServerError("Not supported");
+ }
+ 
++// CAMOUWOLF: the identity's languages are a profile pref, so the embedder's
++// TargetHandler implements this, as it does SetRemoteLocations.
++Response TargetHandler::SetBrowserContextIdentity(
++    const std::string&,
++    const std::string&,
++    std::unique_ptr<protocol::Array<String>>) {
++  return Response::ServerError("Not supported");
++}
++
+ Response TargetHandler::AttachToTarget(const std::string& target_id,
+                                        std::optional<bool> flatten,
+                                        std::string* out_session_id) {
+diff --git a/content/browser/browser_context.cc b/content/browser/browser_context.cc
+--- a/content/browser/browser_context.cc
++++ b/content/browser/browser_context.cc
+@@ -16,6 +16,7 @@
+ #include <vector>
+ 
+ #include "base/base64.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check_op.h"
+ #include "base/command_line.h"
+ #include "base/containers/span.h"
+@@ -107,6 +108,9 @@
+                   ChromeTrackEvent::kChromeBrowserContext, *this);
+ 
+   impl_.reset();
++  // CAMOUWOLF: a context made later at this address starts with the launch's
++  // identity.
++  base::CamouwolfConfig::EraseContext(this);
+ }
+ 
+ DownloadManager* BrowserContext::GetDownloadManager() {
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -21,6 +21,7 @@
+ #include "base/atomicops.h"
+ #include "base/base_switches.h"
+ #include "base/byte_size.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/clang_profiling_buildflags.h"
+ #include "base/command_line.h"
+ #include "base/containers/flat_map.h"
+@@ -231,6 +232,11 @@
+ #include "third_party/blink/public/mojom/android_font_lookup/android_font_lookup.mojom.h"
+ #endif
+ 
++#if BUILDFLAG(IS_LINUX)
++#include <sys/mman.h>  // CAMOUWOLF: memfd_create
++#include <unistd.h>    // CAMOUWOLF: lseek
++#endif
++
+ #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+ #include <sys/resource.h>
+ 
+@@ -2068,12 +2074,16 @@
+   uint64_t trace_id = base::Token::CreateRandom().high();
+   TRACE_EVENT("navigation", "RenderProcessHostImpl::Init",
+               perfetto::Flow::Global(trace_id));
+-  GetRendererInterface()->InitializeRenderer(
+-      GetContentClient()->browser()->GetUserAgent(),
+-      GetContentClient()->browser()->GetUserAgentMetadata(),
+-      storage_partition_impl_->cors_exempt_header_list(),
+-      GetContentClient()->browser()->GetOriginTrialsSettings(), cpu_tier,
+-      trace_id);
++  {
++    // CAMOUWOLF: the user agent the renderer's own requests carry.
++    base::CamouwolfConfig::ScopedIdentity identity(GetBrowserContext());
++    GetRendererInterface()->InitializeRenderer(
++        GetContentClient()->browser()->GetUserAgent(),
++        GetContentClient()->browser()->GetUserAgentMetadata(),
++        storage_partition_impl_->cors_exempt_header_list(),
++        GetContentClient()->browser()->GetOriginTrialsSettings(), cpu_tier,
++        trace_id);
++  }
+ 
+   if (run_renderer_in_process()) {
+     CHECK(g_renderer_main_thread_factory, base::NotFatalUntil::M152);
+@@ -2154,6 +2164,20 @@
+     auto file_data = std::make_unique<ChildProcessLauncherFileData>();
+ #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
+     file_data->files_to_preload = GetV8SnapshotFilesToPreload(*cmd_line);
++#endif
++#if BUILDFLAG(IS_LINUX)
++    // CAMOUWOLF: a context with its own identity hands it to the renderer in
++    // an anonymous file, which the renderer adopts before anything reads it.
++    if (const std::string& identity =
++            base::CamouwolfConfig::ForContext(GetBrowserContext()).json();
++        !identity.empty()) {
++      base::ScopedFD fd(memfd_create("", MFD_CLOEXEC));
++      CHECK(fd.is_valid());
++      CHECK(base::WriteFileDescriptor(fd.get(), identity));
++      CHECK_EQ(lseek(fd.get(), 0, SEEK_SET), 0);
++      file_data->files_to_preload.emplace(
++          base::CamouwolfConfig::kProcessFileKey, std::move(fd));
++    }
+ #endif
+ 
+     // Spawn the child process asynchronously to avoid blocking the UI thread.
+diff --git a/content/renderer/renderer_main.cc b/content/renderer/renderer_main.cc
+--- a/content/renderer/renderer_main.cc
++++ b/content/renderer/renderer_main.cc
+@@ -9,10 +9,14 @@
+ 
+ #include "base/allocator/partition_alloc_support.h"
+ #include "base/base_switches.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/debug/debugger.h"
+ #include "base/debug/leak_annotations.h"
+ #include "base/feature_list.h"
++#include "base/file_descriptor_store.h"  // CAMOUWOLF
++#include "base/files/file.h"  // CAMOUWOLF
++#include "base/numerics/safe_conversions.h"  // CAMOUWOLF
+ #include "base/i18n/icubridge/default_icu_locale.h"
+ #include "base/i18n/language_tag.h"
+ #include "base/i18n/tag_converters.h"
+@@ -115,6 +119,33 @@
+   return message_pump;
+ }
+ 
++#if BUILDFLAG(IS_LINUX)
++// CAMOUWOLF: a renderer of a context with its own identity adopts it before
++// anything reads one. The zygote this process forked from had set ICU's
++// default locale from the launch's identity, so it is set again here; Blink's
++// TimeZoneController adopts the zone as it starts.
++void AdoptContextIdentity() {
++  base::MemoryMappedFile::Region region;
++  base::ScopedFD fd = base::FileDescriptorStore::GetInstance().MaybeTakeFD(
++      base::CamouwolfConfig::kProcessFileKey, &region);
++  if (!fd.is_valid()) {
++    return;
++  }
++  base::File file(std::move(fd));
++  std::string json(base::checked_cast<size_t>(file.GetLength()), '\0');
++  CHECK(file.ReadAndCheck(0, base::as_writable_byte_span(json)));
++  base::CamouwolfConfig::AdoptForProcess(json);
++  if (const std::optional<std::string> locale =
++          base::CamouwolfConfig::Get().GetString("locale:intl")) {
++    if (std::optional<base::i18n::LanguageTag> tag =
++            base::i18n::GetLanguageTagFromString(*locale)) {
++      base::i18n::SetDefaultIcuLocale(base::i18n::DefaultIcuLocaleSetterKey(),
++                                      *tag);
++    }
++  }
++}
++#endif
++
+ void LogTimeToStartRunLoop(const base::CommandLine& command_line,
+                            base::TimeTicks run_loop_start_time) {
+   startup_metric_utils::GetRenderer().RecordRunLoopStart(run_loop_start_time);
+@@ -154,6 +185,10 @@
+ 
+   base::CurrentProcess::GetInstance().SetProcessType(
+       base::CurrentProcessType::PROCESS_RENDERER);
++
++#if BUILDFLAG(IS_LINUX)
++  AdoptContextIdentity();  // CAMOUWOLF
++#endif
+ 
+   const base::CommandLine& command_line = *parameters.command_line;
+ 
+diff --git a/content/browser/renderer_host/navigation_request.cc b/content/browser/renderer_host/navigation_request.cc
+--- a/content/browser/renderer_host/navigation_request.cc
++++ b/content/browser/renderer_host/navigation_request.cc
+@@ -14,6 +14,7 @@
+ 
+ #include "base/auto_reset.h"
+ #include "base/byte_size.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check.h"
+ #include "base/check_is_test.h"
+ #include "base/check_op.h"
+@@ -372,7 +373,8 @@
+ // Computes the value that should be set for the User-Agent header, if
+ // `user_agent_override` is non-empty, `user_agent_override` is returned as the
+ // header value.
+-std::string ComputeUserAgentValue(const std::string& user_agent_override) {
++std::string ComputeUserAgentValue(BrowserContext* browser_context,
++                                  const std::string& user_agent_override) {
+   if (!user_agent_override.empty()) {
+     base::UmaHistogramEnumeration("Navigation.UserAgentStringType",
+                                   UserAgentStringType::kOverriden);
+@@ -386,6 +388,8 @@
+           ? UserAgentStringType::kReducedVersion
+           : UserAgentStringType::kFullVersion);
+ 
++  // CAMOUWOLF: a navigation carries its context's user agent.
++  base::CamouwolfConfig::ScopedIdentity identity(browser_context);
+   return GetContentClient()->browser()->GetUserAgent();
+ }
+ 
+@@ -421,7 +425,8 @@
+   headers->SetHeaderIfMissing("Upgrade-Insecure-Requests", "1");
+ 
+   headers->SetHeaderIfMissing(net::HttpRequestHeaders::kUserAgent,
+-                              ComputeUserAgentValue(user_agent_override));
++                              ComputeUserAgentValue(browser_context,
++                                                    user_agent_override));
+ 
+   if (!render_prefs.enable_referrers) {
+     *referrer =
+@@ -6817,7 +6822,7 @@
+     if (!devtools_user_agent_override_) {
+       headers_update_params.modified_headers.SetHeader(
+           net::HttpRequestHeaders::kUserAgent,
+-          ComputeUserAgentValue(GetUserAgentOverride()));
++          ComputeUserAgentValue(browser_context, GetUserAgentOverride()));
+     }
+   }
+ 
+@@ -11340,8 +11345,9 @@
+         is_overriding_user_agent(), frame_tree_node_, &headers,
+         common_params_->url);
+   }
+-  headers.SetHeader(net::HttpRequestHeaders::kUserAgent,
+-                    ComputeUserAgentValue(GetUserAgentOverride()));
++  headers.SetHeader(
++      net::HttpRequestHeaders::kUserAgent,
++      ComputeUserAgentValue(browser_context, GetUserAgentOverride()));
+   begin_params_->headers = headers.ToString();
+   // |request_headers_| comes from |begin_params_|. Clear |request_headers_| now
+   // so that if |request_headers_| are needed, they will be updated.
+diff --git a/content/browser/worker_host/shared_worker_host.cc b/content/browser/worker_host/shared_worker_host.cc
+--- a/content/browser/worker_host/shared_worker_host.cc
++++ b/content/browser/worker_host/shared_worker_host.cc
+@@ -7,6 +7,7 @@
+ #include <algorithm>
+ #include <utility>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+ #include "base/memory/raw_ptr.h"
+@@ -505,6 +506,10 @@
+                                    .GetWebExposedIsolationInfo()
+                                    .is_isolated();
+ 
++  // CAMOUWOLF: the worker's user agent is its context's.
++  base::CamouwolfConfig::ScopedIdentity identity(
++      GetProcessHost()->GetBrowserContext());
++
+   // Send the CreateSharedWorker message.
+   factory_.Bind(std::move(factory));
+   factory_->CreateSharedWorker(
+diff --git a/content/browser/service_worker/service_worker_version.cc b/content/browser/service_worker/service_worker_version.cc
+--- a/content/browser/service_worker/service_worker_version.cc
++++ b/content/browser/service_worker/service_worker_version.cc
+@@ -11,6 +11,7 @@
+ #include <optional>
+ #include <string>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check.h"
+ #include "base/command_line.h"
+ #include "base/debug/crash_logging.h"
+@@ -2822,8 +2823,13 @@
+       outside_fetch_client_settings_object_.Clone();
+ 
+   ContentBrowserClient* browser_client = GetContentClient()->browser();
+-  params->user_agent = browser_client->GetUserAgent();
+-  params->ua_metadata = browser_client->GetUserAgentMetadata();
++  {
++    // CAMOUWOLF: the worker's user agent is its context's.
++    base::CamouwolfConfig::ScopedIdentity identity(
++        context_->wrapper()->browser_context());
++    params->user_agent = browser_client->GetUserAgent();
++    params->ua_metadata = browser_client->GetUserAgentMetadata();
++  }
+   params->is_installed = IsInstalled(status_);
+   params->script_url_to_skip_throttling = updated_script_url_;
+   params->main_script_load_params = std::move(main_script_load_params_);
+diff --git a/content/browser/preloading/prefetch/prefetch_service.cc b/content/browser/preloading/prefetch/prefetch_service.cc
+--- a/content/browser/preloading/prefetch/prefetch_service.cc
++++ b/content/browser/preloading/prefetch/prefetch_service.cc
+@@ -8,6 +8,7 @@
+ #include <string_view>
+ 
+ #include "base/auto_reset.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check_is_test.h"
+ #include "base/check_op.h"
+ #include "base/feature_list.h"
+@@ -1683,6 +1684,8 @@
+   // places.
+   context_params->enable_zstd =
+       base::FeatureList::IsEnabled(kZstdForCrossSiteSpeculationRulesPrefetch);
++  // CAMOUWOLF: a prefetch carries its context's user agent.
++  base::CamouwolfConfig::ScopedIdentity identity(browser_context_);
+   context_params->user_agent = embedder_support::GetUserAgent();
+ 
+   // The verifier created here does not have the same parameters as used in the
+diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
+--- a/content/browser/web_contents/web_contents_impl.cc
++++ b/content/browser/web_contents/web_contents_impl.cc
+@@ -19,6 +19,7 @@
+ 
+ #include "base/auto_reset.h"
+ #include "base/base_switches.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check_op.h"
+ #include "base/command_line.h"
+ #include "base/containers/flat_set.h"
+@@ -4002,7 +4003,11 @@
+ 
+   // Sets the hardware-related fields in |prefs| that are slow to compute. The
+   // fields are set from cache if available, otherwise recomputed.
+-  SlowWebPreferenceCache::GetInstance()->Load(&prefs);
++  {
++    // CAMOUWOLF: the claimed touch points are the page's context's.
++    base::CamouwolfConfig::ScopedIdentity identity(GetBrowserContext());
++    SlowWebPreferenceCache::GetInstance()->Load(&prefs);
++  }
+ 
+   const base::CommandLine& command_line =
+       *base::CommandLine::ForCurrentProcess();
+diff --git a/components/client_hints/browser/client_hints.cc b/components/client_hints/browser/client_hints.cc
+--- a/components/client_hints/browser/client_hints.cc
++++ b/components/client_hints/browser/client_hints.cc
+@@ -8,6 +8,7 @@
+ #include <functional>
+ #include <string>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+ #include "base/json/json_reader.h"
+@@ -147,6 +148,8 @@
+ }
+ 
+ blink::UserAgentMetadata ClientHints::GetUserAgentMetadata() {
++  // CAMOUWOLF: the client hints a context sends are its identity's.
++  base::CamouwolfConfig::ScopedIdentity identity(context_);
+   return embedder_support::GetUserAgentMetadata();
+ }
+ 
+diff --git a/chrome/browser/net/profile_network_context_service.cc b/chrome/browser/net/profile_network_context_service.cc
+--- a/chrome/browser/net/profile_network_context_service.cc
++++ b/chrome/browser/net/profile_network_context_service.cc
+@@ -11,6 +11,7 @@
+ 
+ #include "base/base64.h"
+ #include "base/byte_size.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check_op.h"
+ #include "base/command_line.h"
+ #include "base/containers/span.h"
+@@ -1341,6 +1342,10 @@
+     network::mojom::NetworkContextParams* network_context_params,
+     cert_verifier::mojom::CertVerifierCreationParams*
+         cert_verifier_creation_params) {
++  // CAMOUWOLF: a request the browser makes without a User-Agent, such as a
++  // worker's script fetch, takes the network context's, which is the
++  // profile's identity's.
++  base::CamouwolfConfig::ScopedIdentity identity(profile_);
+   TRACE_EVENT0(
+       "startup",
+       "ProfileNetworkContextService::ConfigureNetworkContextParamsInternal");
+diff --git a/chrome/browser/predictors/perform_network_context_prefetch.cc b/chrome/browser/predictors/perform_network_context_prefetch.cc
+--- a/chrome/browser/predictors/perform_network_context_prefetch.cc
++++ b/chrome/browser/predictors/perform_network_context_prefetch.cc
+@@ -8,6 +8,7 @@
+ #include <string>
+ #include <type_traits>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/values.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/predictors/prefetch_manager.h"
+@@ -268,6 +269,8 @@
+   // it.
+   // TODO(crbug.com/342445996): Make it const once the blink::UserAgentMetadata
+   // methods have been made const.
++  // CAMOUWOLF: a prefetch carries its profile's identity.
++  base::CamouwolfConfig::ScopedIdentity identity(profile);
+   blink::UserAgentMetadata ua_metadata =
+       embedder_support::GetUserAgentMetadata();
+ 
+diff --git a/net/url_request/static_http_user_agent_settings.h b/net/url_request/static_http_user_agent_settings.h
+--- a/net/url_request/static_http_user_agent_settings.h
++++ b/net/url_request/static_http_user_agent_settings.h
+@@ -29,6 +29,10 @@
+   void set_accept_language(const std::string& new_accept_language) {
+     accept_language_ = new_accept_language;
+   }
++  // CAMOUWOLF: a context's identity can arrive after its network context.
++  void set_user_agent(const std::string& new_user_agent) {
++    user_agent_ = new_user_agent;
++  }
+ 
+   // HttpUserAgentSettings implementation
+   std::string GetAcceptLanguage() const override;
+@@ -36,7 +40,7 @@
+ 
+  private:
+   std::string accept_language_;
+-  const std::string user_agent_;
++  std::string user_agent_;  // CAMOUWOLF: set_user_agent()
+ };
+ 
+ }  // namespace net
+diff --git a/services/network/public/mojom/network_context.mojom b/services/network/public/mojom/network_context.mojom
+--- a/services/network/public/mojom/network_context.mojom
++++ b/services/network/public/mojom/network_context.mojom
+@@ -1454,6 +1454,10 @@
+   // Updates the Accept-Language header to be used for requests.
+   SetAcceptLanguage(string new_accept_language);
+ 
++  // CAMOUWOLF: updates the User-Agent header given to requests that carry
++  // none, when a browser context takes an identity of its own.
++  SetUserAgent(string new_user_agent);
++
+   // If false, the referrer of requests is never populated.
+   SetEnableReferrers(bool enable_referrers);
+ 
+@@ -1718,7 +1722,10 @@
+       NetworkAnonymizationKey network_anonymization_key,
+       pending_remote<P2PTrustedSocketManagerClient> client,
+       pending_receiver<P2PTrustedSocketManager> trusted_socket_manager,
+-      pending_receiver<P2PSocketManager> socket_manager);
++      pending_receiver<P2PSocketManager> socket_manager,
++      // CAMOUWOLF: the addresses the context's identity claims behind a
++      // proxy, which differ between contexts of one network service.
++      array<IPAddress> camouwolf_identity_addresses);
+ 
+   // Creates an MdnsResponder instance.
+   CreateMdnsResponder(pending_receiver<MdnsResponder> responder_receiver);
+diff --git a/services/network/network_context.h b/services/network/network_context.h
+--- a/services/network/network_context.h
++++ b/services/network/network_context.h
+@@ -361,6 +361,7 @@
+       const base::UnguessableToken& throttling_client_id,
+       std::vector<mojom::MatchedNetworkConditionsPtr> conditions) override;
+   void SetAcceptLanguage(const std::string& new_accept_language) override;
++  void SetUserAgent(const std::string& new_user_agent) override;  // CAMOUWOLF
+   void SetEnableReferrers(bool enable_referrers) override;
+ #if BUILDFLAG(IS_CT_SUPPORTED)
+   void SetCTPolicy(mojom::CTPolicyPtr ct_policy) override;
+@@ -531,7 +532,8 @@
+       mojo::PendingRemote<mojom::P2PTrustedSocketManagerClient> client,
+       mojo::PendingReceiver<mojom::P2PTrustedSocketManager>
+           trusted_socket_manager,
+-      mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver)
++      mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver,
++      const std::vector<net::IPAddress>& camouwolf_identity_addresses)
+       override;
+ #endif  // BUILDFLAG(IS_P2P_ENABLED)
+   void CreateMdnsResponder(
+diff --git a/services/network/network_context.cc b/services/network/network_context.cc
+--- a/services/network/network_context.cc
++++ b/services/network/network_context.cc
+@@ -2011,6 +2011,12 @@
+   user_agent_settings_->set_accept_language(new_accept_language);
+ }
+ 
++// CAMOUWOLF
++void NetworkContext::SetUserAgent(const std::string& new_user_agent) {
++  DCHECK(user_agent_settings_);
++  user_agent_settings_->set_user_agent(new_user_agent);
++}
++
+ void NetworkContext::SetEnableReferrers(bool enable_referrers) {
+   // This may only be called on NetworkContexts created with the constructor
+   // that calls MakeURLRequestContext().
+@@ -2697,14 +2703,15 @@
+     mojo::PendingRemote<mojom::P2PTrustedSocketManagerClient> client,
+     mojo::PendingReceiver<mojom::P2PTrustedSocketManager>
+         trusted_socket_manager,
+-    mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver) {
++    mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver,
++    const std::vector<net::IPAddress>& camouwolf_identity_addresses) {
+   std::unique_ptr<P2PSocketManager> socket_manager =
+       std::make_unique<P2PSocketManager>(
+           network_anonymization_key, std::move(client),
+           std::move(trusted_socket_manager), std::move(socket_manager_receiver),
+           base::BindRepeating(&NetworkContext::DestroySocketManager,
+                               base::Unretained(this)),
+-          url_request_context_);
++          url_request_context_, camouwolf_identity_addresses);
+   socket_managers_[socket_manager.get()] = std::move(socket_manager);
+ }
+ #endif  // BUILDFLAG(IS_P2P_ENABLED)
+diff --git a/services/network/test/test_network_context.h b/services/network/test/test_network_context.h
+--- a/services/network/test/test_network_context.h
++++ b/services/network/test/test_network_context.h
+@@ -174,6 +174,7 @@
+       const base::UnguessableToken& throttling_client_id,
+       std::vector<mojom::MatchedNetworkConditionsPtr>) override {}
+   void SetAcceptLanguage(const std::string& new_accept_language) override {}
++  void SetUserAgent(const std::string& new_user_agent) override {}
+   void SetEnableReferrers(bool enable_referrers) override {}
+ #if BUILDFLAG(IS_CT_SUPPORTED)
+   void SetCTPolicy(mojom::CTPolicyPtr ct_policy) override {}
+@@ -332,7 +333,8 @@
+       mojo::PendingRemote<mojom::P2PTrustedSocketManagerClient> client,
+       mojo::PendingReceiver<mojom::P2PTrustedSocketManager>
+           trusted_socket_manager,
+-      mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver)
++      mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver,
++      const std::vector<net::IPAddress>& camouwolf_identity_addresses)
+       override {}
+ #endif  // BUILDFLAG(IS_P2P_ENABLED)
+   void CreateMdnsResponder(
+diff --git a/content/browser/renderer_host/p2p/socket_dispatcher_host.cc b/content/browser/renderer_host/p2p/socket_dispatcher_host.cc
+--- a/content/browser/renderer_host/p2p/socket_dispatcher_host.cc
++++ b/content/browser/renderer_host/p2p/socket_dispatcher_host.cc
+@@ -8,6 +8,7 @@
+ 
+ #include <algorithm>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/containers/heap_array.h"
+ #include "base/functional/bind.h"
+ #include "content/browser/bad_message.h"
+@@ -17,6 +18,7 @@
+ #include "mojo/public/cpp/bindings/pending_remote.h"
+ #include "mojo/public/cpp/bindings/receiver_set.h"
+ #include "mojo/public/cpp/bindings/remote_set.h"
++#include "net/base/ip_address.h"  // CAMOUWOLF
+ #include "net/base/net_errors.h"
+ #include "services/network/public/cpp/p2p_param_traits.h"
+ #include "services/network/public/mojom/network_context.mojom.h"
+@@ -24,6 +26,29 @@
+ using content::BrowserThread;
+ 
+ namespace content {
++
++namespace {
++
++// CAMOUWOLF: the WebRTC addresses of the process's context's identity. The
++// network service is shared by every context, so it is told, not asked.
++std::vector<net::IPAddress> CamouwolfIdentityAddresses(
++    RenderProcessHostImpl& process) {
++  const base::CamouwolfConfig& config =
++      base::CamouwolfConfig::ForContext(process.GetBrowserContext());
++  std::vector<net::IPAddress> addresses;
++  for (std::optional<std::string> value :
++       {config.GetString("webrtc:ipv4"), config.GetString("webrtc:ipv6")}) {
++    if (value) {
++      if (std::optional<net::IPAddress> address =
++              net::IPAddress::FromIPLiteral(*value)) {
++        addresses.push_back(*address);
++      }
++    }
++  }
++  return addresses;
++}
++
++}  // namespace
+ 
+ P2PSocketDispatcherHost::P2PSocketDispatcherHost(
+     ChildProcessId render_process_id)
+@@ -87,7 +112,7 @@
+   process.GetStoragePartition()->GetNetworkContext()->CreateP2PSocketManager(
+       anonymization_key, std::move(trusted_socket_manager_client),
+       pending_trusted_socket_manager.InitWithNewPipeAndPassReceiver(),
+-      std::move(receiver));
++      std::move(receiver), CamouwolfIdentityAddresses(process));
+   mojo::Remote<network::mojom::P2PTrustedSocketManager> trusted_socket_manager(
+       std::move(pending_trusted_socket_manager));
+   if (dump_incoming_rtp_packet_ || dump_outgoing_rtp_packet_) {

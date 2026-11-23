@@ -1,6 +1,6 @@
 # The patch series
 
-27 diffs in `browser/patches/`, applied in `series` order against the Chromium
+31 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:
@@ -652,3 +652,56 @@ The launcher writes the exit IP from `geoip` to `webrtc:ipv4` or `webrtc:ipv6`
 for a proxied launch. A proxied context without either key has no network and
 gathers no host candidate. `block_webrtc=True` still passes the 0030 switch,
 which leaves a page no UDP at all.
+
+### 0032 — per-context identity
+
+A Playwright context made by the launchers' `NewContext()` is another machine
+than the rest of the browser. Every surface a page can read answers with the
+context's identity: Blink in its renderers and workers, the User-Agent,
+`Sec-CH-UA-*` and `Accept-Language` headers, the timezone and Intl locale,
+WebRTC's addresses, WebGL and WebGPU, and the font list. A plain
+`browser.new_context()`, and the default context, keep the launch's identity.
+
+**Why per context and not per page.** Playwright's emulation (`userAgent`,
+`locale`, `timezoneId`) is a CDP override in one page's renderer. The page's
+workers, the network stack and the GPU process never see it, so a page that
+compares itself with a worker, or with its own request headers, reads two
+machines. The identity has to be held where all of them look: by the browser
+for the context.
+
+**How.**
+
+- `Target.setBrowserContextIdentity(browserContextId, identity, languages)`,
+  a CDP command in chrome's `TargetHandler`, stores the identity (the same JSON
+  as `CAMOU_CONFIG`) against the browser context with
+  `CamouwolfConfig::SetForContext`. The launcher sends it right after creating
+  the context, before the context has a renderer. Without `locale:intl` the
+  handler writes the UI locale Chrome would resolve for the first language,
+  which is what `--lang` gives the launch (0026).
+- The context's `Accept-Language` and `navigator.languages` come from the
+  context's language pref, which the command sets from `languages`.
+- Each renderer serves one browser context. `RenderProcessHostImpl` hands a
+  renderer of an identified context its JSON as a file (`context_identity`),
+  and the renderer adopts it in place of the launch's before Blink starts
+  (`AdoptForProcess`). Every renderer-side patch, workers included, then reads
+  the context's values unchanged.
+- In the browser process, code that runs for a context reads
+  `CamouwolfConfig::ForContext(context)`, or runs under a `ScopedIdentity`:
+  client hints, the user agent of navigations, prefetches, shared and service
+  workers, touch points (0024), and the WebRTC addresses the socket dispatcher
+  hands the network service (0031).
+- The network service is shared by every context, so it is told rather than
+  asked: `NetworkContext.SetUserAgent` gives a context's network context the
+  user agent requests without one take, such as a worker's script fetch.
+
+**What a context shares with the launch.** The OS (the fonts and maths
+library the process was launched with), the screen and window (one native
+window and one display), and `navigator.hardwareConcurrency` (one process's
+cores). The launchers draw the rest afresh: GPU, fonts, voices, client hints,
+canvas and audio seeds. An unproxied context leaves from the browser's address,
+so it keeps the launch's timezone, position, WebRTC address and languages; a
+proxied one is placed at the proxy's exit, looked up through the proxy.
+
+**Not supported.** `storageState` with origins' localStorage: Playwright writes
+it from a page before the launcher can identify the context. Cookies work.
+

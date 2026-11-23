@@ -547,6 +547,26 @@ def test_only_a_404_means_an_include_is_missing(monkeypatch: pytest.MonkeyPatch)
     assert apis.exists_upstream("base/nope.h", "1.0", {}, offline=False) is False
 
 
+def test_a_generated_mojom_header_is_checked_by_its_mojom(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`foo.mojom.h` exists in no checkout; the build makes it from `foo.mojom`."""
+    apis = _patch_apis()
+    patches = tmp_path / "patches"
+    patches.mkdir()
+    (patches / "0001-x.patch").write_text(
+        "+++ b/a.cc\n@@ -1,0 +1,2 @@\n"
+        '+#include "services/network/public/mojom/network_context.mojom.h"\n'
+        '+#include "services/network/public/mojom/nope.mojom.h"\n'
+    )
+    src = tmp_path / "src"
+    (src / "services/network/public/mojom").mkdir(parents=True)
+    (src / "services/network/public/mojom/network_context.mojom").write_text("")
+    monkeypatch.setattr(apis, "PATCHES", patches)
+    monkeypatch.setattr(apis, "CACHE", tmp_path / "cache.json")
+    problems, checked, _ = apis.check_includes("1.0", offline=True, src=src)
+    assert checked == 1
+    assert problems == ['0001-x.patch: #include "services/network/public/mojom/nope.mojom.h" not found in ' + str(src)]
+
+
 # ---------------------------------------------------------------- fetch-sources
 
 

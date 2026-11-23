@@ -35,6 +35,7 @@ const { VirtualDisplay } = await import("camoucore/virtdisplay.js");
 class FakeBrowser {
 	closed = false;
 	calls: Array<[string, any]> = [];
+	identities: any[] = [];
 	contexts() {
 		return [];
 	}
@@ -42,6 +43,24 @@ class FakeBrowser {
 	async newContext(options?: any) {
 		this.calls.push(["newContext", options]);
 		return { pages: () => [], on() {} };
+	}
+	/** Lists a context per newContext() and records the identities set. */
+	async newBrowserCDPSession() {
+		return {
+			send: async (method: string, params?: any) => {
+				if (method === "Target.getBrowserContexts") {
+					return {
+						browserContextIds: this.calls
+							.filter(([name]) => name === "newContext")
+							.map((_, i) => `ctx${i}`),
+					};
+				}
+				expect(method).toBe("Target.setBrowserContextIdentity");
+				this.identities.push(params);
+				return {};
+			},
+			detach: async () => undefined,
+		};
 	}
 	async newPage(options?: any) {
 		this.calls.push(["newPage", options]);
@@ -261,15 +280,30 @@ describe.skipIf(!MODEL.ok)("NewBrowser", () => {
 	});
 });
 
-describe("NewContext", () => {
+/** A browser launched with a Berlin identity. */
+async function berlin(): Promise<FakeBrowser> {
+	const type = new FakeBrowserType();
+	vi.spyOn(warnings.LeakWarning, "warn").mockImplementation(() => {});
+	await NewBrowser(type as any, {
+		...base(),
+		locale: "de-DE",
+		config: { timezone: "Europe/Berlin" },
+	});
+	vi.restoreAllMocks();
+	return type.browser;
+}
+
+const identityOf = (params: any) => JSON.parse(params.identity);
+
+describe.skipIf(!MODEL.ok)("NewContext", () => {
 	it.each([
 		["userAgent", "x"],
 		["screen", { width: 1, height: 1 }],
 		["deviceScaleFactor", 2],
 		["isMobile", true],
 		["hasTouch", true],
-	])("refuses %s: an identity of its own", async (option, value) => {
-		const browser = new FakeBrowser();
+	])("refuses %s, which its pages would contradict", async (option, value) => {
+		const browser = await berlin();
 		await expect(
 			NewContext(browser as any, { [option]: value }),
 		).rejects.toThrow(IncoherentIdentity);
@@ -281,46 +315,102 @@ describe("NewContext", () => {
 
 	it.each([
 		"preset",
-		"os",
 		"ff_version",
 		"chrome_version",
-		"webrtc_ip",
-	])("does not draw a second fingerprint for %s", async (option) => {
-		const error = await NewContext(new FakeBrowser() as any, {
+	])("runs the browser's own build, so refuses %s", async (option) => {
+		const error = await NewContext((await berlin()) as any, {
 			[option]: "x",
 		}).catch((e) => e);
 		expect(error).toBeInstanceOf(NotImplementedError);
-		expect(error.message).toBe(
-			`NewContext(${option}=) is not implemented in Camouwolf: the browser reads one identity ` +
-				"per process (CAMOU_CONFIG), so a context cannot have its own fingerprint. Launch " +
-				"another browser for another identity.",
-		);
+		expect(error.message).toContain(`NewContext(${option}=)`);
 	});
 
-	it("places a context", async () => {
-		const browser = new FakeBrowser();
-		await NewContext(browser as any, {
-			proxy: { server: "http://proxy.example:8080" },
-			geolocation: { latitude: 1.5, longitude: 2.5 },
-			timezoneId: "Europe/Paris",
-			locale: "fr-FR",
-		});
-		expect(browser.calls).toEqual([
-			[
-				"newContext",
-				{
-					proxy: { server: "http://proxy.example:8080" },
-					geolocation: { latitude: 1.5, longitude: 2.5 },
-					permissions: ["geolocation"],
-					timezoneId: "Europe/Paris",
-					locale: "fr-FR",
-				},
-			],
+	it("draws a machine of its own on the browser's screen", async () => {
+		const browser = await berlin();
+		const launch = utils.launchConfig(utils.launchOptionsOf(browser));
+		await NewContext(browser as any);
+		await NewContext(browser as any);
+
+		const [first, second] = browser.identities;
+		expect([first.browserContextId, second.browserContextId]).toEqual([
+			"ctx0",
+			"ctx1",
 		]);
+		const identities = [identityOf(first), identityOf(second)];
+		// Two draws of a whole machine do not land on one GPU, one font list
+		// and one set of client hints.
+		expect(identities[0]).not.toEqual(identities[1]);
+		for (const identity of identities) {
+			// One browser process has one window, screen and core count.
+			for (const [key, value] of Object.entries(launch)) {
+				if (
+					key.startsWith("screen.") ||
+					key.startsWith("window.") ||
+					key === "navigator.hardwareConcurrency"
+				)
+					expect(identity[key]).toEqual(value);
+			}
+			// Unproxied, it leaves from the browser's address: the browser's place.
+			expect(identity.timezone).toBe("Europe/Berlin");
+			expect(identity).not.toHaveProperty("navigator.languages");
+		}
+		const languages = utils.launchLanguages(utils.launchOptionsOf(browser));
+		expect(first.languages).toEqual(languages);
+		expect(second.languages).toEqual(languages);
+		expect(browser.calls[0][1].viewport).toBeNull();
+	});
+
+	it("takes a locale and timezone into its identity", async () => {
+		const browser = await berlin();
+		await NewContext(browser as any, {
+			locale: "fr-FR",
+			timezoneId: "Europe/Paris",
+		});
+		const [params] = browser.identities;
+		expect(identityOf(params).timezone).toBe("Europe/Paris");
+		expect(params.languages[0]).toBe("fr-FR");
+		// Playwright's own emulation would answer in the page only, not its workers.
+		expect(browser.calls[0][1]).not.toHaveProperty("locale");
+		expect(browser.calls[0][1]).not.toHaveProperty("timezoneId");
+	});
+
+	it("keeps the browser's OS", async () => {
+		const browser = await berlin();
+		await expect(NewContext(browser as any, { os: "windows" })).rejects.toThrow(
+			"launched as 'linux'",
+		);
+		expect(browser.calls).toEqual([]);
+	});
+
+	it("refuses localStorage it would write from a page", async () => {
+		const browser = await berlin();
+		const storageState = {
+			cookies: [],
+			origins: [{ origin: "https://example.com", localStorage: [] }],
+		};
+		await expect(NewContext(browser as any, { storageState })).rejects.toThrow(
+			"localStorage",
+		);
+		expect(browser.calls).toEqual([]);
+	});
+
+	it("refuses to guess between two new contexts", () => {
+		expect(() =>
+			utils.createdContextId(
+				{ browserContextIds: ["a"] },
+				{ browserContextIds: ["a", "b", "c"] },
+			),
+		).toThrow("found 2");
+	});
+
+	it("needs a Camouwolf browser", async () => {
+		await expect(NewContext(new FakeBrowser() as any)).rejects.toThrow(
+			"NewBrowser",
+		);
 	});
 });
 
-describe("NewContext behind a proxy", () => {
+describe.skipIf(!MODEL.ok)("NewContext behind a proxy", () => {
 	const proxy = {
 		server: "http://203.0.113.5:1",
 		username: "u",
@@ -338,33 +428,44 @@ describe("NewContext behind a proxy", () => {
 			longitude: 139.7,
 			latitude: 35.7,
 			timezone: "Asia/Tokyo",
+			asConfig: () => ({
+				"geolocation:latitude": 35.7,
+				"geolocation:longitude": 139.7,
+				timezone: "Asia/Tokyo",
+				"locale:language": "ja",
+				"locale:region": "JP",
+			}),
 		})) as any;
 	});
 
 	it("is placed where the proxy exits", async () => {
-		// Otherwise the context keeps the launch's timezone and position beside
-		// the proxy's IP.
-		const browser = new FakeBrowser();
+		// Otherwise the context keeps the launch's place beside the proxy's IP.
+		const browser = await berlin();
 		await NewContext(browser as any, { proxy });
 		await NewContext(browser as any, { proxy, timezoneId: "Asia/Osaka" });
 		expect(lookedUp).toEqual(Array(2).fill("http://u:p@203.0.113.5:1"));
-		const placed = (timezoneId: string) => [
-			"newContext",
-			{
-				proxy,
-				geolocation: { latitude: 35.7, longitude: 139.7 },
-				permissions: ["geolocation"],
-				timezoneId,
-			},
-		];
-		expect(browser.calls).toEqual([placed("Asia/Tokyo"), placed("Asia/Osaka")]);
+		const [tokyo, osaka] = browser.identities;
+		for (const [params, timezone] of [
+			[tokyo, "Asia/Tokyo"],
+			[osaka, "Asia/Osaka"],
+		]) {
+			const identity = identityOf(params);
+			expect(identity.timezone).toBe(timezone);
+			expect(identity["webrtc:ipv4"]).toBe("198.51.100.7");
+			expect(params.languages[0]).toBe("ja-JP");
+		}
+		for (const [, options] of browser.calls) {
+			expect(options.proxy).toEqual(proxy);
+			expect(options.geolocation).toEqual({ latitude: 35.7, longitude: 139.7 });
+			expect(options.permissions).toContain("geolocation");
+		}
 	});
 
 	it("throws when the exit lookup fails", async () => {
 		utils.utilsDeps.publicIp = (async () => {
 			throw new InvalidIP("Failed to get IP address");
 		}) as any;
-		const browser = new FakeBrowser();
+		const browser = await berlin();
 		await expect(NewContext(browser as any, { proxy })).rejects.toThrow(
 			InvalidIP,
 		);

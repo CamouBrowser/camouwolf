@@ -1,6 +1,6 @@
 import asyncio
 from functools import partial
-from typing import Any, Dict, Optional, Tuple, Union, overload
+from typing import Any, Dict, List, Optional, Tuple, Union, overload
 
 from playwright.async_api import (
     Browser,
@@ -18,8 +18,12 @@ from .utils import (
     attach_context_defaults,
     launch_options,
     launch_os,
+    context_identity,
+    created_context_id,
+    launch_options_of,
     new_context_options,
-    place_at_exit,
+    refuse_context_options,
+    set_context_identity_params,
     persistent_context_options,
     start_virtual_display,
     warn_addons_without_profile,
@@ -201,16 +205,51 @@ async def AsyncNewContext(
     *,
     proxy: Optional[Dict[str, str]] = None,
     geolocation: Optional[Dict[str, float]] = None,
+    os: Optional[str] = None,
+    fingerprint: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    webgl_config: Optional[Tuple[str, str]] = None,
+    webrtc_ip: Optional[str] = None,
+    fonts: Optional[List[str]] = None,
+    custom_fonts_only: Optional[bool] = None,
+    locale: Optional[Union[str, List[str]]] = None,
+    timezone_id: Optional[str] = None,
+    i_know_what_im_doing: Optional[bool] = None,
     **context_kwargs: Any,
 ) -> BrowserContext:
     """
-    Creates a new browser context on a Camouwolf browser.
-
-    Unlike Camoufox, a Camouwolf context has no identity of its own: the
-    browser reads its identity once, per process, from the launch environment.
-    See camouwolf.sync_api.NewContext for what a context may and may not set.
+    Creates a new browser context with an identity of its own. See
+    camouwolf.sync_api.NewContext for the options.
     """
-    geolocation, context_kwargs = await asyncio.get_running_loop().run_in_executor(
-        None, place_at_exit, proxy, geolocation, context_kwargs
+    refuse_context_options(context_kwargs)
+    identity, languages = await asyncio.get_running_loop().run_in_executor(
+        None,
+        partial(
+            context_identity, launch_options_of(browser), proxy=proxy, os=os, fingerprint=fingerprint,
+            config=config, webgl_config=webgl_config, webrtc_ip=webrtc_ip, fonts=fonts,
+            custom_fonts_only=custom_fonts_only, locale=locale, timezone_id=timezone_id,
+            i_know_what_im_doing=i_know_what_im_doing,
+        ),
     )
-    return await browser.new_context(**new_context_options(context_kwargs, proxy, geolocation))
+    options = new_context_options(context_kwargs, identity, proxy, geolocation)
+    # The new context is the one getBrowserContexts gains, and it takes its
+    # identity before its first renderer.
+    async with _context_lock(browser):
+        session = await browser.new_browser_cdp_session()
+        try:
+            before = await session.send('Target.getBrowserContexts')
+            context = await browser.new_context(**options)
+            context_id = created_context_id(before, await session.send('Target.getBrowserContexts'))
+            await session.send(
+                'Target.setBrowserContextIdentity', set_context_identity_params(context_id, identity, languages)
+            )
+        finally:
+            await session.detach()
+    return context
+
+
+def _context_lock(browser: Browser) -> asyncio.Lock:
+    impl = getattr(browser, '_impl_obj', browser)
+    if not hasattr(impl, '_camouwolf_context_lock'):
+        impl._camouwolf_context_lock = asyncio.Lock()
+    return impl._camouwolf_context_lock

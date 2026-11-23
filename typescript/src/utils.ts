@@ -878,7 +878,14 @@ export interface GeolocationOption {
 export function launchGeolocation(
 	fromOptions: Config,
 ): GeolocationOption | null {
-	const config = launchConfig(fromOptions);
+	return geolocationOf(launchConfig(fromOptions));
+}
+
+/**
+ * The position an identity places its browser at, as Playwright's
+ * `geolocation` option, or null.
+ */
+export function geolocationOf(config: Config): GeolocationOption | null {
 	const latitude = config["geolocation:latitude"];
 	const longitude = config["geolocation:longitude"];
 	if (
@@ -948,16 +955,14 @@ export const STOCK_MEDIA_DEFAULTS = {
 } as const;
 
 /**
- * Context options that would make one context of the browser a different
- * machine from the rest of it. The identity is the process's: workers, the
- * network stack and the GPU process answer from CAMOU_CONFIG whatever
- * Playwright emulates in one context's pages, so a page comparing its window
- * with a worker reads two user agents. Named as Playwright's JS API names
+ * Playwright context options that would make one context's pages a different
+ * machine from its workers and request headers, which answer from the
+ * context's identity whatever Playwright emulates in a page. Named as Playwright's JS API names
  * them (Python: user_agent, is_mobile, device_scale_factor, screen, has_touch).
  */
 export const PER_CONTEXT_IDENTITY_OPTIONS: Readonly<Record<string, string>> = {
 	userAgent:
-		"navigator.userAgent comes from the launch identity; set `config`, `os` or `fingerprint` at launch",
+		"navigator.userAgent comes from the identity; NewContext draws a context's own",
 	isMobile: "Camouwolf only has desktop identities",
 	deviceScaleFactor:
 		"it changes the device pixel ratio without the screen the identity claims",
@@ -967,8 +972,8 @@ export const PER_CONTEXT_IDENTITY_OPTIONS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The context options in `options` that would give one context another
- * identity than the browser's, each with the reason.
+ * The context options in `options` that would make a context's pages disagree
+ * with its identity, each with the reason.
  */
 export function perContextIdentityProblems(options: Config): string[] {
 	return Object.entries(PER_CONTEXT_IDENTITY_OPTIONS)
@@ -979,15 +984,15 @@ export function perContextIdentityProblems(options: Config): string[] {
 }
 
 /**
- * Throw IncoherentIdentity for a context option that would give one context
- * another identity than the browser's.
+ * Throw IncoherentIdentity for a context option that would make a context's
+ * pages disagree with its identity.
  */
 export function refusePerContextIdentity(options: Config): void {
 	const problems = perContextIdentityProblems(options);
 	if (problems.length) {
 		throw new IncoherentIdentity(
-			`${problems.join("; ")}. Workers, request headers and the GPU process would still answer as the launch ` +
-				"identity. Launch another browser for another identity.",
+			`${problems.join("; ")}. Workers and request headers would still answer as the context's ` +
+				"identity. NewContext draws a context its own.",
 		);
 	}
 }
@@ -1002,8 +1007,8 @@ export function refusePerContextIdentity(options: Config): void {
  * - the host's own media features instead of Playwright's emulated ones.
  * - the launch's geolocation (geoip, or geolocation:* in config), granted, as
  *   a browser whose user chose "Always allow" has it.
- * - a LeakWarning for an option that gives the context another identity than
- *   the browser's (NewContext refuses those outright).
+ * - a LeakWarning for an option its pages would answer with against the
+ *   context's identity (NewContext refuses those outright).
  *
  * Returns the adjusted copy of the options.
  */
@@ -1042,21 +1047,23 @@ export function contextDefaults(
 	};
 }
 
-/** Camoufox's NewContext options that draw a second identity for one context. */
-export const PER_CONTEXT_FINGERPRINT_OPTIONS: readonly string[] = [
-	"preset",
-	"os",
-	"ff_version",
-	"chrome_version",
-	"webrtc_ip",
-];
+/**
+ * Patch 0031 sends a proxied context's WebRTC through the proxy; this keeps it
+ * to TCP there, with no UDP at all.
+ */
+export const WEBRTC_BLOCK_SWITCH =
+	"--force-webrtc-ip-handling-policy=disable_non_proxied_udp";
 
 /**
- * A proxied context's timezone and position, defaulted to where the proxy
- * exits (looked up through it) unless the caller gave both. A failed lookup
- * throws: the context would otherwise sit at the launch's place beside another
- * IP. The locale stays the identity's, which patch 0026 holds.
+ * Camoufox's NewContext options that would name another browser build than the
+ * one running, which every context shares.
  */
+export const OTHER_BUILD_OPTIONS: readonly string[] = [
+	"preset",
+	"ff_version",
+	"chrome_version",
+];
+
 /**
  * Whether this host has a public IPv6 address that geolocates where the IPv4
  * identity does. Warns when it has one that does not.
@@ -1084,57 +1091,220 @@ export async function keepsIpv6(
 	return false;
 }
 
-export async function placeAtExit(
-	proxy: ProxyConfig | null | undefined,
-	geolocation: GeolocationOption | null | undefined,
-	contextOptions: Config,
-): Promise<[GeolocationOption | null | undefined, Config]> {
-	if (!proxy || (geolocation && "timezoneId" in contextOptions))
-		return [geolocation, contextOptions];
-	utilsDeps.geoipAllowed();
-	const exitGeo = await utilsDeps.getGeolocation(
-		await utilsDeps.publicIp(ProxyHelper.asString(proxy)),
-	);
-	return [
-		geolocation ?? {
-			latitude: exitGeo.latitude,
-			longitude: exitGeo.longitude,
-		},
-		{ timezoneId: exitGeo.timezone, ...contextOptions },
-	];
-}
-
 /**
- * The newContext() options NewContext passes: the caller's, after refusing any
- * that would give the context an identity of its own.
+ * Throw for a NewContext option a context cannot take: NotImplementedError for
+ * a Camoufox one naming another browser build than the one every context runs
+ * in, IncoherentIdentity for one its pages would contradict.
  */
-export function newContextOptions(
-	contextOptions: Config,
-	proxy?: ProxyConfig | null,
-	geolocation?: GeolocationOption | null,
-): Config {
-	for (const option of PER_CONTEXT_FINGERPRINT_OPTIONS) {
+export function refuseContextOptions(contextOptions: Config): void {
+	for (const option of OTHER_BUILD_OPTIONS) {
 		if (
 			contextOptions[option] !== null &&
 			contextOptions[option] !== undefined
 		) {
 			throw new NotImplementedError(
-				`NewContext(${option}=) is not implemented in Camouwolf: the browser reads one identity ` +
-					"per process (CAMOU_CONFIG), so a context cannot have its own fingerprint. Launch " +
-					"another browser for another identity.",
+				`NewContext(${option}=) is not implemented in Camouwolf: a context runs in the ` +
+					"browser's own Chromium build. Launch another browser for another build.",
 			);
 		}
 	}
 	refusePerContextIdentity(contextOptions);
+}
+
+/** The language list these launch options give the browser. */
+export function launchLanguages(fromOptions: Config): string[] | null {
+	for (const arg of fromOptions.args ?? []) {
+		if (String(arg).startsWith("--accept-lang=")) {
+			return String(arg).split("=").slice(1).join("=").split(",");
+		}
+	}
+	return null;
+}
+
+/**
+ * The Chromium version the launch's identity claims: the binary's, or the
+ * chrome_version milestone the launch was given.
+ */
+export function launchFullVersion(fromOptions: Config): string {
+	const fullVersion = resolveVersion(fromOptions.executablePath);
+	const claimed = /Chrome\/(\d+)/.exec(
+		String(launchConfig(fromOptions)["navigator.userAgent"] ?? ""),
+	);
+	if (
+		claimed &&
+		Number(claimed[1]) !== Number.parseInt(fullVersion.split(".", 1)[0], 10)
+	) {
+		return `${Number(claimed[1])}.0.0.0`;
+	}
+	return fullVersion;
+}
+
+/** What NewContext draws a context's identity from. */
+export interface ContextIdentityOptions {
+	proxy?: ProxyConfig | null;
+	os?: string | null;
+	fingerprint?: Record<string, any> | null;
+	config?: Config | null;
+	webgl_config?: [string, string] | null;
+	webrtc_ip?: string | null;
+	fonts?: string[] | null;
+	custom_fonts_only?: boolean | null;
+	locale?: string | string[] | null;
+	timezoneId?: string | null;
+	i_know_what_im_doing?: boolean | null;
+}
+
+/**
+ * A context's own identity and language list, drawn for the browser that
+ * `fromOptions` launched.
+ *
+ * The machine is drawn afresh on the launch's OS, screen, window and core
+ * count, which one browser process cannot vary. A proxied context is placed
+ * where the proxy exits, looked up through it; any other leaves from the
+ * browser's address and so keeps the launch's place and languages.
+ */
+export async function contextIdentity(
+	fromOptions: Config,
+	{
+		proxy,
+		os,
+		fingerprint,
+		config: callerConfig,
+		webgl_config,
+		webrtc_ip,
+		fonts,
+		custom_fonts_only,
+		locale,
+		timezoneId,
+		i_know_what_im_doing,
+	}: ContextIdentityOptions = {},
+): Promise<{ identity: Config; languages: string[] }> {
+	const launch = launchConfig(fromOptions);
+	if (!Object.keys(launch).length) {
+		throw new ValueError(
+			"NewContext needs a browser launched by Camouwolf: a context identity is drawn to fit it",
+		);
+	}
+	const targetOs = launchOs(fromOptions);
+	if (os !== undefined && os !== null && os !== targetOs) {
+		throw new ValueError(
+			`NewContext(os='${os}'): the browser launched as '${targetOs}', and its contexts share the ` +
+				"fonts and maths library it launched with. Launch another browser for another OS.",
+		);
+	}
+	const config: Config = { ...(callerConfig ?? {}) };
+	if (!i_know_what_im_doing) warnManualConfig(config);
+	if (timezoneId) config.timezone = timezoneId;
+	if (webrtc_ip) {
+		config[validIPv4(webrtc_ip) ? "webrtc:ipv4" : "webrtc:ipv6"] = webrtc_ip;
+	}
+	let contextLocale = locale;
+	if (!proxy) {
+		for (const [key, value] of Object.entries(launch)) {
+			if (
+				key === "timezone" ||
+				key.startsWith("geolocation:") ||
+				key.startsWith("webrtc:")
+			) {
+				setDefault(config, key, value);
+			}
+		}
+		contextLocale = pyTruthy(locale) ? locale : launchLanguages(fromOptions);
+	}
+	const { languages } = await drawIdentity(config, {
+		os: targetOs,
+		webgl_config,
+		geoip: Boolean(proxy),
+		proxy,
+		block_webrtc: (fromOptions.args ?? []).includes(WEBRTC_BLOCK_SWITCH),
+		locale: contextLocale,
+		fingerprint,
+		screen: null,
+		fonts,
+		custom_fonts_only,
+		canvas_noise: Boolean(launch["canvas:randomizeReadback"]),
+		fullVersion: launchFullVersion(fromOptions),
+		// The launch's OS already passed the policy.
+		allow_os_mismatch: true,
+		i_know_what_im_doing: Boolean(i_know_what_im_doing),
+		browserBinary: fromOptions.executablePath,
+		launch,
+	});
+	if ("network:ipv4Only" in launch) {
+		config["network:ipv4Only"] = launch["network:ipv4Only"];
+	}
+	// The browser serves navigator.languages from the context's language pref.
+	delete config["navigator.languages"];
+	if (!languages?.length) {
+		throw new ValueError(
+			"NewContext needs a locale: neither it nor the launch names one",
+		);
+	}
+	return { identity: config, languages };
+}
+
+/**
+ * The newContext() options NewContext passes for a context with `identity`:
+ * the caller's, placed where the identity is.
+ */
+export function newContextOptions(
+	contextOptions: Config,
+	identity: Config,
+	proxy?: ProxyConfig | null,
+	geolocation?: GeolocationOption | null,
+): Config {
+	let storageState = contextOptions.storageState;
+	if (typeof storageState === "string") {
+		storageState = JSON.parse(fs.readFileSync(storageState, "utf8"));
+	}
+	if (storageState?.origins?.length) {
+		// Playwright writes them from a page, and a context takes its identity
+		// before its first renderer.
+		throw new ValueError(
+			"NewContext(storageState) with origins' localStorage is not supported: set it from a " +
+				"page of the new context instead. Cookies alone are.",
+		);
+	}
 	const options: Config = { ...contextOptions };
 	if (proxy) options.proxy = proxy;
-	if (geolocation) {
-		options.geolocation = geolocation;
+	const place = geolocation ?? geolocationOf(identity);
+	if (place) {
+		options.geolocation = place;
 		const permissions: string[] = [...(options.permissions ?? [])];
 		if (!permissions.includes("geolocation")) permissions.push("geolocation");
 		options.permissions = permissions;
 	}
 	return options;
+}
+
+/** Target.setBrowserContextIdentity's parameters (patch 0032). */
+export function setContextIdentityParams(
+	contextId: string,
+	identity: Config,
+	languages: string[],
+): Config {
+	return {
+		browserContextId: contextId,
+		identity: JSON.stringify(identity),
+		languages,
+	};
+}
+
+/**
+ * The one browser context Target.getBrowserContexts lists in `after` and not
+ * in `before`.
+ */
+export function createdContextId(before: Config, after: Config): string {
+	const known = new Set<string>(before.browserContextIds);
+	const created = (after.browserContextIds as string[]).filter(
+		(id) => !known.has(id),
+	);
+	if (created.length !== 1) {
+		throw new Error(
+			`Expected one new browser context, found ${created.length}: was another made at the same time?`,
+		);
+	}
+	return created[0];
 }
 
 /**
@@ -1156,8 +1326,14 @@ export function warnAddonsWithoutProfile(fromOptions: Config): void {
 	}
 }
 
-/** Give every newPage()/newContext() of `browser` Camouwolf's defaults. */
+const LAUNCH_OPTIONS = Symbol("camouwolfLaunchOptions");
+
+/**
+ * Give every newPage()/newContext() of `browser` Camouwolf's defaults, and keep
+ * the launch options NewContext draws a context's identity to fit.
+ */
 export function attachContextDefaults<T>(browser: T, fromOptions: Config): T {
+	(browser as any)[LAUNCH_OPTIONS] = fromOptions;
 	const adjust = contextDefaults(launchGeolocation(fromOptions));
 	for (const name of ["newPage", "newContext"] as const) {
 		const original = (browser as any)[name];
@@ -1167,6 +1343,17 @@ export function attachContextDefaults<T>(browser: T, fromOptions: Config): T {
 	}
 	attachDriverDefaults(browser);
 	return browser;
+}
+
+/** The launch options a Camouwolf browser was launched with. */
+export function launchOptionsOf(browser: unknown): Config {
+	const fromOptions = (browser as any)?.[LAUNCH_OPTIONS];
+	if (!fromOptions) {
+		throw new ValueError(
+			"NewContext needs a browser from NewBrowser or Camouwolf: a context identity is drawn to fit it",
+		);
+	}
+	return fromOptions;
 }
 
 /*
@@ -1515,6 +1702,302 @@ export interface LaunchOptions {
 }
 
 /**
+ * The keys a context's identity takes from the launch's. The window is one
+ * window and its pixel ratio the display's, whichever context draws in it.
+ */
+function isLaunchGeometry(key: string): boolean {
+	return key.startsWith("screen.") || key.startsWith("window.");
+}
+
+/** What drawIdentity draws an identity from. */
+export interface DrawIdentityOptions {
+	os?: ListOrString | null;
+	webgl_config?: [string, string] | null;
+	geoip?: string | boolean | null;
+	geoip_db?: string;
+	proxy?: ProxyConfig | null;
+	block_webrtc?: boolean | null;
+	locale?: string | string[] | null;
+	fingerprint?: Record<string, any> | null;
+	screen?: Screen | null;
+	window?: [number, number];
+	fonts?: string[] | null;
+	custom_fonts_only?: boolean | null;
+	canvas_noise?: boolean | null;
+	pin_cpu_cores?: boolean | null;
+	fullVersion: string;
+	allow_os_mismatch?: boolean;
+	i_know_what_im_doing?: boolean;
+	browserBinary: string;
+	displayBound?: Screen | null;
+	virtualDisplay?: boolean;
+	/** The browser's own config: given, this is a context's identity. */
+	launch?: Config;
+}
+
+/**
+ * A whole identity, drawn into `config`: its language list and its OS.
+ *
+ * `config` holds the caller's keys, which win over drawn ones. With `launch`
+ * (the browser's own config) it is a context's identity: the screen, window
+ * and core count are the launch's, which one browser process cannot vary.
+ */
+export async function drawIdentity(
+	config: Config,
+	{
+		os: osOption,
+		webgl_config,
+		geoip,
+		geoip_db,
+		proxy,
+		block_webrtc,
+		locale,
+		fingerprint,
+		screen,
+		window,
+		fonts,
+		custom_fonts_only,
+		canvas_noise,
+		pin_cpu_cores,
+		fullVersion,
+		allow_os_mismatch,
+		i_know_what_im_doing,
+		browserBinary,
+		displayBound = null,
+		virtualDisplay = false,
+		launch,
+	}: DrawIdentityOptions,
+): Promise<{ languages: string[] | null; targetOs: clienthints.OsKey }> {
+	const callerKeys: ReadonlySet<string> = new Set(Object.keys(config));
+	const userSetScreenWindow = isDomainSet(config, "screen.", "window.");
+	const milestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
+
+	// ---- place: geoip, locale ---------------------------------------------
+	let localeConfig: Config = {};
+	if (pyTruthy(geoip)) {
+		utilsDeps.geoipAllowed(); // Assert that geoip is allowed
+		let ip = geoip as string | true;
+		if (ip === true) {
+			ip = await utilsDeps.publicIp(
+				proxy ? ProxyHelper.asString(proxy) : undefined,
+			);
+		}
+		const geoConfig = (await utilsDeps.getGeolocation(ip, geoip_db)).asConfig();
+		for (const [key, value] of Object.entries(geoConfig)) {
+			if (key.startsWith("locale:")) localeConfig[key] = value;
+			else if (key === "timezone") setDefault(config, key, value);
+			else config[key] = value;
+		}
+		// Without a proxy, a site that has an IPv6 address sees this host's,
+		// not the IPv4 address the identity was drawn from. Keep IPv6 only when
+		// it places the host where the identity does.
+		if (
+			!launch &&
+			!proxy &&
+			validIPv4(ip) &&
+			!(await keepsIpv6(geoConfig, geoip_db, i_know_what_im_doing))
+		)
+			config["network:ipv4Only"] = true;
+		// Behind a proxy, WebRTC sees the network of a machine at the exit
+		// (patch 0031): its one adapter has the exit's address.
+		if (pyTruthy(proxy) && !block_webrtc)
+			setDefault(config, validIPv4(ip) ? "webrtc:ipv4" : "webrtc:ipv6", ip);
+	} else if (
+		pyTruthy(proxy) &&
+		!String(proxy?.server ?? "").includes("localhost") &&
+		!String(proxy?.server ?? "").includes("127.0.0.1") &&
+		!isDomainSet(config, "geolocation:")
+	) {
+		// This is a very bad idea; the warning cannot be silenced.
+		LeakWarning.warn(loadWarnings().proxy_without_geoip);
+	}
+
+	if (pyTruthy(locale)) {
+		localeConfig = {};
+		await handleLocales(locale as string | string[], localeConfig);
+	}
+	// Chrome serves navigator.languages and Accept-Language from one pref, which
+	// --accept-lang sets, so the config does not repeat it: an off-the-record
+	// context swaps the pref's list, and a pinned copy would then disagree.
+	const languages: string[] | null = pyTruthy(config["navigator.languages"])
+		? config["navigator.languages"]
+		: languagesFor(localeConfig);
+
+	if (launch) {
+		// The window, and so the screen it sits on, is the browser's: a
+		// context's machine is drawn with the launch's screen.
+		const width = launch["screen.width"];
+		const height = launch["screen.height"];
+		screen = new Screen({
+			minWidth: width,
+			maxWidth: width,
+			minHeight: height,
+			maxHeight: height,
+		});
+		window = undefined;
+	}
+	// A caller who names the user agent themselves has pinned the identity.
+	if (
+		(fingerprint === undefined || fingerprint === null) &&
+		!("navigator.userAgent" in config)
+	) {
+		fingerprint = await drawFingerprint(
+			osOption,
+			screen ?? displayBound,
+			window,
+			webgl_config,
+			languages?.[0],
+		);
+	} else if (fingerprint !== undefined && fingerprint !== null) {
+		if (pyTruthy(webgl_config)) {
+			throw new ValueError(
+				"webgl_config draws the fingerprint; it cannot be combined with `fingerprint`",
+			);
+		}
+		if (!i_know_what_im_doing) checkCustomFingerprint(fingerprint);
+		if (pyTruthy(window)) {
+			fingerprint = {
+				...fingerprint,
+				screen: {
+					...(pyTruthy(fingerprint.screen) ? fingerprint.screen : {}),
+				},
+				window: {
+					...(pyTruthy(fingerprint.window) ? fingerprint.window : {}),
+				},
+			};
+			const [width, height] = window as [number, number];
+			handleWindowSize(fingerprint, width, height);
+		}
+	} else if (pyTruthy(webgl_config)) {
+		throw new ValueError(
+			"webgl_config draws the fingerprint; it cannot be combined with a user agent in `config`",
+		);
+	}
+
+	if (fingerprint !== undefined && fingerprint !== null) {
+		mergeInto(config, fromFpgen(fingerprint, milestone));
+	}
+	// Patch 0012 shows the host's voices only when the key is absent, so it is
+	// always sent: the recorded list, or none, never the host's.
+	if (!("voices" in config)) config.voices = [];
+
+	const targetOs = getTargetOs(config);
+	checkOsPolicy([OS_NAMES[targetOs]], allow_os_mismatch);
+
+	setDefault(
+		config,
+		"navigator.userAgent",
+		clienthints.buildUserAgent({ milestone, fullVersion, os: targetOs }),
+	);
+	setDefault(config, "navigator.platform", clienthints.NAV_PLATFORM[targetOs]);
+	clienthints.fillClientHints(config, targetOs, fullVersion);
+
+	// The core count a page can measure is the host's, unless the browser is
+	// pinned to the drawn one.
+	if (launch) {
+		// Measurable parallelism is the process's, pinned or not.
+		config["navigator.hardwareConcurrency"] =
+			launch["navigator.hardwareConcurrency"];
+	} else if (!callerKeys.has("navigator.hardwareConcurrency")) {
+		fixHardwareConcurrency(config, Boolean(pin_cpu_cores), utilsDeps.hostCpu());
+	}
+
+	// ---- fonts -------------------------------------------------------------
+	if (custom_fonts_only) {
+		if (!pyTruthy(fonts)) {
+			throw new ValueError("custom_fonts_only=True needs `fonts`");
+		}
+		LeakWarning.warn(loadWarnings().custom_fonts_only, i_know_what_im_doing);
+		config.fonts = [...new Set(fonts)];
+	} else if (pyTruthy(fonts)) {
+		const base: string[] = pyTruthy(config.fonts)
+			? config.fonts
+			: ESSENTIAL_FONTS[targetOs];
+		config.fonts = [...new Set([...base, ...(fonts as string[])])];
+	}
+
+	// ---- devices, keyboard, colours ---------------------------------------
+	setDefault(config, "mediaDevices:enumerated", [
+		...DEFAULT_MEDIA_DEVICES[targetOs],
+	]);
+	const layout = keyboardLayoutMap(targetOs);
+	if (layout) setDefault(config, "keyboard.layoutMap", layout);
+	const colors = SYSTEM_COLORS[OS_NAMES[targetOs]];
+	if (pyTruthy(colors)) setDefault(config, "systemColors", { ...colors });
+
+	// ---- canvas ------------------------------------------------------------
+	if (canvas_noise) {
+		LeakWarning.warn(loadWarnings().canvas_noise, i_know_what_im_doing);
+		if (!("canvas:seed" in config))
+			config["canvas:seed"] = utilsDeps.canvasSeed();
+		setDefault(config, "canvas:randomizeReadback", true);
+	} else {
+		// Stock Chrome returns the pixels it drew.
+		setDefault(config, "canvas:seed", 0);
+		setDefault(config, "canvas:randomizeReadback", false);
+	}
+	setDefault(config, "canvas:quantizeTextMetrics", false);
+	setDefault(config, "AudioContext:randomizeSamples", false);
+
+	// ---- geometry ----------------------------------------------------------
+	if (launch) {
+		for (const key of Object.keys(config)) {
+			if (isLaunchGeometry(key)) delete config[key];
+		}
+		for (const [key, value] of Object.entries(launch)) {
+			if (isLaunchGeometry(key)) config[key] = value;
+		}
+	} else if (!userSetScreenWindow) {
+		coherence.repairDevicePixelRatio(
+			config,
+			targetOs,
+			window ? ["window.outerWidth", "window.outerHeight"] : [],
+		);
+		raiseScreenToModernFloor(config);
+		coherence.repairScreenOrientation(config);
+		if (displayBound !== null) {
+			// A virtual display is measured in device pixels, and the window
+			// renders at the identity's ratio.
+			const scale = virtualDisplay
+				? num(config["window.devicePixelRatio"] || 1)
+				: 1;
+			clampScreenToDisplay(
+				config,
+				Math.trunc(num(displayBound.maxWidth) / scale),
+				Math.trunc(num(displayBound.maxHeight) / scale),
+			);
+		}
+		fixScreenNoTaskbar(config, targetOs);
+		clampWindowDimensions(config);
+		clampWindowPosition(config);
+		snapWindowToDevicePixels(config);
+	}
+
+	// ---- coherence ---------------------------------------------------------
+	const kept = new Set(callerKeys);
+	if (launch) {
+		for (const key of Object.keys(config)) {
+			if (isLaunchGeometry(key)) kept.add(key);
+		}
+		kept.add("navigator.hardwareConcurrency");
+	}
+	const violations = coherence.apply(config, targetOs, kept);
+	warnKeptIncoherent(violations);
+	const fatal = violations.filter((v) => coherence.FATAL_RULES.has(v.rule));
+	if (fatal.length && !i_know_what_im_doing) {
+		throw new IncoherentIdentity(
+			"Camouwolf refuses to launch an identity that contradicts itself:\n  - " +
+				fatal.map((v) => v.detail).join("\n  - ") +
+				"\nFix `config`, or pass i_know_what_im_doing=True to launch anyway.",
+		);
+	}
+
+	validateConfig(config, browserBinary);
+
+	return { languages, targetOs };
+}
+
+/**
  * Builds the Playwright launch options for a Camouwolf browser. Accepts all
  * Playwright Chromium launch options, along with those of LaunchOptions.
  */
@@ -1661,8 +2144,6 @@ export async function launchOptions({
 
 	// ---- the identity ------------------------------------------------------
 	if (!i_know_what_im_doing) warnManualConfig(config);
-	const callerKeys: ReadonlySet<string> = new Set(Object.keys(config));
-	const userSetScreenWindow = isDomainSet(config, "screen.", "window.");
 
 	let osOption: ListOrString | null | undefined = os;
 	if (pyTruthy(osOption)) {
@@ -1688,7 +2169,6 @@ export async function launchOptions({
 		LeakWarning.warn(loadWarnings().chrome_version, i_know_what_im_doing);
 		fullVersion = `${Math.trunc(Number(chrome_version))}.0.0.0`;
 	}
-	const milestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
 
 	// A real display bounds the screen the identity may claim; so does a
 	// virtual one of fixed size, which the real window has to fit on. One the
@@ -1709,195 +2189,28 @@ export async function launchOptions({
 		}
 	}
 
-	// ---- place: geoip, locale ---------------------------------------------
-	let localeConfig: Config = {};
-	if (pyTruthy(geoip)) {
-		utilsDeps.geoipAllowed(); // Assert that geoip is allowed
-		let ip = geoip as string | true;
-		if (ip === true) {
-			ip = await utilsDeps.publicIp(
-				proxy ? ProxyHelper.asString(proxy) : undefined,
-			);
-		}
-		const geoConfig = (await utilsDeps.getGeolocation(ip, geoip_db)).asConfig();
-		for (const [key, value] of Object.entries(geoConfig)) {
-			if (key.startsWith("locale:")) localeConfig[key] = value;
-			else if (key === "timezone") setDefault(config, key, value);
-			else config[key] = value;
-		}
-		// Without a proxy, a site that has an IPv6 address sees this host's,
-		// not the IPv4 address the identity was drawn from. Keep IPv6 only when
-		// it places the host where the identity does.
-		if (
-			!proxy &&
-			validIPv4(ip) &&
-			!(await keepsIpv6(geoConfig, geoip_db, i_know_what_im_doing))
-		)
-			config["network:ipv4Only"] = true;
-		// Behind a proxy, WebRTC sees the network of a machine at the exit
-		// (patch 0031): its one adapter has the exit's address.
-		if (pyTruthy(proxy) && !block_webrtc)
-			setDefault(config, validIPv4(ip) ? "webrtc:ipv4" : "webrtc:ipv6", ip);
-	} else if (
-		pyTruthy(proxy) &&
-		!String(proxy?.server ?? "").includes("localhost") &&
-		!String(proxy?.server ?? "").includes("127.0.0.1") &&
-		!isDomainSet(config, "geolocation:")
-	) {
-		// This is a very bad idea; the warning cannot be silenced.
-		LeakWarning.warn(loadWarnings().proxy_without_geoip);
-	}
-
-	if (pyTruthy(locale)) {
-		localeConfig = {};
-		await handleLocales(locale as string | string[], localeConfig);
-	}
-	// Chrome serves navigator.languages and Accept-Language from one pref, which
-	// --accept-lang sets, so the config does not repeat it: an off-the-record
-	// context swaps the pref's list, and a pinned copy would then disagree.
-	const languages: string[] | null = pyTruthy(config["navigator.languages"])
-		? config["navigator.languages"]
-		: languagesFor(localeConfig);
-
-	// A caller who names the user agent themselves has pinned the identity.
-	if (
-		(fingerprint === undefined || fingerprint === null) &&
-		!("navigator.userAgent" in config)
-	) {
-		fingerprint = await drawFingerprint(
-			osOption,
-			screen ? toScreen(screen) : displayBound,
-			window,
-			webgl_config,
-			languages?.[0],
-		);
-	} else if (fingerprint !== undefined && fingerprint !== null) {
-		if (pyTruthy(webgl_config)) {
-			throw new ValueError(
-				"webgl_config draws the fingerprint; it cannot be combined with `fingerprint`",
-			);
-		}
-		if (!i_know_what_im_doing) checkCustomFingerprint(fingerprint);
-		if (pyTruthy(window)) {
-			fingerprint = {
-				...fingerprint,
-				screen: {
-					...(pyTruthy(fingerprint.screen) ? fingerprint.screen : {}),
-				},
-				window: {
-					...(pyTruthy(fingerprint.window) ? fingerprint.window : {}),
-				},
-			};
-			const [width, height] = window as [number, number];
-			handleWindowSize(fingerprint, width, height);
-		}
-	} else if (pyTruthy(webgl_config)) {
-		throw new ValueError(
-			"webgl_config draws the fingerprint; it cannot be combined with a user agent in `config`",
-		);
-	}
-
-	if (fingerprint !== undefined && fingerprint !== null) {
-		mergeInto(config, fromFpgen(fingerprint, milestone));
-	}
-	// Patch 0012 shows the host's voices only when the key is absent, so it is
-	// always sent: the recorded list, or none, never the host's.
-	if (!("voices" in config)) config.voices = [];
-
-	const targetOs = getTargetOs(config);
-	checkOsPolicy([OS_NAMES[targetOs]], allow_os_mismatch);
-
-	setDefault(
-		config,
-		"navigator.userAgent",
-		clienthints.buildUserAgent({ milestone, fullVersion, os: targetOs }),
-	);
-	setDefault(config, "navigator.platform", clienthints.NAV_PLATFORM[targetOs]);
-	clienthints.fillClientHints(config, targetOs, fullVersion);
-
-	// The core count a page can measure is the host's, unless the browser is
-	// pinned to the drawn one.
-	if (!callerKeys.has("navigator.hardwareConcurrency")) {
-		fixHardwareConcurrency(config, Boolean(pin_cpu_cores), utilsDeps.hostCpu());
-	}
-
-	// ---- fonts -------------------------------------------------------------
-	if (custom_fonts_only) {
-		if (!pyTruthy(fonts)) {
-			throw new ValueError("custom_fonts_only=True needs `fonts`");
-		}
-		LeakWarning.warn(loadWarnings().custom_fonts_only, i_know_what_im_doing);
-		config.fonts = [...new Set(fonts)];
-	} else if (pyTruthy(fonts)) {
-		const base: string[] = pyTruthy(config.fonts)
-			? config.fonts
-			: ESSENTIAL_FONTS[targetOs];
-		config.fonts = [...new Set([...base, ...(fonts as string[])])];
-	}
-
-	// ---- devices, keyboard, colours ---------------------------------------
-	setDefault(config, "mediaDevices:enumerated", [
-		...DEFAULT_MEDIA_DEVICES[targetOs],
-	]);
-	const layout = keyboardLayoutMap(targetOs);
-	if (layout) setDefault(config, "keyboard.layoutMap", layout);
-	const colors = SYSTEM_COLORS[OS_NAMES[targetOs]];
-	if (pyTruthy(colors)) setDefault(config, "systemColors", { ...colors });
-
-	// ---- canvas ------------------------------------------------------------
-	if (canvas_noise) {
-		LeakWarning.warn(loadWarnings().canvas_noise, i_know_what_im_doing);
-		if (!("canvas:seed" in config))
-			config["canvas:seed"] = utilsDeps.canvasSeed();
-		setDefault(config, "canvas:randomizeReadback", true);
-	} else {
-		// Stock Chrome returns the pixels it drew.
-		setDefault(config, "canvas:seed", 0);
-		setDefault(config, "canvas:randomizeReadback", false);
-	}
-	setDefault(config, "canvas:quantizeTextMetrics", false);
-	setDefault(config, "AudioContext:randomizeSamples", false);
-
-	// ---- geometry ----------------------------------------------------------
-	if (!userSetScreenWindow) {
-		coherence.repairDevicePixelRatio(
-			config,
-			targetOs,
-			window ? ["window.outerWidth", "window.outerHeight"] : [],
-		);
-		raiseScreenToModernFloor(config);
-		coherence.repairScreenOrientation(config);
-		if (displayBound !== null) {
-			// A virtual display is measured in device pixels, and the window
-			// renders at the identity's ratio.
-			const scale = virtual_display
-				? num(config["window.devicePixelRatio"] || 1)
-				: 1;
-			clampScreenToDisplay(
-				config,
-				Math.trunc(num(displayBound.maxWidth) / scale),
-				Math.trunc(num(displayBound.maxHeight) / scale),
-			);
-		}
-		fixScreenNoTaskbar(config, targetOs);
-		clampWindowDimensions(config);
-		clampWindowPosition(config);
-		snapWindowToDevicePixels(config);
-	}
-
-	// ---- coherence ---------------------------------------------------------
-	const violations = coherence.apply(config, targetOs, callerKeys);
-	warnKeptIncoherent(violations);
-	const fatal = violations.filter((v) => coherence.FATAL_RULES.has(v.rule));
-	if (fatal.length && !i_know_what_im_doing) {
-		throw new IncoherentIdentity(
-			"Camouwolf refuses to launch an identity that contradicts itself:\n  - " +
-				fatal.map((v) => v.detail).join("\n  - ") +
-				"\nFix `config`, or pass i_know_what_im_doing=True to launch anyway.",
-		);
-	}
-
-	validateConfig(config, browserBinary);
+	const { languages, targetOs } = await drawIdentity(config, {
+		os: osOption,
+		webgl_config,
+		geoip,
+		geoip_db,
+		proxy,
+		block_webrtc,
+		locale,
+		fingerprint,
+		screen: screen ? toScreen(screen) : null,
+		window,
+		fonts,
+		custom_fonts_only,
+		canvas_noise,
+		pin_cpu_cores,
+		fullVersion,
+		allow_os_mismatch,
+		i_know_what_im_doing,
+		browserBinary,
+		displayBound,
+		virtualDisplay: Boolean(virtual_display),
+	});
 
 	// ---- switches ----------------------------------------------------------
 	if (block_images) {
@@ -1910,7 +2223,7 @@ export async function launchOptions({
 	// A proxied context's WebRTC already leaves through the proxy (patch 0031);
 	// this keeps it to TCP through the proxy, with no UDP at all.
 	if (block_webrtc) {
-		args.push("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
+		args.push(WEBRTC_BLOCK_SWITCH);
 	}
 	if (block_webgl) {
 		LeakWarning.warn(loadWarnings().block_webgl, i_know_what_im_doing);

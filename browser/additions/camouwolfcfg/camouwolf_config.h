@@ -26,6 +26,14 @@
 //   immutable parsed tree, so callers on the compositor, main, and worker
 //   threads share it lock-free after initialization.
 //
+// PER-CONTEXT IDENTITIES:
+//   A browser context (a Playwright context) may be given its own identity
+//   (SetForContext). The browser answers for that context with ForContext() or
+//   under a ScopedIdentity, and hands the JSON to each of the context's
+//   renderers, which adopt it in place of the launch's (AdoptForProcess). A
+//   renderer serves one browser context, so a process-wide identity is still
+//   the right model there. docs/PATCHES.md describes the design.
+//
 // COST:
 //   Accessors are called from hot paths (Navigator getters, canvas readback,
 //   font lookup). Key lookups are a flat_map probe over a small tree; callers on
@@ -37,6 +45,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -52,15 +61,60 @@
 // behind.
 #include "base/values.h"
 
+namespace content {
+class BrowserContext;
+}  // namespace content
+
 namespace base {
 
 class BASE_EXPORT CamouwolfConfig {
  public:
   CamouwolfConfig(const CamouwolfConfig&) = delete;
   CamouwolfConfig& operator=(const CamouwolfConfig&) = delete;
+  ~CamouwolfConfig();
 
-  // The process-wide instance. First call parses CAMOU_CONFIG_*.
+  // The process-wide instance. First call parses CAMOU_CONFIG_*. Under a
+  // ScopedIdentity, the identity that scope names.
   static const CamouwolfConfig& Get();
+
+  // The identity `context` was given, or the launch's when it has none. Only
+  // the address is used, so base needs no more of content than the name.
+  static const CamouwolfConfig& ForContext(const content::BrowserContext* context);
+
+  // Gives `context` its own identity. False, and nothing changes, when `json`
+  // is not a JSON object.
+  static bool SetForContext(const content::BrowserContext* context, std::string_view json);
+
+  // Drops `context`'s identity; called as the context is destroyed, so a new
+  // context at the same address starts with the launch's.
+  static void EraseContext(const content::BrowserContext* context);
+
+  // A process serving one context replaces the launch identity it inherited
+  // with that context's. Call it before anything in the process reads one.
+  static void AdoptForProcess(std::string_view json);
+
+  // The key the context's JSON is handed to its renderers under, as a file
+  // descriptor: the environment and the command line are fixed at the
+  // zygote, and a switch would show the identity to anyone who can list
+  // processes.
+  static constexpr char kProcessFileKey[] = "context_identity";
+
+  // While one is alive, Get() on this thread answers with `context`'s
+  // identity, so the browser computes a context's user agent and client hints
+  // through the same code as the launch's.
+  class BASE_EXPORT ScopedIdentity {
+   public:
+    explicit ScopedIdentity(const content::BrowserContext* context);
+    ScopedIdentity(const ScopedIdentity&) = delete;
+    ScopedIdentity& operator=(const ScopedIdentity&) = delete;
+    ~ScopedIdentity();
+
+   private:
+    const CamouwolfConfig* const previous_;
+  };
+
+  // The JSON a context's identity was given as; empty for the launch's.
+  const std::string& json() const { return json_; }
 
   // True when the launch carried any config at all. A stock launch (no
   // launcher, someone running the binary by hand) has none, and every accessor
@@ -110,10 +164,13 @@ class BASE_EXPORT CamouwolfConfig {
  private:
   friend class NoDestructor<CamouwolfConfig>;
   CamouwolfConfig();
-  ~CamouwolfConfig();
+  CamouwolfConfig(DictValue dict, std::string json);
+
+  static CamouwolfConfig& Launch();
 
   DictValue dict_;
   bool active_ = false;
+  std::string json_;
 };
 
 }  // namespace base

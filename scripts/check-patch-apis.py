@@ -317,11 +317,14 @@ def check_includes(
             if path.startswith(GENERATED_PREFIXES) or path.endswith(GENERATED_SUFFIXES):
                 skipped += 1
                 continue
+            # A mojom binding header is generated from the .mojom beside it,
+            # which is what a checkout or googlesource has.
+            lookup = path.removesuffix(".h") if path.endswith(".mojom.h") else path
 
             # A real checkout is the authoritative answer when we have one: it
             # contains the DEPS-managed repos too.
             if src is not None:
-                if (src / path).exists():
+                if (src / lookup).exists():
                     checked += 1
                 else:
                     problems.append(
@@ -332,11 +335,11 @@ def check_includes(
             # No checkout. A header under a DEPS-managed root lives in another
             # repo entirely, so googlesource's chromium/src does not have it and
             # a 404 would be meaningless.
-            if any(path == r or path.startswith(r + "/") for r in deps_roots):
+            if any(lookup == r or lookup.startswith(r + "/") for r in deps_roots):
                 skipped += 1
                 continue
 
-            verdict = exists_upstream(path, version, cache, offline)
+            verdict = exists_upstream(lookup, version, cache, offline)
             if verdict is None:
                 skipped += 1
             elif verdict:
