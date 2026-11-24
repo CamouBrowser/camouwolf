@@ -128,6 +128,14 @@ const WINDOWS_FINGERPRINT = {
 			name: "Microsoft David - English (United States)",
 			voiceURI: "Microsoft David - English (United States)",
 		},
+		// Google's network voices are Chrome's, not Chromium's (Pro).
+		{
+			default: false,
+			lang: "en-US",
+			localService: false,
+			name: "Google US English",
+			voiceURI: "Google US English",
+		},
 	],
 };
 

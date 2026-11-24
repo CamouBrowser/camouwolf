@@ -427,19 +427,25 @@ def media_devices(devices: Any) -> Optional[List[str]]:
 
 
 def pack_voices(voices: Any) -> Optional[List[str]]:
-    """fpgen's speechSynthesis voices as `voices` entries: name|lang|uri|local|default."""
+    """fpgen's speechSynthesis voices as `voices` entries: name|lang|uri|local|default.
+
+    Only local voices: the network ones (Google's) come with Chrome, not
+    Chromium, and Chrome emulation is Pro's.
+    """
     if not isinstance(voices, list):
         return None
     packed = []
     for voice in voices:
         if not isinstance(voice, dict) or not voice.get('name') or not voice.get('lang'):
             continue
+        if not voice.get('localService'):
+            continue
         fields = (voice['name'], voice['lang'], voice.get('voiceURI') or voice['name'])
         if any('|' in str(field) for field in fields):
             continue  # the separator; no recorded voice has one
         packed.append(
             '|'.join(
-                [*map(str, fields), '1' if voice.get('localService') else '0', '1' if voice.get('default') else '0']
+                [*map(str, fields), '1', '1' if voice.get('default') else '0']
             )
         )
     return packed or None

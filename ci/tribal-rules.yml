@@ -122,3 +122,17 @@ rules:
     required:
       paths: [browser/patches/0035-media-platform-codecs.patch]
       pattern: '!base::CamouwolfConfig::Get\(\)\.Has\("media:platformDecoders"\)'
+
+  - id: public-build-claims-chromium
+    decision: >-
+      The public build is Chromium and says so: no "Google Chrome" brand, no
+      configured brand list, no Google network speech voices. Chrome emulation
+      is a Pro feature.
+    why: >-
+      Chromium builds its own brand list (Chromium and one GREASE entry) with
+      the right permutation for its version, so leaving it alone cannot be
+      wrong; a Chrome claim needs the rest of Chrome (network voices, Widevine)
+      to be coherent, and that is what Pro adds.
+    forbidden:
+      paths: ["browser/patches/*.patch", "browser/settings/properties.json", "python/src/**/*.py", "typescript/src/**/*.ts"]
+      pattern: 'Google Chrome|["'']userAgentData\.(brands|fullVersionList)'

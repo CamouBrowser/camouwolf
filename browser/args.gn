@@ -31,15 +31,9 @@ ffmpeg_branding = "Chrome"
 # Build as Chromium, NOT as Google Chrome.
 #
 # is_chrome_branded = true requires Google's internal src-internal checkout,
-# which we do not have and cannot lawfully vendor. More importantly the consumer
-# identity is applied at RUNTIME from CAMOU_CONFIG (UA, UA-CH brand list,
-# vendor), where it can differ per launch — baking one brand into the binary
-# would give every Camouwolf launch the same brand string, which is the opposite of
-# what this project is for.
-#
-# The launcher is responsible for making the runtime identity coherent; see
-# src/clienthints.ts, which derives the Sec-CH-UA brand list (including the
-# GREASE entry) from the claimed milestone.
+# which we do not have and cannot lawfully vendor. The public build claims
+# Chromium (ci/tribal-rules.yml, public-build-claims-chromium): Chromium's own
+# brand list, with its GREASE entry, is left as it is.
 is_chrome_branded = false
 
 # No PGO profile: Google's profile data ships with src-internal. Building

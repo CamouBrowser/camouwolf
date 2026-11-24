@@ -402,8 +402,6 @@ export function getEnvVars(
 interface PropertyEntry {
 	property: string;
 	type: string;
-	/** "brand" for a UA-CH brand list; an array holds strings otherwise. */
-	items?: string;
 }
 
 /**
@@ -450,24 +448,7 @@ export function validateConfig(
 				`Invalid type for property ${key}. Expected ${expectedType}, got ${pyTypeName(value)}`,
 			);
 		}
-		if (expectedType === "array" && entry.items === "brand") {
-			// A UA-CH brand list: [{"brand": ..., "version": ...}, ...], in order.
-			const isBrand = (item: unknown): boolean => {
-				if (!isPlainObject(item)) return false;
-				const keys = Object.keys(item);
-				return (
-					keys.length === 2 &&
-					"brand" in item &&
-					"version" in item &&
-					Object.values(item).every((v) => typeof v === "string")
-				);
-			};
-			if (!(value as unknown[]).every(isBrand)) {
-				throw new InvalidPropertyType(
-					`Invalid type for property ${key}. Expected an array of {"brand", "version"} objects.`,
-				);
-			}
-		} else if (
+		if (
 			expectedType === "array" &&
 			!(value as unknown[]).every((item) => typeof item === "string")
 		) {

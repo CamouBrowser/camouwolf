@@ -3,7 +3,7 @@
 A Chrome identity is a set of values that must agree:
 
     navigator.userAgent            "...Windows NT 10.0; Win64; x64...Chrome/158.0.0.0..."
-    navigator.userAgentData.brands [{Chromium 158}, {Google Chrome 158}, {GREASE}]
+    navigator.userAgentData.brands [{Chromium 158}, {GREASE}], built by Chromium itself
     Sec-CH-UA                      the same brand list, on every request
     Sec-CH-UA-Platform             "Windows"
     Sec-CH-UA-Mobile               ?0
@@ -13,8 +13,6 @@ The low-entropy hints go out on every request with no opt-in, so a server sees
 them before any script runs. `--user-agent` moves the UA string and not the
 hints, which is why camouwolf.switches refuses it and everything here is derived
 from one identity. The keys are read by browser/patches/0003-user-agent-client-hints.patch.
-
-Ported from Kraft's src/clienthints.ts.
 """
 
 import re
@@ -99,48 +97,6 @@ def retarget_user_agent(user_agent: str, milestone: Any) -> str:
     return _CHROME_VERSION.sub(f'Chrome/{int(milestone)}.0.0.0', user_agent)
 
 
-def grease_brand(milestone: int) -> Dict[str, str]:
-    """The GREASE entry of the brand list for a milestone.
-
-    Chrome puts one odd brand in every list; a list without one is not Chrome's.
-    It is a function of the milestone, so two launches of one milestone agree.
-    """
-    separators = [
-        ['Not', 'A', 'Brand'],
-        ['Not_A', 'Brand'],
-        ['Not.A', 'Brand'],
-        ['Not-A', 'Brand'],
-        ['Not(A', 'Brand'],
-        ['Not:A', 'Brand'],
-        ['Not;A', 'Brand'],
-        ['Not=A', 'Brand'],
-        ['Not?A', 'Brand'],
-    ]
-    versions = ['8', '24', '99']
-    pick = separators[milestone % len(separators)]
-    brand = f'{pick[0]}{pick[1]};{pick[2]}' if len(pick) == 3 else f'{pick[0]};{pick[1]}'
-    return {'brand': brand, 'version': versions[milestone % len(versions)]}
-
-
-def build_brand_list(identity: ChromeIdentity, full: bool = False) -> List[Dict[str, str]]:
-    """The Sec-CH-UA / navigator.userAgentData.brands list; `full` gives the
-    Sec-CH-UA-Full-Version-List form."""
-    version = identity.full_version if full else str(identity.milestone)
-    grease = grease_brand(identity.milestone)
-    brands = [
-        {'brand': 'Chromium', 'version': version},
-        {'brand': 'Google Chrome', 'version': version},
-        {'brand': grease['brand'], 'version': f"{grease['version']}.0.0.0" if full else grease['version']},
-    ]
-    order = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]][identity.milestone % 6]
-    return [brands[i] for i in order]
-
-
-def serialize_brand_list(brands: List[Dict[str, str]]) -> str:
-    """A brand list as the Sec-CH-UA header carries it."""
-    return ', '.join(f'"{b["brand"]}";v="{b["version"]}"' for b in brands)
-
-
 def client_hint_config(identity: ChromeIdentity) -> Dict[str, Any]:
     """Every client-hint config key for one identity."""
     return {
@@ -168,11 +124,6 @@ def fill_client_hints(config: Dict[str, Any], target_os: OsKey, full_version: st
     for key, value in client_hint_config(identity).items():
         if key not in ('navigator.userAgent', 'navigator.platform'):
             config.setdefault(key, value)
-    # The brand lists (Sec-CH-UA, Sec-CH-UA-Full-Version-List and
-    # navigator.userAgentData). Without them the browser sends its own list,
-    # which has no "Google Chrome" brand.
-    config.setdefault('userAgentData.brands', build_brand_list(identity))
-    config.setdefault('userAgentData.fullVersionList', build_brand_list(identity, full=True))
 
 
 def assert_coherent(config: Dict[str, Any]) -> List[str]:

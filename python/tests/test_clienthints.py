@@ -36,23 +36,12 @@ def test_a_recorded_user_agent_is_moved_to_the_running_milestone():
     assert 'Chrome/152.0.0.0 Safari' in ch.retarget_user_agent(recorded, 152)
 
 
-def test_the_brand_list_has_chromium_chrome_and_one_grease_entry():
-    identity = ch.ChromeIdentity(152, '152.0.7977.42', 'win')
-    brands = ch.build_brand_list(identity)
-    names = [b['brand'] for b in brands]
-
-    assert {'Chromium', 'Google Chrome'} < set(names)
-    assert len(brands) == 3 and ch.grease_brand(152)['brand'] in names
-    assert {b['version'] for b in brands if b['brand'] in ('Chromium', 'Google Chrome')} == {'152'}
-    full = ch.build_brand_list(identity, full=True)
-    assert {b['version'] for b in full if b['brand'] == 'Chromium'} == {'152.0.7977.42'}
-    assert ch.serialize_brand_list(brands).count(';v="') == 3
-
-
-def test_the_grease_brand_is_a_function_of_the_milestone():
-    assert ch.grease_brand(152) == ch.grease_brand(152)
-    assert len({ch.grease_brand(m)['brand'] for m in range(140, 160)}) > 1
-    assert all(m['version'] in ('8', '24', '99') for m in map(ch.grease_brand, range(140, 160)))
+def test_the_launch_leaves_the_brand_list_to_chromium():
+    # The public build claims Chromium: Chromium builds its own brand list, and
+    # "Google Chrome" in it is a Pro feature.
+    config = {}
+    ch.fill_client_hints(config, 'win', '158.0.8127.36')
+    assert not any(k in config for k in ('userAgentData.brands', 'userAgentData.fullVersionList'))
 
 
 def test_fill_keeps_what_the_config_already_holds():

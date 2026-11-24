@@ -60,7 +60,10 @@ WINDOWS_FINGERPRINT = {
     'allFonts': ['Arial', 'Calibri', 'Segoe UI'],
     'voices': [{'default': True, 'lang': 'en-US', 'localService': True,
                 'name': 'Microsoft David - English (United States)',
-                'voiceURI': 'Microsoft David - English (United States)'}],
+                'voiceURI': 'Microsoft David - English (United States)'},
+               # Google's network voices are Chrome's, not Chromium's (Pro).
+               {'default': False, 'lang': 'en-US', 'localService': False,
+                'name': 'Google US English', 'voiceURI': 'Google US English'}],
 }
 
 

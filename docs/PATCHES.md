@@ -109,19 +109,10 @@ Covers the low-entropy hints (`platform`, `mobile`) before the command-line
 early-return, and the high-entropy ones (`architecture`, `bitness`, `model`,
 `platformVersion`, `uaFullVersion`, `wow64`) after.
 
-**The brand lists** (`userAgentData.brands`, `userAgentData.fullVersionList`,
-each a list of `{brand, version}`) are served from `GetUserAgentBrandList()`,
-the one function every brand list in the process is built by. A
-Chromium-branded build has no product brand, so unconfigured it sends
-`"Not?A_Brand";v="24", "Chromium";v="158"` — two entries where every real
-Chrome sends three, on every request, with no opt-in. The order is preserved
-exactly as given: Chrome permutes the list with a seed derived from the major
-version, so the GREASE entry's spelling and position are a function of the
-claimed version, and the launcher computes that permutation rather than this
-patch recomputing it for the build's own version. `brands` feeds `Sec-CH-UA`
-and `navigator.userAgentData.brands`; `fullVersionList` feeds
-`Sec-CH-UA-Full-Version-List` and `getHighEntropyValues()`. Either key absent
-(or holding no well-formed entry) builds upstream's list for that one.
+**The brand lists** are Chromium's own: `Chromium` and one GREASE entry,
+which Chromium permutes for its version. The public build claims Chromium
+(ci/tribal-rules.yml, `public-build-claims-chromium`); the `"Google Chrome"`
+brand is part of Camouwolf Pro.
 
 ### 0004 — screen
 

@@ -97,10 +97,6 @@ describe("validateConfig", () => {
 		["webGl:parameters", { "3379": [16384] }],
 		["webGl2:parameters", { "3386": [1, 2, 3, 4, 5] }],
 		["webGl2:parameters", { "3386": [true, false] }],
-		["userAgentData.brands", ["Chromium"]],
-		["userAgentData.brands", [{ brand: "Chromium" }]],
-		["userAgentData.brands", [{ brand: "Chromium", version: 152 }]],
-		["userAgentData.fullVersionList", [{ brand: "a", version: "1", x: "y" }]],
 	])("refuses %s = %j", (key, value) => {
 		expect(() => utils.validateConfig({ [key]: value })).toThrow(
 			InvalidPropertyType,
@@ -120,7 +116,6 @@ describe("validateConfig", () => {
 			"webGl2:parameters": { "3386": [32767, 32767], "33902": [1, 1] },
 			"connection.downlink": new PyFloat(1.5),
 			timezone: "Europe/Berlin",
-			"userAgentData.brands": [{ brand: "Chromium", version: "152" }],
 		});
 	});
 

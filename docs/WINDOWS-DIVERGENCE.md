@@ -276,10 +276,8 @@ and `deviceMemory` is drawn from the buckets Chrome reports since it raised
 the cap to 32 (`coherence.py`).
 
 Branding: the Chromium build emits two brands (`Chromium` + GREASE); real Chrome
-emits three, including `"Google Chrome"`. Camouwolf writes no `brands` key, so
-whether `0003` synthesises the Chrome triple is **[needs binary]** — but a
-Chromium-shaped `Sec-CH-UA` on a UA claiming Google Chrome would be a
-first-request tell.
+emits three, including `"Google Chrome"`. The public build claims Chromium on
+purpose; Chrome's brand list is part of Camouwolf Pro.
 
 ## 5. Not covered by this run
 

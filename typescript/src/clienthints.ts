@@ -4,7 +4,7 @@
  * A Chrome identity is a set of values that must agree:
  *
  *     navigator.userAgent            "...Windows NT 10.0; Win64; x64...Chrome/158.0.0.0..."
- *     navigator.userAgentData.brands [{Chromium 158}, {Google Chrome 158}, {GREASE}]
+ *     navigator.userAgentData.brands [{Chromium 158}, {GREASE}], built by Chromium itself
  *     Sec-CH-UA                      the same brand list, on every request
  *     Sec-CH-UA-Platform             "Windows"
  *     Sec-CH-UA-Mobile               ?0
@@ -16,8 +16,7 @@
  * from one identity. The keys are read by
  * browser/patches/0003-user-agent-client-hints.patch.
  *
- * TypeScript twin of python/src/camouwolf/clienthints.py (itself ported from
- * Kraft's src/clienthints.ts; where the two differ, this follows the Python).
+ * TypeScript twin of python/src/camouwolf/clienthints.py.
  */
 import { pyStr, pyTruthy } from "./pycompat.js";
 
@@ -87,11 +86,6 @@ export interface ChromeIdentity {
 	mobile?: boolean;
 }
 
-export interface Brand {
-	brand: string;
-	version: string;
-}
-
 /** The OS a user agent claims, or null. */
 export function uaOs(userAgent: string): OsKey | null {
 	if (userAgent.includes("Windows NT")) return "win";
@@ -122,72 +116,6 @@ export function retargetUserAgent(
 		CHROME_VERSION,
 		`Chrome/${Math.trunc(Number(milestone))}.0.0.0`,
 	);
-}
-
-/**
- * The GREASE entry of the brand list for a milestone.
- *
- * Chrome puts one odd brand in every list; a list without one is not Chrome's.
- * It is a function of the milestone, so two launches of one milestone agree.
- */
-export function greaseBrand(milestone: number): Brand {
-	const separators = [
-		["Not", "A", "Brand"],
-		["Not_A", "Brand"],
-		["Not.A", "Brand"],
-		["Not-A", "Brand"],
-		["Not(A", "Brand"],
-		["Not:A", "Brand"],
-		["Not;A", "Brand"],
-		["Not=A", "Brand"],
-		["Not?A", "Brand"],
-	];
-	const versions = ["8", "24", "99"];
-	const pick = separators[pyMod(milestone, separators.length)];
-	const brand =
-		pick.length === 3
-			? `${pick[0]}${pick[1]};${pick[2]}`
-			: `${pick[0]};${pick[1]}`;
-	return { brand, version: versions[pyMod(milestone, versions.length)] };
-}
-
-/** Python's %: the result takes the divisor's sign. */
-function pyMod(a: number, n: number): number {
-	return ((a % n) + n) % n;
-}
-
-/**
- * The Sec-CH-UA / navigator.userAgentData.brands list; `full` gives the
- * Sec-CH-UA-Full-Version-List form.
- */
-export function buildBrandList(
-	identity: ChromeIdentity,
-	full = false,
-): Brand[] {
-	const version = full ? identity.fullVersion : String(identity.milestone);
-	const grease = greaseBrand(identity.milestone);
-	const brands: Brand[] = [
-		{ brand: "Chromium", version },
-		{ brand: "Google Chrome", version },
-		{
-			brand: grease.brand,
-			version: full ? `${grease.version}.0.0.0` : grease.version,
-		},
-	];
-	const order = [
-		[0, 1, 2],
-		[0, 2, 1],
-		[1, 0, 2],
-		[1, 2, 0],
-		[2, 0, 1],
-		[2, 1, 0],
-	][pyMod(identity.milestone, 6)];
-	return order.map((i) => brands[i]);
-}
-
-/** A brand list as the Sec-CH-UA header carries it. */
-export function serializeBrandList(brands: readonly Brand[]): string {
-	return brands.map((b) => `"${b.brand}";v="${b.version}"`).join(", ");
 }
 
 /** Every client-hint config key for one identity. */
@@ -230,13 +158,6 @@ export function fillClientHints(
 		if (key === "navigator.userAgent" || key === "navigator.platform") continue;
 		if (!(key in config)) config[key] = value;
 	}
-	// The brand lists (Sec-CH-UA, Sec-CH-UA-Full-Version-List and
-	// navigator.userAgentData). Without them the browser sends its own list,
-	// which has no "Google Chrome" brand.
-	if (!("userAgentData.brands" in config))
-		config["userAgentData.brands"] = buildBrandList(identity);
-	if (!("userAgentData.fullVersionList" in config))
-		config["userAgentData.fullVersionList"] = buildBrandList(identity, true);
 }
 
 /**

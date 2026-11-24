@@ -51,38 +51,6 @@ describe("client hints", () => {
 		);
 	});
 
-	it("builds a brand list of Chromium, Chrome and one GREASE entry", () => {
-		const brands = ch.buildBrandList(identity("win"));
-		const names = brands.map((b) => b.brand);
-		expect(names).toEqual(
-			expect.arrayContaining(["Chromium", "Google Chrome"]),
-		);
-		expect(brands).toHaveLength(3);
-		expect(names).toContain(ch.greaseBrand(152).brand);
-		expect(
-			new Set(
-				brands
-					.filter((b) => ["Chromium", "Google Chrome"].includes(b.brand))
-					.map((b) => b.version),
-			),
-		).toEqual(new Set(["152"]));
-		const full = ch.buildBrandList(identity("win"), true);
-		expect(full.find((b) => b.brand === "Chromium")?.version).toBe(
-			"152.0.7977.42",
-		);
-		expect(ch.serializeBrandList(brands).split(';v="')).toHaveLength(4);
-	});
-
-	it("derives the GREASE brand from the milestone", () => {
-		expect(ch.greaseBrand(152)).toEqual(ch.greaseBrand(152));
-		const milestones = Array.from({ length: 20 }, (_, i) => 140 + i);
-		expect(
-			new Set(milestones.map((m) => ch.greaseBrand(m).brand)).size,
-		).toBeGreaterThan(1);
-		for (const m of milestones)
-			expect(["8", "24", "99"]).toContain(ch.greaseBrand(m).version);
-	});
-
 	it("fill keeps what the config already holds", () => {
 		const config: Record<string, any> = {
 			"navigator.userAgent": "x",
@@ -94,30 +62,12 @@ describe("client hints", () => {
 		expect(config["userAgentData.platform"]).toBe("Windows");
 	});
 
-	it("fill carries Chrome's brand lists", () => {
+	it("leaves the brand list to Chromium", () => {
+		// The public build claims Chromium; "Google Chrome" is a Pro feature.
 		const config: Record<string, any> = {};
 		ch.fillClientHints(config, "win", "158.0.8127.36");
-		const brands: ch.Brand[] = config["userAgentData.brands"];
-		const real = (list: ch.Brand[]) =>
-			list.filter((b) => !b.brand.includes("Not"));
-		expect(
-			real(brands)
-				.map((b) => b.brand)
-				.sort(),
-		).toEqual(["Chromium", "Google Chrome"]);
-		expect(new Set(real(brands).map((b) => b.version))).toEqual(
-			new Set(["158"]),
-		);
-		const full: ch.Brand[] = config["userAgentData.fullVersionList"];
-		expect(full.map((b) => b.brand)).toEqual(brands.map((b) => b.brand));
-		expect(new Set(real(full).map((b) => b.version))).toEqual(
-			new Set(["158.0.8127.36"]),
-		);
-		const kept = { "userAgentData.brands": [{ brand: "x", version: "1" }] };
-		ch.fillClientHints(kept, "win", "158.0.8127.36");
-		expect(kept["userAgentData.brands"]).toEqual([
-			{ brand: "x", version: "1" },
-		]);
+		expect(config).not.toHaveProperty(["userAgentData.brands"]);
+		expect(config).not.toHaveProperty(["userAgentData.fullVersionList"]);
 	});
 
 	it.each([

@@ -161,18 +161,3 @@ def test_the_bundle_fontconfig_is_rewritten_with_absolute_paths(bundle, monkeypa
     # Never the parent: the other OS's fonts would become fallback candidates.
     assert f"<dir>{root / 'fonts'}</dir>" not in text
     assert root not in conf.parents
-
-
-def test_the_launch_carries_chromes_brand_lists():
-    from camouwolf.clienthints import fill_client_hints
-    from camouwolf.utils import validate_config
-
-    config = {}
-    fill_client_hints(config, 'win', '158.0.8127.36')
-    brands = config['userAgentData.brands']
-    assert sorted(b['brand'] for b in brands if 'Not' not in b['brand']) == ['Chromium', 'Google Chrome']
-    assert {b['version'] for b in brands if 'Not' not in b['brand']} == {'158'}
-    full = config['userAgentData.fullVersionList']
-    assert [b['brand'] for b in full] == [b['brand'] for b in brands]
-    assert {b['version'] for b in full if 'Not' not in b['brand']} == {'158.0.8127.36'}
-    validate_config({k: config[k] for k in ('userAgentData.brands', 'userAgentData.fullVersionList')})

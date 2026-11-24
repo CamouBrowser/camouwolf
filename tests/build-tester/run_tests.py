@@ -229,10 +229,12 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         c["mobile"] = same(claimed, "userAgentData.mobile", uad.get("mobile"))
         for prop in ("platformVersion", "architecture", "bitness", "model", "uaFullVersion", "wow64"):
             c[prop] = same(claimed, f"userAgentData.{prop}", high.get(prop))
+        # The public build claims Chromium: its own list, Chromium and one GREASE
+        # entry, in both forms (ci/tribal-rules.yml, public-build-claims-chromium).
         for prop, actual in (("brands", uad.get("brands")), ("fullVersionList", high.get("fullVersionList"))):
-            key = f"userAgentData.{prop}"
-            c[prop] = (check(brand_set(claimed[key]) == brand_set(actual), f"claimed {claimed[key]}, saw {actual}")
-                       if key in claimed else check(False, f"the launcher claimed no {key}; saw {actual}"))
+            names = sorted(str(b.get("brand")) for b in actual or [])
+            c[prop] = check(len(names) == 2 and "Chromium" in names and any("Not" in n for n in names),
+                            f"expected Chromium and one GREASE brand, saw {actual}")
         major = (re.search(r"Chrome/(\d+)\.", ua) or [None, None])[1]
         versions = {b.get("brand"): b.get("version") for b in uad.get("brands") or []}
         c["brandVersionMatchesUserAgent"] = check(

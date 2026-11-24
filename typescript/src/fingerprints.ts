@@ -526,7 +526,12 @@ export function mediaDevices(devices: unknown): string[] | null {
 	return listed.length ? listed : null;
 }
 
-/** fpgen's speechSynthesis voices as `voices` entries: name|lang|uri|local|default. */
+/**
+ * fpgen's speechSynthesis voices as `voices` entries: name|lang|uri|local|default.
+ *
+ * Only local voices: the network ones (Google's) come with Chrome, not
+ * Chromium, and Chrome emulation is Pro's.
+ */
 export function packVoices(voices: unknown): string[] | null {
 	if (!Array.isArray(voices)) return null;
 	const packed: string[] = [];
@@ -534,7 +539,8 @@ export function packVoices(voices: unknown): string[] | null {
 		if (
 			!isPlainObject(voice) ||
 			!pyTruthy(voice.name) ||
-			!pyTruthy(voice.lang)
+			!pyTruthy(voice.lang) ||
+			!pyTruthy(voice.localService)
 		) {
 			continue;
 		}
@@ -546,11 +552,7 @@ export function packVoices(voices: unknown): string[] | null {
 		// The separator; no recorded voice has one.
 		if (fields.some((field) => field.includes("|"))) continue;
 		packed.push(
-			[
-				...fields,
-				pyTruthy(voice.localService) ? "1" : "0",
-				pyTruthy(voice.default) ? "1" : "0",
-			].join("|"),
+			[...fields, "1", pyTruthy(voice.default) ? "1" : "0"].join("|"),
 		);
 	}
 	return packed.length ? packed : null;

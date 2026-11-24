@@ -154,8 +154,8 @@ class BASE_EXPORT CamouwolfConfig {
   const Value* GetNested(std::string_view domain, std::string_view key) const;
 
   // A JSON array / object as parsed, null when absent or of another type.
-  // For values whose items are themselves objects (the UA-CH brand lists, the
-  // WebGL shader-precision table) and for callers that iterate a map.
+  // For values whose items are themselves objects (the WebGL shader-precision
+  // table) and for callers that iterate a map.
   const ListValue* GetList(std::string_view key) const;
   const DictValue* GetDict(std::string_view key) const;
 

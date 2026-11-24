@@ -64,14 +64,6 @@
     "type": "bool"
   },
   {
-    "property": "userAgentData.brands",
-    "type": "array", "items": "brand"
-  },
-  {
-    "property": "userAgentData.fullVersionList",
-    "type": "array", "items": "brand"
-  },
-  {
     "property": "screen.width",
     "type": "int"
   },
