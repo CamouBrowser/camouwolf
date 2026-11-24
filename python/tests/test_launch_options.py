@@ -438,6 +438,9 @@ def test_a_headless_launch_states_no_pointer_on_the_command_line(options):
     launch = options(os='windows', headless=True)
     assert not any(a.startswith('--blink-settings=') for a in launch['args'])
     assert switches.PLAYWRIGHT_HEADLESS_BLINK_SETTINGS in launch['ignore_default_args']
+    # Playwright drops every argument equal to an ignored default, the
+    # launcher's own included: a mouse alone was dropped, (pointer: none).
+    assert not set(launch['args']) & set(launch['ignore_default_args'])
 
 
 def test_a_headed_launch_leaves_the_pointer_to_the_browser(options):

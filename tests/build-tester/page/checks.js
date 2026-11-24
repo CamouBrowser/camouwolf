@@ -341,6 +341,7 @@ const buildTester = (() => {
       deviceWidth: matchMedia(`(device-width: ${screen.width}px)`).matches,
       deviceHeight: matchMedia(`(device-height: ${screen.height}px)`).matches,
       coarsePointer: matchMedia("(any-pointer: coarse)").matches,
+      mouse: matchMedia("(pointer: fine)").matches && matchMedia("(hover: hover)").matches,
       touchEvents: "ontouchstart" in window,
       colorDepth: matchMedia(`(color: ${screen.colorDepth / 3})`).matches,
     };

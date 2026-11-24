@@ -1,0 +1,17 @@
+diff --git a/content/browser/devtools/protocol/input_handler.cc b/content/browser/devtools/protocol/input_handler.cc
+--- a/content/browser/devtools/protocol/input_handler.cc
++++ b/content/browser/devtools/protocol/input_handler.cc
+@@ -1493,9 +1493,12 @@
+   std::unique_ptr<DropData> drop_data =
+       std::make_unique<DropData>(ProtocolDragDataToDropData(std::move(data)));
+   widget_host->FilterDropData(drop_data.get());
++  // CAMOUWOLF: a protocol drag is a mouse drag with the left button held, which
++  // a page reads as buttons == 1 on drag, dragenter, dragover and drop.
+   int event_modifiers =
+       GetEventModifiers(modifiers.value_or(blink::WebInputEvent::kNoModifiers),
+-                        false, false, 0, 0);
++                        false, false, 0, 0) |
++      blink::WebInputEvent::kLeftButtonDown;
+   if (event_type == Input::DispatchDragEvent::TypeEnum::DragEnter) {
+     widget_host->DragTargetDragEnter(
+         *drop_data, point, point, mask, event_modifiers,

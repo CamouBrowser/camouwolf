@@ -142,3 +142,18 @@
 # every later one on the CPU, so low-alpha pixels (text edges) read differently
 # the first time. Real Windows Chrome returns the same bytes on every read.
 0032-canvas-cpu-unpremultiply.patch
+
+# --- protocol wheel ticks -----------------------------------------------------
+# A protocol wheel event is one tick whatever its delta; count ticks in the
+# pixels a notch scrolls on the claimed OS, so wheelDelta keeps its ratio to
+# deltaY.
+0032-protocol-wheel-ticks.patch
+
+# --- protocol drag buttons ----------------------------------------------------
+# A protocol drag carries no mouse button; a real one holds the left button.
+0033-protocol-drag-buttons.patch
+
+# --- trusted events from the automation world ---------------------------------
+# select_option and a date fill dispatch input and change from a DevTools
+# isolated world; a user's choice makes them trusted.
+0034-automation-world-trusted-events.patch

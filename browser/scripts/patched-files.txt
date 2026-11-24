@@ -156,3 +156,9 @@ third_party/blink/renderer/modules/battery/battery_dispatcher.cc
 
 # --- speech synthesis engine -----------------------------------------------
 content/browser/speech/tts_linux.cc
+
+# --- protocol input (wheel ticks, drag buttons) ------------------------------
+content/browser/devtools/protocol/input_handler.cc
+
+# --- trusted events from the automation world --------------------------------
+third_party/blink/renderer/core/dom/events/event_target.cc

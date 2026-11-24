@@ -646,6 +646,37 @@ with the bookmarks bar). Nothing to patch.
 is the first entry. Real Chrome's value depends on how the tab was opened, so
 there is no single constant to serve.
 
+### Input events from the driver
+
+Camoufox patches several input behaviours of Firefox. Measured here with
+Playwright driving this build under Xvfb, against the same input from the X
+server (XTest) and against what Chromium's native event builders produce on
+each OS:
+
+- **Coalescing.** The renderer coalesces protocol mouse moves exactly as it
+  coalesces native ones: moves sent faster than frames arrive as one
+  `pointermove` whose `getCoalescedEvents()` holds them all (up to 52 per frame
+  in a 1000 Hz burst). One event per move is the driver's pacing, since
+  Playwright awaits each move's acknowledgement, which comes a frame later.
+  Acknowledging early would let `mouse.move` return before the page saw it.
+- **Event timestamps.** Chromium on Windows stamps an event with
+  `EventTimeForNow()`, not the 15.6 ms message clock, so there is no tick to
+  match. On X11 an event's `timeStamp` carries the X server's millisecond time,
+  so every event shares one sub-millisecond fraction; protocol events do not.
+  That matters only to a Linux identity and is not changed.
+- **Wheel units.** A Windows or Linux mouse wheel scrolls by pixels and
+  animates; a protocol wheel event is precise and jumps, like a touchpad. Only
+  the scroll's timing shows it; 0032 matches the values a page reads.
+- **Drag source events.** Blink fires `drag` before each `dragover` for a
+  protocol drag as for a native one; Playwright sends a single move.
+- **Pointer lock.** Headed, a locked pointer reports `movementX`/`movementY`
+  as XTest input does, with the window on screen or partly off it (Camoufox's
+  patch is for a GTK pointer barrier that fails off screen; Chromium on X11
+  grabs the pointer instead). A plain `headless=True` launch answers a lock with a
+  stream of zero-movement moves; use `headless="virtual"`.
+- **The cursor (`showcursor`).** Firefox draws a debug cursor in its chrome; a
+  page cannot read it, and Chromium has no counterpart.
+
 ### 0029 — platform editing behaviour
 
 `web_view_impl.cc`. Blink picks its editing conventions at compile time, and a
@@ -879,3 +910,31 @@ perturbs both reads with one seed and cannot hide it. The backing now reads the
 premultiplied pixels back and unpremultiplies them on the CPU, as the later
 reads do. `--disable-accelerated-2d-canvas` (the `virtual-gpu` launch) never
 had the problem. Regression test: `tests/native/test_canvas_readback.py`.
+
+### 0032 — protocol wheel ticks
+
+`content/browser/devtools/protocol/input_handler.cc`. A protocol wheel event
+(`Input.dispatchMouseEvent`, what `mouse.wheel` sends) is one tick whatever its
+delta, so `wheelDelta` was ±120 against any `deltaY`. Native builders count a
+tick per notch: Windows scrolls 100 px a notch, so `wheelDelta` is 1.2 times
+`deltaY`; Linux (Aura) counts a tick per 120 px, and macOS per 40 px
+(`kScrollbarPixelsPerCocoaTick`). Keyed on `navigator.platform`, as 0029 is,
+the tick count is the delta in those pixels. A launch with no config keeps
+upstream's.
+
+### 0033 — protocol drag buttons
+
+`content/browser/devtools/protocol/input_handler.cc`. Playwright drags with
+`Input.dispatchDragEvent`, which carries only key modifiers, so `buttons` was 0
+on `drag`, `dragenter`, `dragover` and `drop`. A drag is made with the left
+button held, and a page reads `buttons == 1` on each of them; `dragend` comes
+after the release and stays 0.
+
+### 0034 — trusted events from the automation world
+
+`third_party/blink/renderer/core/dom/events/event_target.cc`. `select_option`
+and `fill` on a date, time or colour input set the value from a DevTools
+isolated world and dispatch `input` and `change` there, which made them
+untrusted; the same choice by a user is trusted. An event dispatched from a
+`kInspectorIsolated` world is now trusted. Page script, the main-world
+`dispatch_event` and extension worlds still dispatch untrusted events.

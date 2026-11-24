@@ -1,0 +1,44 @@
+diff --git a/content/browser/devtools/protocol/input_handler.cc b/content/browser/devtools/protocol/input_handler.cc
+--- a/content/browser/devtools/protocol/input_handler.cc
++++ b/content/browser/devtools/protocol/input_handler.cc
+@@ -13,6 +13,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/check.h"
+ #include "base/check_deref.h"
+ #include "base/functional/bind.h"
+@@ -425,6 +426,24 @@
+   return drop_data;
+ }
+ 
++// CAMOUWOLF: wheelDelta is ticks * 120 and a page compares it with deltaY, so
++// count ticks in the pixels a tick scrolls on the OS navigator.platform claims:
++// 100 on Windows (web_input_event_builders_win.cc), kScrollbarPixelsPerCocoaTick
++// on macOS, Aura's kWheelDelta on Linux. Stock CDP sends one tick a call.
++// Blink divides both by devicePixelRatio, so ticks come from the scaled delta.
++void CamouwolfNativeWheelTicks(blink::WebMouseWheelEvent& event) {
++  const auto platform =
++      base::CamouwolfConfig::Get().GetString("navigator.platform");
++  if (!platform) {
++    return;
++  }
++  const double pixels_per_tick = *platform == "Win32"      ? 100.0
++                                 : *platform == "MacIntel" ? 40.0
++                                                           : 120.0;
++  event.wheel_ticks_x = event.delta_x / pixels_per_tick;
++  event.wheel_ticks_y = event.delta_y / pixels_per_tick;
++}
++
+ base::expected<std::unique_ptr<blink::WebMouseEvent>, protocol::Response>
+ CreateWebMouseEvent(const std::string& event_type,
+                     double x,
+@@ -490,6 +509,7 @@
+     }
+     wheel_event->phase = blink::WebMouseWheelEvent::kPhaseBegan;
+     wheel_event->delta_units = ui::ScrollGranularity::kScrollByPrecisePixel;
++    CamouwolfNativeWheelTicks(*wheel_event);
+     wheel_event->dispatch_type = blink::WebInputEvent::DispatchType::kBlocking;
+     mouse_event = std::move(wheel_event);
+   } else {
