@@ -31,9 +31,10 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import psutil
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from _procs import options
+from _procs import browser_processes, options
 
 EXIT = "203.0.113.9"
 STUN_ADDR = ("198.51.100.1", 3478)
@@ -41,6 +42,10 @@ STUN_NAME = "stun.relay.test"
 MAPPED_IP = "198.51.100.20"
 COOKIE = 0x2112A442
 PAGE = "https://webrtc.test/"
+# What the proxy serves for a page fetched through it.
+PROXIED_PAGE = "http://exit.test/"
+PROXIED_BODY = b"<!doctype html><title>through the proxy</title>"
+CREDENTIALS = (b"user", "pass wörd".encode())
 MEDIA = ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"]
 
 GATHER = """async ([urls, capture]) => {
@@ -166,10 +171,15 @@ class Relay(asyncio.DatagramProtocol):
 
 
 class Socks5Proxy:
-    """A SOCKS5 proxy that only does UDP ASSOCIATE, relaying from the exit address."""
+    """A SOCKS5 proxy: UDP ASSOCIATE relays from the exit address, and CONNECT
+    is answered by the proxy itself with PROXIED_BODY. With `credentials` it
+    takes only RFC 1929 username/password."""
 
-    def __init__(self, net: Internet) -> None:
+    def __init__(self, net: Internet, credentials: Optional[Tuple[bytes, bytes]] = None) -> None:
         self.net = net
+        self.credentials = credentials
+        self.logins: List[Tuple[bytes, bytes]] = []
+        self.commands: List[int] = []  # CONNECT (1) and UDP ASSOCIATE (3) past authentication
         self.destinations: List[Tuple[int, str, int]] = []  # (atyp, host, port) relayed
         self.relays: List[Relay] = []
         self.associations = 0
@@ -178,14 +188,39 @@ class Socks5Proxy:
         self.server = await asyncio.start_server(self.serve, "127.0.0.1", 0)
         return f"socks5://127.0.0.1:{self.server.sockets[0].getsockname()[1]}"
 
+    async def authenticate(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> bool:
+        _, count = await reader.readexactly(2)
+        methods = await reader.readexactly(count)
+        if not self.credentials:
+            writer.write(b"\x05\x00")
+            return True
+        if 2 not in methods:
+            writer.write(b"\x05\xff")
+            return False
+        writer.write(b"\x05\x02")
+        _, length = await reader.readexactly(2)
+        username = await reader.readexactly(length)
+        password = await reader.readexactly((await reader.readexactly(1))[0])
+        self.logins.append((username, password))
+        accepted = (username, password) == self.credentials
+        writer.write(b"\x01" + (b"\x00" if accepted else b"\x01"))
+        return accepted
+
     async def serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            _, count = await reader.readexactly(2)
-            await reader.readexactly(count)
-            writer.write(b"\x05\x00")
+            if not await self.authenticate(reader, writer):
+                return
             _, cmd, _, atyp = await reader.readexactly(4)
             await reader.readexactly({1: 4, 4: 16}.get(atyp) or (await reader.readexactly(1))[0])
             await reader.readexactly(2)
+            self.commands.append(cmd)
+            if cmd == 1:
+                writer.write(b"\x05\x00\x00\x01" + bytes(6))
+                await reader.readuntil(b"\r\n\r\n")
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n"
+                             b"Content-Length: %d\r\n\r\n%s" % (len(PROXIED_BODY), PROXIED_BODY))
+                await writer.drain()
+                return
             if cmd != 3:
                 writer.write(b"\x05\x07\x00\x01" + bytes(6))
                 return
@@ -221,8 +256,8 @@ def run(loop: asyncio.AbstractEventLoop, coro: Any) -> Any:
     return asyncio.run_coroutine_threadsafe(coro, loop).result(10)
 
 
-@pytest.fixture
-def internet(loop: asyncio.AbstractEventLoop) -> Tuple[Internet, Stun, str, Socks5Proxy]:
+def start_internet(loop: asyncio.AbstractEventLoop,
+                   credentials: Optional[Tuple[bytes, bytes]] = None) -> Tuple[Internet, Stun, str, Socks5Proxy]:
     net = Internet()
     stun = Stun()
 
@@ -232,8 +267,18 @@ def internet(loop: asyncio.AbstractEventLoop) -> Tuple[Internet, Stun, str, Sock
             net.send(response, STUN_ADDR, src)
 
     net.hosts[STUN_ADDR] = on_stun
-    proxy = Socks5Proxy(net)
+    proxy = Socks5Proxy(net, credentials)
     return net, stun, run(loop, proxy.start()), proxy
+
+
+@pytest.fixture
+def internet(loop: asyncio.AbstractEventLoop) -> Tuple[Internet, Stun, str, Socks5Proxy]:
+    return start_internet(loop)
+
+
+@pytest.fixture
+def password_internet(loop: asyncio.AbstractEventLoop) -> Tuple[Internet, Stun, str, Socks5Proxy]:
+    return start_internet(loop, CREDENTIALS)
 
 
 @pytest.fixture
@@ -252,14 +297,24 @@ def gather(binary: Path, urls: Any, capture: bool, **kwargs: Any) -> Dict[str, A
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(**launch)
         try:
+            argv = [arg for proc in browser_processes() for arg in proc.cmdline()]
+            try:
+                visited = browser.new_page().goto(PROXIED_PAGE).body().decode()
+            except PlaywrightError as exc:
+                visited = exc.message
             context = browser.new_context(permissions=["microphone"] if capture else [])
             # getUserMedia needs a secure context; the route answers in-process, so nothing reaches the proxy.
             context.route(PAGE, lambda route: route.fulfill(body="<!doctype html>", content_type="text/html"))
             page = context.new_page()
             page.goto(PAGE)
-            return page.evaluate(GATHER, [urls, capture])
+            return {**page.evaluate(GATHER, [urls, capture]), "argv": argv, "visited": visited}
         finally:
             browser.close()
+
+
+def readable(got: Dict[str, Any]) -> str:
+    """Everything the page read, as one string to search for addresses."""
+    return json.dumps({key: got[key] for key in ("candidates", "sdp", "stats")})
 
 
 def srflx(got: Dict[str, Any]) -> Dict[str, Set[str]]:
@@ -292,7 +347,7 @@ def test_behind_socks5_a_capturing_page_finds_no_host_address(
     leak, leak_url = local_stun
     got = gather(binary, [f"stun:{STUN_ADDR[0]}:{STUN_ADDR[1]}", leak_url], capture=True,
                  proxy={"server": proxy_url})
-    seen = json.dumps(got)
+    seen = readable(got)
     assert any(f" {EXIT} " in c and " typ host " in c for c in got["candidates"]), got
     assert [ip for ip in host_addresses() if ip in seen] == [], seen
     assert stun.requests and leak.requests == [], (stun.requests, leak.requests)
@@ -303,7 +358,7 @@ def test_behind_an_http_proxy_nothing_is_sent(binary: Path, local_stun: Tuple[Lo
     got = gather(binary, leak_url, capture=True, proxy={"server": "http://127.0.0.1:1"})
     assert leak.requests == [], leak.requests
     assert all(found == set() for found in srflx(got).values()), got
-    seen = json.dumps(got)
+    seen = readable(got)
     assert [ip for ip in host_addresses() if ip in seen] == [], seen
 
 
@@ -312,4 +367,25 @@ def test_an_unproxied_launch_is_unchanged(binary: Path, local_stun: Tuple[LocalS
     stun, url = local_stun
     got = gather(binary, url, capture=True)
     assert stun.requests and all(found == stun.answered for found in srflx(got).values()), (srflx(got), stun.answered)
-    assert own_address() in json.dumps(got) and EXIT not in json.dumps(got), got
+    assert own_address() in readable(got) and EXIT not in readable(got), got
+
+
+def test_behind_a_socks5_proxy_with_a_password_both_paths_log_in(binary: Path, password_internet: Any) -> None:
+    """RFC 1929 (0041): the page load (CONNECT) and the relay (UDP ASSOCIATE)
+    each authenticate, and the password is on no browser command line."""
+    _, stun, proxy_url, proxy = password_internet
+    username, password = (part.decode() for part in CREDENTIALS)
+    got = gather(binary, f"stun:{STUN_ADDR[0]}:{STUN_ADDR[1]}", capture=False,
+                 proxy={"server": proxy_url, "username": username, "password": password})
+    assert got["visited"] == PROXIED_BODY.decode(), got["visited"]
+    assert {ip for ip, _ in stun.requests} == {EXIT}, (stun.requests, got)
+    assert set(proxy.commands) == {1, 3} and set(proxy.logins) == {CREDENTIALS}, (proxy.commands, proxy.logins)
+    assert got["argv"] and not [arg for arg in got["argv"] if password in arg], got["argv"]
+
+
+def test_a_refused_password_reaches_nothing(binary: Path, password_internet: Any) -> None:
+    _, stun, proxy_url, proxy = password_internet
+    got = gather(binary, f"stun:{STUN_ADDR[0]}:{STUN_ADDR[1]}", capture=False,
+                 proxy={"server": proxy_url, "username": "user", "password": "wrong"})
+    assert got["visited"] != PROXIED_BODY.decode() and stun.requests == [], (got["visited"], stun.requests)
+    assert proxy.logins and set(proxy.logins) == {(b"user", b"wrong")} and proxy.commands == [], proxy.commands

@@ -71,7 +71,7 @@ Since measured against a build: it is not glyph-cache warm-up. The first read
 of an accelerated canvas comes from the GPU, which unpremultiplied in a shader;
 the later reads come from a CPU copy, which rounds low-alpha pixels (the edges
 of antialiased text) differently. Only those pixels differed, and a CPU canvas
-was stable. Fixed by 0032; regression test `tests/native/test_canvas_readback.py`.
+was stable. Fixed by 0037; regression test `tests/native/test_canvas_readback.py`.
 
 This is a three-line probe that identifies Linux regardless of every other
 spoof, and **canvas farbling cannot mask it**: `0009` perturbs both reads with
@@ -141,7 +141,7 @@ has them.
 | `MediaRecorder.isTypeSupported('audio/mp4; mp4a.40.2')` | `true` | `false` |
 | `decodingInfo(...).powerEfficient` | `true` | `false` |
 
-HEVC support is a platform-decoder property. `0032` now answers all four from
+HEVC support is a platform-decoder property. `0035` now answers all four from
 the identity's recorded hardware codecs (`media:*` keys).
 
 ### 2.5 Patched surfaces the launcher never drives
@@ -152,13 +152,21 @@ the identity's recorded hardware codecs (`media:*` keys).
 | --- | --- | --- |
 | `keyboard.layoutMap` | 0014 | `IntlBackslash` = `\` (Win) vs `<` (Lin) |
 | `mediaDevices:enumerated` | 0013 | 3 devices (audioin/videoin/audioout) vs 2 |
-| `connection.downlink` | 0015 | rtt 100/downlink 1.65 vs 50/1.5 — weak, network-derived |
+| `connection.downlink` | 0015 | rtt 100/downlink 1.65 vs 50/1.5 — network-derived, not an OS difference (below) |
 | `screen.availLeft` / `availTop` | 0004 | none here (both 0); needed for a side/top taskbar |
 | `navigator.vendor` | 0002 | none — `Google Inc.` on both |
 | `timezone` | 0006 | none here; only drawn on a geoip launch |
 
 The first two are live leaks. `check-config-keys.py` cannot catch these — it
 checks written-but-unread, and these are the mirror case.
+
+`connection.rtt`/`downlink` stay unwritten on purpose. Chrome computes both
+from the transfers it has timed, by the same code on every OS, so the two
+samples above differ because the machines were on different networks. The
+recorded fingerprints carry no connection values to draw from, and Chrome's own
+estimate already describes the path a page's requests take, through the proxy
+when there is one. A value a caller sets now goes through Chrome's per-host
+noise and rounding (0015), as a measured one does.
 
 ### 2.6 Platform-gated APIs — closed by `0019`
 
@@ -221,7 +229,7 @@ Checked against leg A and matching exactly:
 Surfaces that need no spoofing because they already match: `Intl` (all of it),
 `storage.estimate()`, `navigator.plugins`/`mimeTypes`, the whole `permissions`
 matrix, error/stack shape and native `toString`s, `getBattery()` (on a host
-with no battery; `0033` keeps a laptop host's from showing),
+with no battery; `0036` keeps a laptop host's from showing),
 `performance.memory.jsHeapSizeLimit`, and **all 24 JS `Math.*` results
 bit-for-bit** (V8 uses its own fdlibm, not the platform libm).
 

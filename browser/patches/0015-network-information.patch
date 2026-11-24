@@ -10,31 +10,28 @@ diff --git a/third_party/blink/renderer/modules/netinfo/network_information.cc b
  
  #include <algorithm>
  
-@@ -132,6 +134,16 @@
+@@ -132,6 +134,12 @@
  }
  
  uint32_t NetworkInformation::rtt() {
-+  // CAMOUWOLF: navigator.connection.rtt.
-+  //
-+  // Chrome quantizes this to a 25ms bucket, so the value itself is low entropy
-+  // — but it is a strong *residency* signal when combined with the claimed
-+  // timezone and exit IP: a "residential US" identity reporting a 0ms RTT is
-+  // reporting a datacenter link. The launcher derives it from the proxy's
-+  // measured latency when one is configured.
++  // CAMOUWOLF: connection.rtt is the network's round trip, and goes through
++  // Chrome's per-host noise and 50ms rounding as a measured one does: a raw
++  // value would read the same on every origin, which no real browser does.
 +  if (const auto v = base::CamouwolfConfig::Get().GetUint32("connection.rtt")) {
-+    return *v;
++    return GetNetworkStateNotifier().RoundRtt(Host(), base::Milliseconds(*v));
 +  }
    MaybeShowWebHoldbackConsoleMsg();
    std::optional<base::TimeDelta> override_rtt =
        GetNetworkStateNotifier().GetWebHoldbackHttpRtt();
-@@ -148,6 +160,11 @@
+@@ -148,6 +156,12 @@
  }
  
  double NetworkInformation::downlink() {
-+  // CAMOUWOLF: paired with rtt() above — the launcher writes both or neither, since
-+  // a spoofed RTT beside a host downlink is its own inconsistency.
-+  if (const auto v = base::CamouwolfConfig::Get().GetDouble("connection.downlink")) {
-+    return *v;
++  // CAMOUWOLF: as rtt() above, through Chrome's per-host noise and 50kbps
++  // rounding.
++  if (const auto v =
++          base::CamouwolfConfig::Get().GetDouble("connection.downlink")) {
++    return GetNetworkStateNotifier().RoundMbps(Host(), *v);
 +  }
    MaybeShowWebHoldbackConsoleMsg();
    std::optional<double> override_downlink_mbps =

@@ -132,6 +132,26 @@ CASES = [
     ('macos-override', 41, {'os': 'macos', 'allow_os_mismatch': True}),
     ('allow-mismatch-any-os', 42, {'allow_os_mismatch': True}),
     ('webgl-config', 43, {'os': 'windows', 'webgl_config': 'FIRST'}),
+    ('cpu', 46, {'cpu': {'arch': 'arm'}}),
+    ('cpu-maker', 47, {'os': 'windows', 'cpu': {'manufacturer': 'amd'}}),
+    ('preset', 48, {'fingerprint_preset': {
+        'navigator': {
+            'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                         'Chrome/150.0.0.0 Safari/537.36',
+            'maxTouchPoints': 0,
+        },
+        'screen': {'width': 1920, 'height': 1080, 'colorDepth': 24, 'availWidth': 1920, 'availHeight': 1040},
+        'webgl': 'FIRST',
+        'timezone': 'Europe/Paris',
+    }}),
+    ('browser-behaviour', 49, {
+        'os': 'linux', 'disable_coop': True, 'instant_animations': True, 'show_cursor': True,
+        'allow_addon_new_tab': True,
+    }),
+    ('socks5-credentials', 58, {
+        'os': 'linux', 'debug': True,
+        'proxy': {'server': 'socks5://Proxy.Example:1081', 'username': 'user', 'password': 'pass word'},
+    }),
     # errors
     ('error-macos', 50, {'os': 'macos'}),
     ('error-os-case', 51, {'os': 'Windows'}),
@@ -139,10 +159,9 @@ CASES = [
     ('error-linux-from-windows', 53, {'host': 'win', 'os': 'linux'}),
     ('error-firefox-prefs', 54, {'firefox_user_prefs': {'a': 1}}),
     ('error-ff-version', 55, {'ff_version': 135}),
-    ('error-cpu', 56, {'cpu': {'arch': 'arm'}}),
+    ('error-cpu', 56, {'os': 'linux', 'cpu': {'arch': 'arm'}}),
     ('error-preset', 57, {'fingerprint_preset': True}),
-    ('error-disable-coop', 58, {'disable_coop': True}),
-    ('error-addon-new-tab', 59, {'allow_addon_new_tab': True}),
+    ('error-cpu-maker', 59, {'os': 'macos', 'allow_os_mismatch': True, 'cpu': {'manufacturer': 'amd'}}),
     ('error-unknown-property', 60, {'os': 'linux', 'config': {'no.such.key': 1}}),
     ('error-property-type', 61, {'os': 'linux', 'config': {'timezone': 5}}),
     ('error-webgl-without-os', 62, {'webgl_config': ['Google Inc. (Intel)', 'x']}),
@@ -223,6 +242,10 @@ def run(case_options, binary, scratch):
         case_options['webgl_config'] = list(options['webgl_config'])
     elif 'webgl_config' in options:
         options['webgl_config'] = tuple(options['webgl_config'])
+    preset = options.get('fingerprint_preset')
+    if isinstance(preset, dict) and preset.get('webgl') == 'FIRST':
+        vendor, renderer = sorted(utils.chrome_gpus('windows'))[0]
+        preset['webgl'] = {'unmaskedVendor': vendor, 'unmaskedRenderer': renderer}
     return options
 
 

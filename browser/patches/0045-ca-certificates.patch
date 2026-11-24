@@ -1,0 +1,30 @@
+diff --git a/chrome/browser/net/profile_network_context_service.cc b/chrome/browser/net/profile_network_context_service.cc
+--- a/chrome/browser/net/profile_network_context_service.cc
++++ b/chrome/browser/net/profile_network_context_service.cc
+@@ -10,6 +10,7 @@
+ #include <string_view>
+ 
+ #include "base/base64.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/byte_size.h"
+ #include "base/check_op.h"
+ #include "base/command_line.h"
+@@ -815,6 +816,18 @@
+     }
+   }
+ 
++  // CAMOUWOLF: the `certificates` config key (base64 DER) is trusted as the
++  // CACertificates policy is, so a launch can trust its proxy's CA without a
++  // policy file or a certificate database in the user's home.
++  for (const std::string& cert_b64 :
++       base::CamouwolfConfig::Get().GetStringList("certificates")) {
++    if (std::optional<std::vector<uint8_t>> der =
++            base::Base64Decode(cert_b64)) {
++      additional_certificates->trust_anchors_with_enforced_constraints
++          .push_back(std::move(*der));
++    }
++  }
++
+   // Add trust anchors with constraints outside the cert
+   for (const base::Value& cert_with_constraints :
+        prefs->GetList(prefs::kCACertificatesWithConstraints)) {

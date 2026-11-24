@@ -1161,6 +1161,17 @@ export interface ContextIdentityOptions {
 }
 
 /**
+ * Keys of the browser rather than of a machine, which a context keeps from the
+ * launch: its renderers read the context's config in place of the launch's.
+ */
+export const BROWSER_KEYS = [
+	"network:ipv4Only",
+	"allowAddonNewtab",
+	"instantAnimations",
+	"showcursor",
+] as const;
+
+/**
  * A context's own identity and language list, drawn for the browser that
  * `fromOptions` launched.
  *
@@ -1236,8 +1247,8 @@ export async function contextIdentity(
 		browserBinary: fromOptions.executablePath,
 		launch,
 	});
-	if ("network:ipv4Only" in launch) {
-		config["network:ipv4Only"] = launch["network:ipv4Only"];
+	for (const key of BROWSER_KEYS) {
+		if (key in launch) config[key] = launch[key];
 	}
 	// The browser serves navigator.languages from the context's language pref.
 	delete config["navigator.languages"];
@@ -1283,7 +1294,7 @@ export function newContextOptions(
 	return options;
 }
 
-/** Target.setBrowserContextIdentity's parameters (patch 0032). */
+/** Target.setBrowserContextIdentity's parameters (patch 0034). */
 export function setContextIdentityParams(
 	contextId: string,
 	identity: Config,
@@ -1291,7 +1302,7 @@ export function setContextIdentityParams(
 ): Config {
 	return {
 		browserContextId: contextId,
-		identity: JSON.stringify(identity),
+		identity: configJson(identity),
 		languages,
 	};
 }
@@ -1495,6 +1506,178 @@ function reprPairs(pairs: ReadonlyArray<readonly [string, string]>): string {
 }
 
 /** An fpgen condition on navigator.languages: the first is `language`'s. */
+/** A Camoufox-format preset's OS, GPU and recorded config values. */
+export interface PresetIdentity {
+	os: OsName;
+	webglConfig: [string, string];
+	config: Config;
+}
+
+// A preset's fields and the config keys they set; the rest of the identity is
+// drawn from an fpgen record of a machine with the preset's GPU.
+const PRESET_KEYS: Readonly<Record<string, Readonly<Record<string, string>>>> =
+	{
+		navigator: {
+			hardwareConcurrency: "navigator.hardwareConcurrency",
+			maxTouchPoints: "navigator.maxTouchPoints",
+		},
+		screen: {
+			width: "screen.width",
+			height: "screen.height",
+			colorDepth: "screen.colorDepth",
+			availWidth: "screen.availWidth",
+			availHeight: "screen.availHeight",
+			devicePixelRatio: "window.devicePixelRatio",
+		},
+	};
+
+/**
+ * The OS, GPU and recorded values of a Camoufox-format preset recorded from
+ * Chrome. Its user agent names only the OS: the version is the binary's.
+ */
+export function presetIdentity(preset: unknown): PresetIdentity {
+	if (!isPlainObject(preset)) {
+		throw new ValueError(
+			`fingerprint_preset must be a dict, not ${pyTypeName(preset)}`,
+		);
+	}
+	const userAgent = pyStr(preset.navigator?.userAgent || "");
+	if (!userAgent.includes("Chrome/") || userAgent.includes("Firefox/")) {
+		throw new NonChromeFingerprint(
+			`fingerprint_preset was not recorded from Chrome (its user agent is ${pyRepr(userAgent)}); ` +
+				"a Firefox preset describes a browser Camouwolf is not",
+		);
+	}
+	const targetOs = clienthints.uaOs(userAgent);
+	if (targetOs === null) {
+		throw new ValueError(
+			`fingerprint_preset user agent ${pyRepr(userAgent)} names no desktop OS`,
+		);
+	}
+	const webgl = preset.webgl || {};
+	if (!(webgl.unmaskedVendor && webgl.unmaskedRenderer)) {
+		throw new ValueError(
+			"fingerprint_preset needs webgl.unmaskedVendor and webgl.unmaskedRenderer",
+		);
+	}
+	const config: Config = {};
+	for (const [section, fields] of Object.entries(PRESET_KEYS)) {
+		for (const [field, key] of Object.entries(fields)) {
+			const value = preset[section]?.[field];
+			if (value !== undefined && value !== null) config[key] = value;
+		}
+	}
+	if (pyTruthy(preset.timezone)) config.timezone = preset.timezone;
+	return {
+		os: OS_NAMES[targetOs] as OsName,
+		webglConfig: [webgl.unmaskedVendor, webgl.unmaskedRenderer],
+		config,
+	};
+}
+
+/** The OSes in `os` that have `cpu`; ValueError when none does. */
+export function osesForCpu(cpu: unknown, os: ListOrString): ListOrString {
+	const names = typeof os === "string" ? [os] : [...os];
+	const fits: string[] = [];
+	const errors: string[] = [];
+	for (const name of names) {
+		try {
+			coherence.resolveCpu(cpu, OS_KEYS[name] ?? (name as TargetOS));
+			fits.push(name);
+		} catch (err) {
+			if (!(err instanceof ValueError)) throw err;
+			errors.push(err.message);
+		}
+	}
+	if (!fits.length) {
+		throw new ValueError(`cpu=${pyRepr(cpu)}: ${errors.join("; ")}`);
+	}
+	return typeof os === "string" ? os : fits;
+}
+
+export const SOCKS5_DEFAULT_PORT = 1080;
+
+/**
+ * The "host:port" the browser looks a SOCKS5 proxy's credentials up by: the
+ * proxy's canonical host and port, as net::HostPortPair prints them.
+ */
+export function socks5ProxyKey(server: string): string {
+	const { url, port } = ProxyHelper.parseServer(server);
+	let host = url.replace(/^\[|\]$/g, "").toLowerCase();
+	// The URL parser writes an IPv6 address in its one canonical form.
+	if (host.includes(":")) host = new URL(`http://[${host}]`).hostname;
+	return `${host}:${port || SOCKS5_DEFAULT_PORT}`;
+}
+
+/**
+ * A socks5 proxy without its credentials, for Playwright (which refuses them
+ * for Chromium), and the credentials as proxy:socks5Credentials, which the
+ * browser reads from its config rather than from argv.
+ */
+export function splitSocks5Credentials(
+	proxy: ProxyConfig | null | undefined,
+): [ProxyConfig | null | undefined, Config | null] {
+	if (
+		!proxy?.username ||
+		ProxyHelper.parseServer(proxy.server).schema !== "socks5"
+	) {
+		return [proxy, null];
+	}
+	const username = proxy.username;
+	const password = proxy.password || "";
+	for (const [field, value] of [
+		["username", username],
+		["password", password],
+	]) {
+		const bytes = Buffer.byteLength(value, "utf-8");
+		if (bytes < 1 || bytes > 255) {
+			throw new ValueError(`A SOCKS5 ${field} is 1 to 255 bytes (RFC 1929)`);
+		}
+	}
+	const { username: _u, password: _p, ...stripped } = proxy;
+	return [stripped, { [socks5ProxyKey(proxy.server)]: { username, password } }];
+}
+
+/** The config with proxy credentials masked, for printing. */
+export function maskedConfig(config: Config): Config {
+	const credentials = config["proxy:socks5Credentials"];
+	if (!pyTruthy(credentials)) return config;
+	return {
+		...config,
+		"proxy:socks5Credentials": Object.fromEntries(
+			Object.entries(credentials as Config).map(([key, entry]) => [
+				key,
+				{ username: entry.username, password: "***" },
+			]),
+		),
+	};
+}
+
+const PEM_CERTIFICATE =
+	/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g;
+
+/**
+ * Move certificatePaths into certificates: each file's certificates, PEM or
+ * DER, as the base64 DER the browser trusts.
+ */
+export function readCertificatePaths(config: Config): void {
+	const paths: string[] = config.certificatePaths || [];
+	delete config.certificatePaths;
+	const certificates: string[] = (config.certificates || []).map((c: string) =>
+		c.replace(PEM_CERTIFICATE, "$1"),
+	);
+	for (const file of paths) {
+		const data = fs.readFileSync(file);
+		const bodies = [...data.toString("latin1").matchAll(PEM_CERTIFICATE)].map(
+			(m) => m[1],
+		);
+		certificates.push(...(bodies.length ? bodies : [data.toString("base64")]));
+	}
+	if (certificates.length) {
+		config.certificates = certificates.map((c) => c.replace(/\s+/g, ""));
+	}
+}
+
 export function speaks(language: string): (value: unknown) => boolean {
 	const wanted = language.split("-")[0].toLowerCase();
 	return (value) =>
@@ -1519,6 +1702,7 @@ export async function drawFingerprint(
 	window: readonly [number, number] | null | undefined,
 	webglConfig: readonly [string, string] | null | undefined,
 	language?: string,
+	cpu?: Record<string, string> | null,
 ): Promise<Config> {
 	await utilsDeps.ensureModel();
 	const names: string[] = typeof os === "string" ? [os] : [...(os ?? [])];
@@ -1547,6 +1731,34 @@ export async function drawFingerprint(
 			pyStr(value.renderer ?? null).toLowerCase() === wantedRenderer;
 	} else {
 		gpu = (value) => usableGpu(value);
+	}
+	if (cpu !== undefined && cpu !== null) {
+		const claims = names.map(
+			(name) =>
+				[OS_KEYS[name], coherence.resolveCpu(cpu, OS_KEYS[name])] as const,
+		);
+		if (webglConfig?.length) {
+			const misfits = claims.map(([osKey, claim]) =>
+				coherence.cpuMisfit(webglConfig[1], null, osKey, ...claim),
+			);
+			if (misfits.every(Boolean)) {
+				throw new ValueError(
+					`cpu=${pyRepr(cpu)}: no machine has ${misfits[0]}`,
+				);
+			}
+		}
+		const anyGpu = gpu;
+		gpu = (value) =>
+			anyGpu(value) &&
+			claims.some(
+				([osKey, claim]) =>
+					!coherence.cpuMisfit(
+						isPlainObject(value) ? value.renderer : null,
+						null,
+						osKey,
+						...claim,
+					),
+			);
 	}
 
 	const conditions: Record<string, unknown> = { gpu };
@@ -1591,6 +1803,17 @@ export async function drawFingerprint(
 			)
 		)
 			continue;
+		if (
+			cpu !== undefined &&
+			cpu !== null &&
+			coherence.cpuMisfit(
+				fingerprint.gpu.renderer,
+				navigator.hardwareConcurrency,
+				drawnOs ?? "",
+				...coherence.resolveCpu(cpu, drawnOs as TargetOS),
+			)
+		)
+			continue;
 		return fingerprint;
 	}
 	throw new Error(
@@ -1616,13 +1839,26 @@ export interface LaunchOptions {
 	block_webrtc?: boolean;
 	/** Whether to block WebGL. To prevent leaks, only use this for special cases. */
 	block_webgl?: boolean;
-	/** Not implemented: throws NotImplementedError. */
+	/** Ignore Cross-Origin-Opener-Policy headers, so a popup a COOP page opens
+	 * keeps its opener. A COOP page is then not crossOriginIsolated, which it
+	 * can read, so it warns. */
 	disable_coop?: boolean;
+	/** Finish every finite CSS and Web Animation at once. A page reads the zero
+	 * duration back, so it warns. */
+	instant_animations?: boolean;
+	/** Show where automation clicks, with DevTools' click visualization: a
+	 * ripple at each mouse or pointer press, painted in the overlay a page
+	 * cannot read. Screenshots and a watched window show it. */
+	show_cursor?: boolean;
 	/** Use a specific WebGL vendor/renderer pair. It must be one fpgen has
 	 * recorded from Chrome on `os` (chromeGpus); the whole identity is then
 	 * drawn from a machine with that GPU. */
 	webgl_config?: [string, string];
-	/** Not implemented: throws NotImplementedError. */
+	/** The CPU the identity claims: {arch: "x86" | "arm", manufacturer}, either
+	 * key optional (a manufacturer implies its arch). It is Sec-CH-UA-Arch, and
+	 * the GPU is drawn from machines with that CPU. Manufacturers: windows x86
+	 * intel or amd, arm qualcomm; macos x86 intel, arm apple; linux x86 intel or
+	 * amd. The browser still computes as the host's x86-64 CPU does. */
 	cpu?: Record<string, string>;
 	/** Calculate longitude, latitude, timezone, country & locale from the IP
 	 * address. Pass the target IP, or `true` to find it automatically. */
@@ -1652,7 +1888,12 @@ export interface LaunchOptions {
 	window?: [number, number];
 	/** An fpgen Chrome fingerprint to use instead of drawing one. */
 	fingerprint?: Record<string, any>;
-	/** Not implemented: throws NotImplementedError. */
+	/** A device recorded from real Chrome, in Camoufox's preset format
+	 * ({navigator: {userAgent, hardwareConcurrency, maxTouchPoints}, screen:
+	 * {width, height, colorDepth, availWidth, availHeight, devicePixelRatio},
+	 * webgl: {unmaskedVendor, unmaskedRenderer}, timezone}). The rest is drawn
+	 * from an fpgen record of a machine with that GPU, and the version is the
+	 * binary's. `true` throws ValueError: no Chrome presets are bundled. */
 	fingerprint_preset?: boolean | Record<string, any>;
 	/** Chromium milestone to claim. Defaults to the browser's own; another one
 	 * disagrees with what the binary can do, and warns. */
@@ -1663,7 +1904,9 @@ export interface LaunchOptions {
 	headless?: boolean | null;
 	/** Accepted for Camoufox compatibility; nothing to switch on. */
 	main_world_eval?: boolean;
-	/** Not implemented: throws NotImplementedError when set. */
+	/** Let extensions open tabs and windows of their own (chrome.tabs.create,
+	 * chrome.windows.create, an options page). Off by default, so automation
+	 * sees only the pages it opened. */
 	allow_addon_new_tab?: boolean;
 	/** Custom Camouwolf browser executable path. CAMOUWOLF_EXECUTABLE_PATH in
 	 * the environment does the same. */
@@ -1675,7 +1918,10 @@ export interface LaunchOptions {
 	chromium_prefs?: Record<string, any>;
 	/** Camoufox's option; throws NotImplementedError. */
 	firefox_user_prefs?: Record<string, any>;
-	/** Proxy to use for the browser. */
+	/** Proxy to use for the browser. A socks5:// proxy may carry a username
+	 * and password: the browser answers the proxy's RFC 1929 challenge with
+	 * them. They travel in the config's environment variables, never on the
+	 * command line. */
 	proxy?: ProxyConfig;
 	/** Keep the HTTP disk cache. Off by default. */
 	enable_cache?: boolean;
@@ -1685,7 +1931,8 @@ export interface LaunchOptions {
 	env?: EnvVars;
 	/** Silence warnings, and drop conflicting switches instead of refusing them. */
 	i_know_what_im_doing?: boolean;
-	/** Prints the config being sent to Camouwolf. */
+	/** Prints the config being sent to Camouwolf, with proxy credentials
+	 * masked, and has the browser log to stderr (--enable-logging=stderr). */
 	debug?: boolean | null;
 	/**
 	 * Virtual display number. Ex: ':99'. Handled by Camouwolf(), which passes
@@ -1740,6 +1987,9 @@ export interface DrawIdentityOptions {
 	virtualDisplay?: boolean;
 	/** The browser's own config: given, this is a context's identity. */
 	launch?: Config;
+	cpu?: Record<string, string> | null;
+	/** A preset's values: they stand as a caller's would, except the core count. */
+	recorded?: Config | null;
 }
 
 /**
@@ -1773,10 +2023,12 @@ export async function drawIdentity(
 		displayBound = null,
 		virtualDisplay = false,
 		launch,
+		cpu,
+		recorded,
 	}: DrawIdentityOptions,
 ): Promise<{ languages: string[] | null; targetOs: clienthints.OsKey }> {
-	const callerKeys: ReadonlySet<string> = new Set(Object.keys(config));
-	const userSetScreenWindow = isDomainSet(config, "screen.", "window.");
+	const callerKeys = new Set(Object.keys(config));
+	let userSetScreenWindow = isDomainSet(config, "screen.", "window.");
 	const milestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
 
 	// ---- place: geoip, locale ---------------------------------------------
@@ -1854,6 +2106,7 @@ export async function drawIdentity(
 			window,
 			webgl_config,
 			languages?.[0],
+			cpu,
 		);
 	} else if (fingerprint !== undefined && fingerprint !== null) {
 		if (pyTruthy(webgl_config)) {
@@ -1884,6 +2137,16 @@ export async function drawIdentity(
 	if (fingerprint !== undefined && fingerprint !== null) {
 		mergeInto(config, fromFpgen(fingerprint, milestone));
 	}
+	if (recorded) {
+		const kept = Object.fromEntries(
+			Object.entries(recorded).filter(([k]) => !callerKeys.has(k)),
+		);
+		Object.assign(config, kept);
+		for (const key of Object.keys(kept)) {
+			if (key !== "navigator.hardwareConcurrency") callerKeys.add(key);
+		}
+		userSetScreenWindow ||= isDomainSet(kept, "screen.", "window.");
+	}
 	// Patch 0012 shows the host's voices only when the key is absent, so it is
 	// always sent: the recorded list, or none, never the host's.
 	if (!("voices" in config)) config.voices = [];
@@ -1897,6 +2160,11 @@ export async function drawIdentity(
 		clienthints.buildUserAgent({ milestone, fullVersion, os: targetOs }),
 	);
 	setDefault(config, "navigator.platform", clienthints.NAV_PLATFORM[targetOs]);
+	const cpuClaim =
+		cpu !== undefined && cpu !== null
+			? coherence.resolveCpu(cpu, targetOs)
+			: null;
+	if (cpuClaim) setDefault(config, "userAgentData.architecture", cpuClaim[0]);
 	clienthints.fillClientHints(config, targetOs, fullVersion);
 
 	// The core count a page can measure is the host's, unless the browser is
@@ -1907,6 +2175,17 @@ export async function drawIdentity(
 			launch["navigator.hardwareConcurrency"];
 	} else if (!callerKeys.has("navigator.hardwareConcurrency")) {
 		fixHardwareConcurrency(config, Boolean(pin_cpu_cores), utilsDeps.hostCpu());
+	}
+	if (cpuClaim) {
+		const misfit = coherence.cpuMisfit(
+			config["webGl:renderer"],
+			config["navigator.hardwareConcurrency"],
+			targetOs,
+			...cpuClaim,
+		);
+		if (misfit) {
+			throw new ValueError(`cpu=${pyRepr(cpu)}: no machine has ${misfit}`);
+		}
 	}
 
 	// ---- fonts -------------------------------------------------------------
@@ -2019,6 +2298,8 @@ export async function launchOptions({
 	block_webrtc,
 	block_webgl,
 	disable_coop,
+	instant_animations,
+	show_cursor,
 	webgl_config,
 	cpu,
 	geoip,
@@ -2067,30 +2348,16 @@ export async function launchOptions({
 			"ff_version is Camoufox's option. Use chrome_version (a Chromium milestone).",
 		);
 	}
-	if (cpu !== undefined && cpu !== null) {
-		throw new NotImplementedError(
-			"cpu= is not implemented in Camouwolf: the browser has no cpu:arch / cpu:manufacturer " +
-				"keys and computes as the host CPU does.",
+	if (fingerprint_preset === true) {
+		throw new ValueError(
+			"fingerprint_preset=True picks a bundled preset, and Camouwolf bundles none: Camoufox's " +
+				"presets are recorded from Firefox. Pass a preset recorded from Chrome as a dict, or leave " +
+				"it unset to draw an fpgen fingerprint.",
 		);
 	}
-	if (pyTruthy(fingerprint_preset)) {
-		throw new NotImplementedError(
-			"fingerprint_preset is not implemented in Camouwolf: no presets are bundled. " +
-				"Leave it unset to draw an fpgen fingerprint, or pass one as `fingerprint`.",
-		);
-	}
-	if (disable_coop) {
-		throw new NotImplementedError(
-			"disable_coop is not implemented in Camouwolf: Chromium has no switch for it, and none is " +
-				"needed. Playwright reaches elements inside cross-origin iframes on Chromium as it is.",
-		);
-	}
-	if (allow_addon_new_tab) {
-		throw new NotImplementedError(
-			"allow_addon_new_tab is not implemented in Camouwolf: the launcher does not stop an " +
-				"extension from opening a tab, so there is nothing to allow.",
-		);
-	}
+	const preset = pyTruthy(fingerprint_preset)
+		? presetIdentity(fingerprint_preset)
+		: null;
 	// main_world_eval: nothing to switch on. Playwright evaluates in the page's
 	// main world on Chromium.
 
@@ -2100,6 +2367,8 @@ export async function launchOptions({
 	config = { ...config };
 	addons = [...(addons ?? [])];
 	args = [...(args ?? [])];
+	const [browserProxy, socks5Credentials] = splitSocks5Credentials(proxy);
+	readCertificatePaths(config);
 
 	headless ??= false;
 	i_know_what_im_doing ??= false;
@@ -2157,6 +2426,28 @@ export async function launchOptions({
 	if (!i_know_what_im_doing) warnManualConfig(config);
 
 	let osOption: ListOrString | null | undefined = os;
+	if (preset) {
+		if (
+			pyTruthy(os) ||
+			pyTruthy(webgl_config) ||
+			(fingerprint !== undefined && fingerprint !== null)
+		) {
+			throw new ValueError(
+				"fingerprint_preset names the OS and GPU; it cannot be combined with os, " +
+					"webgl_config or fingerprint",
+			);
+		}
+		osOption = preset.os;
+		webgl_config = preset.webglConfig;
+	}
+	if (cpu !== undefined && cpu !== null) {
+		osOption = osesForCpu(
+			cpu,
+			pyTruthy(osOption)
+				? (osOption as ListOrString)
+				: [...ALLOWED_OS_TARGETS[utilsDeps.osName()]],
+		);
+	}
 	if (pyTruthy(osOption)) {
 		checkValidOs(osOption as ListOrString);
 		checkOsPolicy(
@@ -2221,7 +2512,18 @@ export async function launchOptions({
 		browserBinary,
 		displayBound,
 		virtualDisplay: Boolean(virtual_display),
+		cpu,
+		recorded: preset?.config,
 	});
+
+	// ---- browser behaviour ------------------------------------------------
+	setDefault(config, "allowAddonNewtab", Boolean(allow_addon_new_tab));
+	if (instant_animations) {
+		LeakWarning.warn(loadWarnings().instant_animations, i_know_what_im_doing);
+		config.instantAnimations = true;
+	}
+	if (show_cursor) config.showcursor = true;
+	if (socks5Credentials) config["proxy:socks5Credentials"] = socks5Credentials;
 
 	// ---- switches ----------------------------------------------------------
 	if (block_images) {
@@ -2252,6 +2554,11 @@ export async function launchOptions({
 		...PLAYWRIGHT_DISABLED_FEATURES,
 		...LAUNCHER_DISABLED_FEATURES,
 	];
+	if (disable_coop) {
+		LeakWarning.warn(loadWarnings().disable_coop, i_know_what_im_doing);
+		disabled.push("CrossOriginOpenerPolicy");
+	}
+	if (debug) args.push("--enable-logging=stderr");
 	// Chrome 137+ ignores --load-extension unless this feature is off.
 	if (addons.length) disabled.push("DisableLoadExtensionCommandLineSwitch");
 	args.push(`--disable-features=${disabled.join(",")}`);
@@ -2333,7 +2640,9 @@ export async function launchOptions({
 		// Python pretty-prints with pprint(); the layout differs, the content
 		// does not.
 		utilsDeps.print("[DEBUG] Config:");
-		utilsDeps.print(inspect(config, { depth: null, sorted: true }));
+		utilsDeps.print(
+			inspect(maskedConfig(config), { depth: null, sorted: true }),
+		);
 	}
 	Object.assign(env, getEnvVars(config, targetOs, browserBinary));
 
@@ -2358,7 +2667,7 @@ export async function launchOptions({
 		env,
 		headless,
 		ignoreDefaultArgs,
-		...(pyTruthy(proxy) ? { proxy } : {}),
+		...(pyTruthy(browserProxy) ? { proxy: browserProxy } : {}),
 		...passthrough,
 	};
 }

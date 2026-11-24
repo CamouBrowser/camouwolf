@@ -1,4 +1,6 @@
+import base64
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -10,7 +12,7 @@ from os import environ
 from os.path import abspath
 from pathlib import Path
 from pprint import pprint
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import orjson
 from typing_extensions import TypeAlias
@@ -770,6 +772,11 @@ def launch_full_version(from_options: Dict[str, Any]) -> str:
     return full_version
 
 
+# Keys of the browser rather than of a machine, which a context keeps from the
+# launch: its renderers read the context's config in place of the launch's.
+BROWSER_KEYS = ('network:ipv4Only', 'allowAddonNewtab', 'instantAnimations', 'showcursor')
+
+
 def context_identity(
     from_options: Dict[str, Any],
     *,
@@ -837,8 +844,7 @@ def context_identity(
         browser_binary=from_options['executable_path'],
         launch=launch,
     )
-    if 'network:ipv4Only' in launch:
-        identity['network:ipv4Only'] = launch['network:ipv4Only']
+    identity.update({k: launch[k] for k in BROWSER_KEYS if k in launch})
     # The browser serves navigator.languages from the context's language pref.
     identity.pop('navigator.languages', None)
     if not languages:
@@ -878,7 +884,7 @@ def new_context_options(
 
 
 def set_context_identity_params(context_id: str, identity: Dict[str, Any], languages: List[str]) -> Dict[str, Any]:
-    """Target.setBrowserContextIdentity's parameters (patch 0032)."""
+    """Target.setBrowserContextIdentity's parameters (patch 0034)."""
     return {
         'browserContextId': context_id,
         'identity': orjson.dumps(identity).decode('utf-8'),
@@ -1019,6 +1025,127 @@ The launch
 """
 
 
+class PresetIdentity(NamedTuple):
+    os: str
+    webgl_config: Tuple[str, str]
+    config: Dict[str, Any]
+
+
+# A preset's fields and the config keys they set; the rest of the identity is
+# drawn from an fpgen record of a machine with the preset's GPU.
+_PRESET_KEYS = {
+    'navigator': {'hardwareConcurrency': 'navigator.hardwareConcurrency', 'maxTouchPoints': 'navigator.maxTouchPoints'},
+    'screen': {
+        'width': 'screen.width', 'height': 'screen.height', 'colorDepth': 'screen.colorDepth',
+        'availWidth': 'screen.availWidth', 'availHeight': 'screen.availHeight',
+        'devicePixelRatio': 'window.devicePixelRatio',
+    },
+}
+
+
+def preset_identity(preset: Dict[str, Any]) -> PresetIdentity:
+    """The OS, GPU and recorded values of a Camoufox-format preset recorded
+    from Chrome. Its user agent names only the OS: the version is the binary's."""
+    if not isinstance(preset, dict):
+        raise ValueError(f'fingerprint_preset must be a dict, not {type(preset).__name__}')
+    user_agent = str((preset.get('navigator') or {}).get('userAgent') or '')
+    if 'Chrome/' not in user_agent or 'Firefox/' in user_agent:
+        raise NonChromeFingerprint(
+            f'fingerprint_preset was not recorded from Chrome (its user agent is {user_agent!r}); '
+            'a Firefox preset describes a browser Camouwolf is not'
+        )
+    target_os = clienthints.ua_os(user_agent)
+    if target_os is None:
+        raise ValueError(f'fingerprint_preset user agent {user_agent!r} names no desktop OS')
+    webgl = preset.get('webgl') or {}
+    if not (webgl.get('unmaskedVendor') and webgl.get('unmaskedRenderer')):
+        raise ValueError('fingerprint_preset needs webgl.unmaskedVendor and webgl.unmaskedRenderer')
+    config = {
+        key: preset[section][field]
+        for section, fields in _PRESET_KEYS.items()
+        for field, key in fields.items()
+        if preset.get(section, {}).get(field) is not None
+    }
+    if preset.get('timezone'):
+        config['timezone'] = preset['timezone']
+    return PresetIdentity(OS_NAMES[target_os], (webgl['unmaskedVendor'], webgl['unmaskedRenderer']), config)
+
+
+def oses_for_cpu(cpu: Any, os: ListOrString) -> ListOrString:
+    """The OSes in `os` that have `cpu`; ValueError when none does."""
+    names = [os] if isinstance(os, str) else list(os)
+    fits, errors = [], []
+    for name in names:
+        try:
+            coherence.resolve_cpu(cpu, OS_KEYS.get(name, name))
+            fits.append(name)
+        except ValueError as e:
+            errors.append(str(e))
+    if not fits:
+        raise ValueError(f'cpu={cpu!r}: ' + '; '.join(errors))
+    return os if isinstance(os, str) else fits
+
+
+SOCKS5_DEFAULT_PORT = 1080
+
+
+def socks5_proxy_key(server: str) -> str:
+    """The "host:port" the browser looks a SOCKS5 proxy's credentials up by:
+    the proxy's canonical host and port, as net::HostPortPair prints them."""
+    _, host, port = Proxy.parse_server(server)
+    host = host.strip('[]').lower()
+    try:
+        host = ipaddress.ip_address(host).compressed
+    except ValueError:
+        pass
+    host = f'[{host}]' if ':' in host else host
+    return f'{host}:{port or SOCKS5_DEFAULT_PORT}'
+
+
+def split_socks5_credentials(
+    proxy: Optional[Dict[str, str]],
+) -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, Dict[str, str]]]]:
+    """A socks5 proxy without its credentials, for Playwright (which refuses
+    them for Chromium), and the credentials as proxy:socks5Credentials, which
+    the browser reads from its config rather than from argv."""
+    if not proxy or not proxy.get('username') or Proxy.parse_server(proxy['server'])[0] != 'socks5':
+        return proxy, None
+    username, password = proxy['username'], proxy.get('password') or ''
+    for field, value in (('username', username), ('password', password)):
+        if not 1 <= len(value.encode()) <= 255:
+            raise ValueError(f'A SOCKS5 {field} is 1 to 255 bytes (RFC 1929)')
+    stripped = {k: v for k, v in proxy.items() if k not in ('username', 'password')}
+    return stripped, {socks5_proxy_key(proxy['server']): {'username': username, 'password': password}}
+
+
+def masked_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """The config with proxy credentials masked, for printing."""
+    credentials = config.get('proxy:socks5Credentials')
+    if not credentials:
+        return config
+    return {
+        **config,
+        'proxy:socks5Credentials': {key: {'username': entry['username'], 'password': '***'}
+                                    for key, entry in credentials.items()},
+    }
+
+
+_PEM_CERTIFICATE = re.compile(r'-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----', re.S)
+
+
+def read_certificate_paths(config: Dict[str, Any]) -> None:
+    """Move certificatePaths into certificates: each file's certificates, PEM
+    or DER, as the base64 DER the browser trusts."""
+    paths = config.pop('certificatePaths', None) or []
+    certificates = [_PEM_CERTIFICATE.sub(lambda m: m[1], c) for c in config.get('certificates') or []]
+    for path in paths:
+        data = Path(path).read_bytes()
+        bodies = _PEM_CERTIFICATE.findall(data.decode('latin-1'))
+        certificates.extend(bodies or [base64.b64encode(data).decode()])
+    if certificates:
+        config['certificates'] = [re.sub(r'\s+', '', c) for c in certificates]
+
+
 def speaks(language: str) -> Callable[[Any], bool]:
     """An fpgen condition on navigator.languages: the first is `language`'s."""
     wanted = language.split('-')[0].lower()
@@ -1035,8 +1162,11 @@ def draw_fingerprint(
     window: Optional[Tuple[int, int]],
     webgl_config: Optional[Tuple[str, str]],
     language: Optional[str] = None,
+    cpu: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Draw an fpgen Chrome fingerprint whose GPU the identity may claim.
+
+    With `cpu`, a record of a machine that has that CPU (see launch_options).
 
     With `language`, a record of Chrome in that language where fpgen has one:
     a machine's voices and fonts follow the language its OS was installed in.
@@ -1066,6 +1196,19 @@ def draw_fingerprint(
     else:
         gpu = usable_gpu
 
+    if cpu is not None:
+        claims = [(OS_KEYS[name], coherence.resolve_cpu(cpu, OS_KEYS[name])) for name in names]
+        if webgl_config:
+            misfits = [coherence.cpu_misfit(webgl_config[1], None, os_key, *claim) for os_key, claim in claims]
+            if all(misfits):
+                raise ValueError(f'cpu={cpu!r}: no machine has {misfits[0]}')
+        any_gpu = gpu
+
+        def gpu(value: Any) -> bool:
+            return any_gpu(value) and any(
+                not coherence.cpu_misfit(value.get('renderer'), None, os_key, *claim) for os_key, claim in claims
+            )
+
     conditions: Dict[str, Any] = {'gpu': gpu}
     if language:
         conditions['languages'] = speaks(language)
@@ -1094,6 +1237,11 @@ def draw_fingerprint(
         if coherence.machine_misfit(
             fingerprint['gpu']['renderer'], drawn_os, (fingerprint.get('navigator') or {}).get('hardwareConcurrency'),
             (fingerprint.get('screen') or {}).get('width'), (fingerprint.get('screen') or {}).get('height'),
+        ):
+            continue
+        if cpu is not None and coherence.cpu_misfit(
+            fingerprint['gpu']['renderer'], (fingerprint.get('navigator') or {}).get('hardwareConcurrency'),
+            drawn_os, *coherence.resolve_cpu(cpu, drawn_os),
         ):
             continue
         return fingerprint
@@ -1132,12 +1280,16 @@ def draw_identity(
     display_bound: Optional[Screen] = None,
     virtual_display: bool = False,
     launch: Optional[Dict[str, Any]] = None,
+    cpu: Optional[Dict[str, str]] = None,
+    recorded: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Optional[List[str]], str]:
     """A whole identity: the config, its language list, and its OS.
 
     `config` holds the caller's keys, which win over drawn ones. With `launch`
     (the browser's own config) it is a context's identity: the screen, window
     and core count are the launch's, which one browser process cannot vary.
+    `recorded` holds a preset's values, which stand as a caller's would except
+    the core count.
     """
     _caller_keys = frozenset(config)
     _user_set_screen_window = is_domain_set(config, 'screen.', 'window.')
@@ -1199,7 +1351,7 @@ def draw_identity(
         window = None
     if fingerprint is None and 'navigator.userAgent' not in config:
         fingerprint = draw_fingerprint(
-            os, screen or display_bound, window, webgl_config, languages[0] if languages else None
+            os, screen or display_bound, window, webgl_config, languages[0] if languages else None, cpu
         )
     elif fingerprint is not None:
         if webgl_config:
@@ -1218,6 +1370,11 @@ def draw_identity(
 
     if fingerprint is not None:
         merge_into(config, from_fpgen(fingerprint, chrome_version=milestone))
+    if recorded:
+        recorded = {k: v for k, v in recorded.items() if k not in _caller_keys}
+        config.update(recorded)
+        _caller_keys |= set(recorded) - {'navigator.hardwareConcurrency'}
+        _user_set_screen_window = _user_set_screen_window or is_domain_set(recorded, 'screen.', 'window.')
     # Patch 0012 shows the host's voices only when the key is absent, so it is
     # always sent: the recorded list, or none, never the host's.
     config.setdefault('voices', [])
@@ -1232,6 +1389,9 @@ def draw_identity(
         ),
     )
     config.setdefault('navigator.platform', clienthints.NAV_PLATFORM[target_os])
+    cpu_claim = coherence.resolve_cpu(cpu, target_os) if cpu is not None else None
+    if cpu_claim:
+        config.setdefault('userAgentData.architecture', cpu_claim[0])
     clienthints.fill_client_hints(config, target_os, full_version)
 
     # The core count a page can measure is the host's, unless the browser is
@@ -1241,6 +1401,12 @@ def draw_identity(
         config['navigator.hardwareConcurrency'] = launch.get('navigator.hardwareConcurrency')
     elif 'navigator.hardwareConcurrency' not in _caller_keys:
         fix_hardware_concurrency(config, can_pin=bool(pin_cpu_cores))
+    if cpu_claim:
+        misfit = coherence.cpu_misfit(
+            config.get('webGl:renderer'), config.get('navigator.hardwareConcurrency'), target_os, *cpu_claim
+        )
+        if misfit:
+            raise ValueError(f'cpu={cpu!r}: no machine has {misfit}')
 
     # ---- fonts -------------------------------------------------------------
     if custom_fonts_only:
@@ -1327,6 +1493,8 @@ def launch_options(
     block_webrtc: Optional[bool] = None,
     block_webgl: Optional[bool] = None,
     disable_coop: Optional[bool] = None,
+    instant_animations: Optional[bool] = None,
+    show_cursor: Optional[bool] = None,
     webgl_config: Optional[Tuple[str, str]] = None,
     cpu: Optional[Dict[str, str]] = None,
     geoip: Optional[Union[str, bool]] = None,
@@ -1385,8 +1553,16 @@ def launch_options(
         block_webgl (Optional[bool]):
             Whether to block WebGL. To prevent leaks, only use this for special cases.
         disable_coop (Optional[bool]):
-            Not implemented: raises NotImplementedError. Playwright reaches
-            cross-origin iframes in Chromium without it.
+            Ignore Cross-Origin-Opener-Policy headers, so a popup a COOP page
+            opens keeps its opener. A COOP page is then not crossOriginIsolated,
+            which it can read, so it warns.
+        instant_animations (Optional[bool]):
+            Finish every finite CSS and Web Animation at once. A page reads the
+            zero duration back, so it warns.
+        show_cursor (Optional[bool]):
+            Show where automation clicks, with DevTools' click visualization:
+            a ripple at each mouse or pointer press, painted in the overlay a
+            page cannot read. Screenshots and a watched window show it.
         geoip (Optional[Union[str, bool]]):
             Calculate longitude, latitude, timezone, country, & locale based on the IP address.
             Pass the target IP address to use, or `True` to find the IP address automatically.
@@ -1420,7 +1596,13 @@ def launch_options(
         fingerprint (Optional[Dict[str, Any]]):
             An fpgen Chrome fingerprint to use instead of drawing one.
         fingerprint_preset (Optional[Union[bool, Dict[str, Any]]]):
-            Not implemented: raises NotImplementedError. Camouwolf bundles no presets.
+            A device recorded from real Chrome, in Camoufox's preset format:
+            {"navigator": {"userAgent", "hardwareConcurrency", "maxTouchPoints"},
+            "screen": {"width", "height", "colorDepth", "availWidth",
+            "availHeight", "devicePixelRatio"}, "webgl": {"unmaskedVendor",
+            "unmaskedRenderer"}, "timezone"}. The rest is drawn from an fpgen
+            record of a machine with that GPU, and the version is the binary's.
+            True raises ValueError: no Chrome presets are bundled.
         chrome_version (Optional[int]):
             Chromium milestone to claim. Defaults to the browser's own; another
             one disagrees with what the binary can do, and warns.
@@ -1436,7 +1618,9 @@ def launch_options(
             page's main world on Chromium, with or without the "mw:" prefix,
             which JavaScript reads as a label.
         allow_addon_new_tab (Optional[bool]):
-            Not implemented: raises NotImplementedError when set.
+            Let extensions open tabs and windows of their own (chrome.tabs.create,
+            chrome.windows.create, an options page). Off by default, so
+            automation sees only the pages it opened.
         executable_path (Optional[Union[str, Path]]):
             Custom Camouwolf browser executable path. CAMOUWOLF_EXECUTABLE_PATH
             in the environment does the same.
@@ -1451,6 +1635,9 @@ def launch_options(
         proxy (Optional[Dict[str, str]]):
             Proxy to use for the browser.
             Note: If geoip is True, a request will be sent through this proxy to find the target IP.
+            A socks5:// proxy may carry a username and password: the browser
+            answers the proxy's RFC 1929 challenge with them. They travel in
+            the config's environment variables, never on the command line.
         enable_cache (Optional[bool]):
             Keep the HTTP disk cache. Off by default.
         args (Optional[List[str]]):
@@ -1461,7 +1648,8 @@ def launch_options(
         env (Optional[Dict[str, Union[str, float, bool]]]):
             Environment variables to set.
         debug (Optional[bool]):
-            Prints the config being sent to Camouwolf.
+            Prints the config being sent to Camouwolf, with proxy credentials
+            masked, and has the browser log to stderr (--enable-logging=stderr).
         virtual_display (Optional[Union[str, VirtualDisplay]]):
             Virtual display number. Ex: ':99'. This is handled by Camouwolf & AsyncCamouwolf,
             which pass a display not yet started; it is sized to the identity and started here.
@@ -1476,8 +1664,12 @@ def launch_options(
             recorded from Chrome on `os` (camouwolf.webgl.chrome_gpus); the
             whole identity is then drawn from a machine with that GPU.
         cpu (Optional[Dict[str, str]]):
-            Not implemented: raises NotImplementedError. The browser computes as
-            the host's CPU does.
+            The CPU the identity claims: {'arch': 'x86' or 'arm', 'manufacturer':
+            ...}, either key optional (a manufacturer implies its arch). It is
+            Sec-CH-UA-Arch, and the GPU is drawn from machines with that CPU.
+            Manufacturers: windows x86 intel or amd, arm qualcomm; macos x86
+            intel, arm apple; linux x86 intel or amd. The browser still computes
+            as the host's x86-64 CPU does.
         canvas_noise (Optional[bool]):
             Perturb canvas readback with a per-identity seed (canvas:seed and
             canvas:randomizeReadback). Stock Chrome does not, so it warns. Off by default.
@@ -1496,26 +1688,13 @@ def launch_options(
         )
     if ff_version is not None:
         raise NotImplementedError("ff_version is Camoufox's option. Use chrome_version (a Chromium milestone).")
-    if cpu is not None:
-        raise NotImplementedError(
-            'cpu= is not implemented in Camouwolf: the browser has no cpu:arch / cpu:manufacturer '
-            'keys and computes as the host CPU does.'
+    if fingerprint_preset is True:
+        raise ValueError(
+            'fingerprint_preset=True picks a bundled preset, and Camouwolf bundles none: Camoufox\'s '
+            'presets are recorded from Firefox. Pass a preset recorded from Chrome as a dict, or leave '
+            'it unset to draw an fpgen fingerprint.'
         )
-    if fingerprint_preset:
-        raise NotImplementedError(
-            'fingerprint_preset is not implemented in Camouwolf: no presets are bundled. '
-            'Leave it unset to draw an fpgen fingerprint, or pass one as `fingerprint`.'
-        )
-    if disable_coop:
-        raise NotImplementedError(
-            'disable_coop is not implemented in Camouwolf: Chromium has no switch for it, and none is '
-            'needed. Playwright reaches elements inside cross-origin iframes on Chromium as it is.'
-        )
-    if allow_addon_new_tab:
-        raise NotImplementedError(
-            'allow_addon_new_tab is not implemented in Camouwolf: the launcher does not stop an '
-            'extension from opening a tab, so there is nothing to allow.'
-        )
+    preset = preset_identity(fingerprint_preset) if fingerprint_preset else None
     # main_world_eval: nothing to switch on. See the docstring.
 
     # The launch fills these in, so it works on copies: a caller's mapping
@@ -1524,6 +1703,8 @@ def launch_options(
     config = dict(config or {})
     addons = list(addons or [])
     args = list(args or [])
+    browser_proxy, socks5_credentials = split_socks5_credentials(proxy)
+    read_certificate_paths(config)
 
     if headless is None:
         headless = False
@@ -1573,6 +1754,13 @@ def launch_options(
     # ---- the identity ------------------------------------------------------
     if not i_know_what_im_doing:
         warn_manual_config(config)
+    if preset:
+        if os or webgl_config or fingerprint is not None:
+            raise ValueError('fingerprint_preset names the OS and GPU; it cannot be combined with os, '
+                             'webgl_config or fingerprint')
+        os, webgl_config = preset.os, preset.webgl_config
+    if cpu is not None:
+        os = oses_for_cpu(cpu, os or list(ALLOWED_OS_TARGETS[OS_NAME]))
     if os:
         check_valid_os(os)
         check_os_policy([os] if isinstance(os, str) else list(os), allow_os_mismatch)
@@ -1621,7 +1809,19 @@ def launch_options(
         browser_binary=browser_binary,
         display_bound=display_bound,
         virtual_display=bool(virtual_display),
+        cpu=cpu,
+        recorded=preset.config if preset else None,
     )
+
+    # ---- browser behaviour ------------------------------------------------
+    config.setdefault('allowAddonNewtab', bool(allow_addon_new_tab))
+    if instant_animations:
+        LeakWarning.warn(WARNINGS_DATA['instant_animations'], i_know_what_im_doing)
+        config['instantAnimations'] = True
+    if show_cursor:
+        config['showcursor'] = True
+    if socks5_credentials:
+        config['proxy:socks5Credentials'] = socks5_credentials
 
     # ---- switches ----------------------------------------------------------
     if block_images:
@@ -1644,6 +1844,11 @@ def launch_options(
     # A repeated --disable-features replaces Playwright's own list (Chromium
     # reads the last one), so that list is restated with the launcher's.
     disabled = [*PLAYWRIGHT_DISABLED_FEATURES, *LAUNCHER_DISABLED_FEATURES]
+    if disable_coop:
+        LeakWarning.warn(WARNINGS_DATA['disable_coop'], i_know_what_im_doing)
+        disabled.append('CrossOriginOpenerPolicy')
+    if debug:
+        args.append('--enable-logging=stderr')
     if addons:
         # Chrome 137+ ignores --load-extension unless this feature is off.
         disabled.append('DisableLoadExtensionCommandLineSwitch')
@@ -1702,7 +1907,7 @@ def launch_options(
         env['DISPLAY'] = owned_display.get()
     if debug:
         print('[DEBUG] Config:')
-        pprint(config)
+        pprint(masked_config(config))
     env.update(get_env_vars(config, target_os, path=browser_binary))
 
     ignored = launch_options.pop('ignore_default_args', None)
@@ -1719,6 +1924,6 @@ def launch_options(
         'env': env,
         'headless': headless,
         'ignore_default_args': ignore_default_args,
-        **({'proxy': proxy} if proxy else {}),
+        **({'proxy': browser_proxy} if browser_proxy else {}),
         **launch_options,
     }

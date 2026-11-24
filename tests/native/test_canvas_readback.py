@@ -3,7 +3,7 @@
 An accelerated canvas answers its first read from the GPU and, after a few
 reads, from a CPU copy. Ganesh unpremultiplied the GPU read in a shader, which
 rounds low-alpha pixels differently from the CPU, so read 1 differed from read
-2 on Linux and on no real Windows machine (0032). SwiftShader with the
+2 on Linux and on no real Windows machine (0037). SwiftShader with the
 blocklist ignored gives an accelerated canvas without a GPU, so the runner can
 reproduce it.
 """

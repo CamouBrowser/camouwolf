@@ -1,6 +1,6 @@
 """Input that Playwright drives reaches the page as a person's input does.
 
-0032, 0033 and 0034 in docs/PATCHES.md.
+0038, 0039 and 0040 in docs/PATCHES.md.
 """
 
 from playwright.async_api import Page

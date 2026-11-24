@@ -1,6 +1,6 @@
 # The patch series
 
-31 diffs in `browser/patches/`, applied in `series` order against the Chromium
+45 diffs in `browser/patches/`, applied in `series` order against the Chromium
 tag pinned in `browser/upstream.sh`.
 
 Two rules govern all of them:
@@ -353,9 +353,12 @@ process is never asked for the host layout.
 
 ### 0015 — network information
 
-`network_information.cc`. `rtt` and `downlink`. Low entropy on their own, but a
-strong residency signal beside the claimed timezone and exit IP: a "residential
-US" identity reporting 0 ms RTT is reporting a datacenter link.
+`network_information.cc`. `connection.rtt` and `connection.downlink`, for a
+caller who wants a different network than the one measured. A configured value
+goes through `RoundRtt`/`RoundMbps` for the page's host, as a measured one does:
+a per-host multiplier of 0.9 to 1.1, then 50 ms or 50 kbps steps. Returned raw,
+it read the same on every origin and could sit off Chrome's grid. The launcher
+writes neither (WINDOWS-DIVERGENCE.md §2.5).
 
 ### 0017 — automation invisibility
 
@@ -500,7 +503,7 @@ Chrome does not expose the touch event handlers even with a touchscreen (touch
 event feature detection defaults to disabled outside Android and iOS).
 
 The pointer is stated whole, headless or not, and per page from the identity of
-the page's browser context (0032). Playwright's headless launch states a mouse
+the page's browser context (0034). Playwright's headless launch states a mouse
 on the command line (`--blink-settings`), which the renderer applies after
 these preferences and so would answer for every context; the launchers drop it.
 
@@ -666,7 +669,7 @@ each OS:
   That matters only to a Linux identity and is not changed.
 - **Wheel units.** A Windows or Linux mouse wheel scrolls by pixels and
   animates; a protocol wheel event is precise and jumps, like a touchpad. Only
-  the scroll's timing shows it; 0032 matches the values a page reads.
+  the scroll's timing shows it; 0038 matches the values a page reads.
 - **Drag source events.** Blink fires `drag` before each `dragover` for a
   protocol drag as for a native one; Playwright sends a single move.
 - **Pointer lock.** Headed, a locked pointer reports `movementX`/`movementY`
@@ -748,7 +751,7 @@ for a proxied launch. A proxied context without either key has no network and
 gathers no host candidate. `block_webrtc=True` still passes the 0030 switch,
 which leaves a page no UDP at all.
 
-### 0032 — per-context identity
+### 0034 — per-context identity
 
 A Playwright context made by the launchers' `NewContext()` is another machine
 than the rest of the browser. Every surface a page can read answers with the
@@ -805,7 +808,7 @@ proxied one is placed at the proxy's exit, looked up through the proxy.
 **Not supported.** `storageState` with origins' localStorage: Playwright writes
 it from a page before the launcher can identify the context. Cookies work.
 
-### 0032 — the identity's platform codecs
+### 0035 — the identity's platform codecs
 
 `supported_types.cc`, `mojo_audio_encoder.cc`, `media_capabilities.cc`,
 WebCodecs `video_decoder.cc`, `video_decoder_broker.cc` and `video_encoder.cc`,
@@ -847,7 +850,7 @@ playback, hardware encode, AAC encode and H265 or H264 High in WebRTC fail at
 use. None of those formats was negotiable before, so nothing that worked stops
 working ([`platform-codec-claims-fail-at-use`](../ci/tribal-rules.yml)).
 
-### 0033 — Battery Status API
+### 0036 — Battery Status API
 
 `battery_dispatcher.cc`. With `battery:charging` and `battery:level` set,
 `navigator.getBattery()` answers from them and never asks the host's battery
@@ -898,7 +901,7 @@ Those three follow the editing behaviour 0029 picks, so a `Win32` identity gets
 Windows' and every other launch keeps Linux's. macOS's bindings are not ported;
 see "Not yet patched".
 
-### 0032 — canvas first read
+### 0037 — canvas first read
 
 `mailbox_texture_backing.cc`. An accelerated 2D canvas answers its first
 `getImageData` from the GPU and, after a few reads, from a CPU copy.
@@ -911,7 +914,7 @@ premultiplied pixels back and unpremultiplies them on the CPU, as the later
 reads do. `--disable-accelerated-2d-canvas` (the `virtual-gpu` launch) never
 had the problem. Regression test: `tests/native/test_canvas_readback.py`.
 
-### 0032 — protocol wheel ticks
+### 0038 — protocol wheel ticks
 
 `content/browser/devtools/protocol/input_handler.cc`. A protocol wheel event
 (`Input.dispatchMouseEvent`, what `mouse.wheel` sends) is one tick whatever its
@@ -922,7 +925,7 @@ tick per notch: Windows scrolls 100 px a notch, so `wheelDelta` is 1.2 times
 the tick count is the delta in those pixels. A launch with no config keeps
 upstream's.
 
-### 0033 — protocol drag buttons
+### 0039 — protocol drag buttons
 
 `content/browser/devtools/protocol/input_handler.cc`. Playwright drags with
 `Input.dispatchDragEvent`, which carries only key modifiers, so `buttons` was 0
@@ -930,7 +933,7 @@ on `drag`, `dragenter`, `dragover` and `drop`. A drag is made with the left
 button held, and a page reads `buttons == 1` on each of them; `dragend` comes
 after the release and stays 0.
 
-### 0034 — trusted events from the automation world
+### 0040 — trusted events from the automation world
 
 `third_party/blink/renderer/core/dom/events/event_target.cc`. `select_option`
 and `fill` on a date, time or colour input set the value from a DevTools
@@ -938,3 +941,59 @@ isolated world and dispatch `input` and `change` there, which made them
 untrusted; the same choice by a user is trusted. An event dispatched from a
 `kInspectorIsolated` world is now trusted. Page script, the main-world
 `dispatch_event` and extension worlds still dispatch untrusted events.
+
+### 0041 — SOCKS5 username and password (`proxy:socks5Credentials`)
+
+`net/socket/socks5_client_socket.{h,cc}`, `socks_connect_job.cc`, and 0031's
+`ProxiedUdpSocket`. Chromium speaks SOCKS5 without authentication only, so a
+proxy that wants a password refused every connection. The client now offers
+username/password (RFC 1929) beside no authentication when the launch gave
+credentials for that proxy, and sends them if the proxy picks that method; a
+refusal fails the connection. The page path (CONNECT) and WebRTC's relay
+(UDP ASSOCIATE) share the greeting and request builders.
+
+The launcher takes the credentials off the proxy Playwright sees and writes
+them to `proxy:socks5Credentials`, keyed by the proxy as `host:port` (lowercase,
+IPv6 in brackets, port 1080 by default), so they never appear in argv. Each
+field is 1 to 255 bytes of UTF-8, as RFC 1929 allows; the launcher refuses a
+longer one. A context-level SOCKS5 proxy with a password is still refused by
+Playwright.
+
+### 0042 — closed shadow roots for automation
+
+`element.{idl,h,cc}`. `Element.shadowRoot` returns a closed root to DevTools'
+isolated world, where Playwright's selector engine runs, so a locator reaches
+into a closed root as a user's click can. The page's own worlds still get
+`null`; no page script can run in that world.
+
+### 0043 — instant animations (`instantAnimations`)
+
+`animation_effect.cc`. Every finite CSS animation, transition and Web
+Animation gets a zero iteration duration, so it finishes at once and automation
+never waits on one. Infinite animations keep running. Off by default and the
+launcher warns: a page reads the zero duration back through
+`getComputedTiming()`.
+
+### 0044 — extension tabs (`allowAddonNewtab`)
+
+`tabs_api.cc`, `windows_api.cc`, `runtime_api.cc`. With the key false (the
+launcher's default) `chrome.tabs.create`, `chrome.windows.create` and
+`chrome.runtime.openOptionsPage` fail with "Opening a tab is disabled", so an
+extension's welcome or options page never appears beside the pages automation
+opened. The extension sees an API error, not a missing API.
+
+### 0045 — CA certificates (`certificates`)
+
+`profile_network_context_service.cc`. Each base64 DER certificate in the key is
+added as a trust anchor exactly as the `CACertificates` policy adds one, so a
+launch can trust the CA of a proxy that terminates TLS without a policy file or
+a certificate database in the user's home. The launcher turns
+`certificatePaths` (PEM or DER files) into this key.
+
+### 0046 — show cursor (`showcursor`)
+
+`web_dev_tools_agent_impl.cc`. Turns on DevTools' click visualization for every
+session an automation driver attaches: a 350 ms ripple at each mouse or pointer
+press, painted in the frame overlay a page cannot read. It shows where clicks
+land, not where the pointer rests: Chromium draws no pointer in a page, and a
+hover-only position would need a page-visible element. Off by default.

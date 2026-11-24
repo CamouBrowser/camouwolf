@@ -1,0 +1,25 @@
+diff --git a/third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc b/third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc
+--- a/third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc
++++ b/third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc
+@@ -36,6 +36,7 @@
+ #include <utility>
+ 
+ #include "base/auto_reset.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/unguessable_token.h"
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -573,7 +574,12 @@
+ }
+ 
+ void WebDevToolsAgentImpl::UpdateInputVisualizationState() {
+-  bool clicks_enabled = false;
++  // CAMOUWOLF: showcursor turns on DevTools' click visualization for every
++  // session an automation driver attaches, so a watched or recorded run shows
++  // where it clicks. It paints in the overlay layer, which a page cannot read.
++  bool clicks_enabled =
++      !page_agents_.empty() &&
++      base::CamouwolfConfig::Get().GetBool("showcursor").value_or(false);
+   for (auto& it : page_agents_) {
+     if (it.value->IsInputVisualizationClicksEnabled()) {
+       clicks_enabled = true;

@@ -123,37 +123,68 @@
 # Target.setBrowserContextIdentity stores it against the browser context, the
 # browser answers that context's headers and client hints from it, and its
 # renderers adopt it at start-up. Contexts without one keep the launch's.
-0032-per-context-identity.patch
+0034-per-context-identity.patch
 
 # --- Media codecs of the identity's platform ----------------------------------
 # The hardware decoders and encoders a page can find (HEVC playback, WebCodecs
 # prefer-hardware, powerEfficient, AAC and HEVC recording, WebRTC H264 High and
 # H265) are the identity's GPU and OS, from media:platformDecoders,
 # media:platformEncoders, media:rtcEncodeFormats and media:rtcDecodeFormats.
-0032-media-platform-codecs.patch
+0035-media-platform-codecs.patch
 
 # --- Battery Status API ---------------------------------------------------------
 # navigator.getBattery() answers the identity's device (battery:charging,
 # battery:level) and never binds the host's battery monitor.
-0033-battery-status.patch
+0036-battery-status.patch
 
 # --- Canvas first read --------------------------------------------------------
 # An accelerated canvas's first getImageData unpremultiplied in a GPU shader and
 # every later one on the CPU, so low-alpha pixels (text edges) read differently
 # the first time. Real Windows Chrome returns the same bytes on every read.
-0032-canvas-cpu-unpremultiply.patch
+0037-canvas-cpu-unpremultiply.patch
 
 # --- protocol wheel ticks -----------------------------------------------------
 # A protocol wheel event is one tick whatever its delta; count ticks in the
 # pixels a notch scrolls on the claimed OS, so wheelDelta keeps its ratio to
 # deltaY.
-0032-protocol-wheel-ticks.patch
+0038-protocol-wheel-ticks.patch
 
 # --- protocol drag buttons ----------------------------------------------------
 # A protocol drag carries no mouse button; a real one holds the left button.
-0033-protocol-drag-buttons.patch
+0039-protocol-drag-buttons.patch
 
 # --- trusted events from the automation world ---------------------------------
 # select_option and a date fill dispatch input and change from a DevTools
 # isolated world; a user's choice makes them trusted.
-0034-automation-world-trusted-events.patch
+0040-automation-world-trusted-events.patch
+
+# --- SOCKS5 username/password -------------------------------------------------
+# Chromium speaks SOCKS5 without authentication only. This adds RFC 1929 for a
+# proxy the launch gave credentials for (proxy:socks5Credentials), on the TCP
+# path here and on 0031's UDP ASSOCIATE path, which shares the helpers.
+0041-socks5-password-auth.patch
+
+# --- Closed shadow roots for automation -------------------------------------
+# Element.shadowRoot returns a closed root to DevTools' isolated world, where
+# Playwright's selectors run, so locators reach into it. A page still gets null.
+0042-closed-shadow-root-automation.patch
+
+# --- Instant animations --------------------------------------------------------
+# instantAnimations: every finite animation finishes at once. Opt-in, since a
+# page reads the zero duration back.
+0043-instant-animations.patch
+
+# --- Extension tabs -------------------------------------------------------------
+# allowAddonNewtab: false stops an extension opening tabs, windows or its
+# options page, so automation sees only its own pages.
+0044-extension-new-tab.patch
+
+# --- CA certificates ------------------------------------------------------------
+# certificates: base64 DER certificates trusted as the CACertificates policy
+# trusts them, per launch, for a proxy that terminates TLS.
+0045-ca-certificates.patch
+
+# --- Show cursor ---------------------------------------------------------------
+# showcursor: DevTools' click visualization on every automation session, for
+# watching or recording a run. Opt-in.
+0046-show-cursor.patch

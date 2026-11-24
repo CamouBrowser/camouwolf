@@ -60,21 +60,26 @@ instance you own, and `launch_options(...)` returns the options for
 | `screen`, `window` | Constrain the drawn screen (`camouwolf.fingerprints.Screen`); fix the outer window size. |
 | `fingerprint` | An fpgen Chrome fingerprint to use instead of drawing one. |
 | `webgl_config` | A `(vendor, renderer)` pair fpgen has recorded from Chrome on `os`; the identity is drawn from a machine with that GPU. |
+| `fingerprint_preset` | A device recorded from real Chrome, in Camoufox's preset format (user agent, cores, touch points, screen, GPU, timezone); the rest is drawn from a machine fpgen recorded with that GPU. |
+| `cpu` | `{"arch": "x86" \| "arm", "manufacturer": "intel" \| "amd" \| "apple" \| "qualcomm"}`, either key optional. Narrows the drawn machine: the GPU it comes with, the OS, and `userAgentData`'s architecture; a CPU no machine has with the GPU raises `ValueError`. |
 | `config` | Config keys set directly; they win over drawn values. An unknown key raises `UnknownProperty`. |
 | `locale` | The UI and `Intl` locale (`--lang`), `navigator.languages`, and the `Accept-Language` header. One locale claims Chrome's default list for it (`de-DE` is `de-DE, de, en-US, en`); a non-persistent context serves that default for the first of a longer list, as Chrome does off the record. The identity is drawn from a machine set up in that language where fpgen records one, so its voices and fonts follow it; with `geoip`, the place's language does the same. |
-| `geoip`, `proxy` | `geoip=True` (or an IP) sets the timezone, locale and geolocation from the exit IP. Without a proxy, the browser behaves as on an IPv4-only network unless this host's IPv6 address geolocates to the same place, so a site reached over IPv6 cannot see an address elsewhere. |
+| `geoip`, `proxy` | `geoip=True` (or an IP) sets the timezone, locale and geolocation from the exit IP. A SOCKS5 proxy's `username` and `password` go to the browser in its config, not on the command line. Without a proxy, the browser behaves as on an IPv4-only network unless this host's IPv6 address geolocates to the same place, so a site reached over IPv6 cannot see an address elsewhere. |
 | `headless` | `True` (Chromium headless), `False`, `"virtual"` (headed on Xvfb), `"virtual-gpu"` (headed on a headless Xorg bound to `gpu`; `require_gpu`). |
 | `humanize` | `True`, or a dict of [myuri](https://pypi.org/project/myuri/) engines per channel. Runs in the driver, as in Camoufox. |
 | `fonts`, `custom_fonts_only` | Extra font families to report installed; or only those. |
 | `addons`, `exclude_addons` | Unpacked extension directories; `DefaultAddons.UBO` is uBlock Origin Lite. Extensions run only with `persistent_context=True`: Chromium runs none in the incognito-like contexts of a non-persistent launch (the launch warns). |
 | `block_images`, `block_webrtc`, `block_webgl`, `enable_cache` | As named. `block_webrtc` keeps WebRTC to TCP through the proxy. Without it, a proxied launch's WebRTC looks like a machine's at the proxy's exit: UDP goes through a SOCKS5 proxy's relay and through no other proxy, and with `geoip` its address is the exit's. |
+| `instant_animations`, `show_cursor` | Finish every finite animation at once (a page reads the zero duration back, so it warns); show a ripple where automation clicks, in the overlay a page cannot read. |
+| `disable_coop`, `allow_addon_new_tab` | Ignore `Cross-Origin-Opener-Policy` (warns); let extensions open tabs and windows of their own, which they cannot by default. |
+| `config={"certificates": [...]}`, `config={"certificatePaths": [...]}` | CA certificates (base64 DER, or PEM or DER files) trusted for this launch, for a proxy that terminates TLS. |
 | `chromium_prefs` | Merged into the profile's `Preferences`; needs `persistent_context=True` and `user_data_dir`. |
 | `chrome_version` | Claim another Chromium milestone than the browser's (warns). |
 | `canvas_noise` | Seeded canvas readback noise. Off by default, since stock Chrome has none. |
 | `pin_cpu_cores` | Pin the browser to as many cores as the identity reports. |
 | `args`, `env` | Extra switches and environment. |
 | `executable_path` | A specific build; `CAMOUWOLF_EXECUTABLE_PATH` does the same. |
-| `persistent_context`, `from_options`, `debug`, `i_know_what_im_doing` | As in Camoufox. |
+| `persistent_context`, `from_options`, `debug`, `i_know_what_im_doing` | As in Camoufox. `debug` also sends Chromium's log to stderr, and prints the config with proxy passwords masked. |
 
 ### How the identity reaches the browser
 
@@ -122,11 +127,14 @@ place and languages.
 |---|---|
 | `firefox_user_prefs` | Raises `NotImplementedError`; use `args`, or `chromium_prefs` with a persistent context. |
 | `ff_version` | Raises `NotImplementedError`; use `chrome_version`. |
-| `fingerprint_preset`, `cpu`, `disable_coop`, `allow_addon_new_tab` | Raise `NotImplementedError`. |
+| `fingerprint_preset=True` picks a bundled Firefox preset | Raises `ValueError`: no Chrome presets are bundled. A preset dict works. |
+| `cpu` | As in Camoufox, except that a Linux identity has no `arm` CPU: fpgen records no Chrome on Linux ARM. |
+| `showcursor` draws the pointer | `show_cursor` shows where clicks land, not where the pointer is: Chromium's DevTools click visualization. |
+| `memorysaver` | Not ported: Camoufox removed it. |
 | `main_world_eval` | Accepted, nothing to enable: Playwright evaluates in the main world on Chromium, and an isolated-world `evaluate` is not available. |
 | `addons` take `.xpi`-style extracted Firefox addons; uBlock Origin is bundled | Unpacked Chrome extensions; uBlock Origin Lite, installed by `camouwolf fetch`. |
 | `NewContext()` draws an identity per context | The same, on the browser's OS, screen, window and core count. `preset`, `ff_version` and `chrome_version` raise `NotImplementedError`: every context runs the browser's own build. |
-| SOCKS5 proxy authentication | Not available: Chromium does not support it. |
+| SOCKS5 proxy authentication | Supported (RFC 1929), for page traffic and WebRTC's UDP relay. A per-context `proxy` takes no SOCKS5 password. |
 | Xvfb screen `1x1` | The identity's screen in device pixels (screen × `devicePixelRatio`): the browser's real window renders at that ratio. `CAMOUWOLF_VIRTUAL_DISPLAY_SIZE` fixes the size instead, and the screen is then kept within it. |
 
 ## CLI

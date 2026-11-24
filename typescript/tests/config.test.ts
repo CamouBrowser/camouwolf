@@ -243,3 +243,59 @@ describe("the environment", () => {
 		expect(utils.launchConfig({ env: {} })).toEqual({});
 	});
 });
+
+describe("launcher-only keys", () => {
+	it("keys SOCKS5 credentials by the proxy's canonical host and port", () => {
+		expect(utils.socks5ProxyKey("socks5://Proxy.Example:1081")).toBe(
+			"proxy.example:1081",
+		);
+		expect(utils.socks5ProxyKey("socks5://127.0.0.1")).toBe("127.0.0.1:1080");
+		expect(utils.socks5ProxyKey("socks5://[0:0::1]:9050")).toBe("[::1]:9050");
+	});
+
+	it("takes SOCKS5 credentials off the proxy Playwright sees", () => {
+		const [proxy, credentials] = utils.splitSocks5Credentials({
+			server: "socks5://proxy.example:1081",
+			username: "user",
+			password: "pass",
+		});
+		expect(proxy).toEqual({ server: "socks5://proxy.example:1081" });
+		expect(credentials).toEqual({
+			"proxy.example:1081": { username: "user", password: "pass" },
+		});
+		const http = {
+			server: "http://proxy.example:8080",
+			username: "u",
+			password: "p",
+		};
+		expect(utils.splitSocks5Credentials(http)).toEqual([http, null]);
+		expect(() =>
+			utils.splitSocks5Credentials({
+				server: "socks5://proxy.example",
+				username: "u",
+				password: "x".repeat(256),
+			}),
+		).toThrow("A SOCKS5 password is 1 to 255 bytes (RFC 1929)");
+		expect(
+			utils.maskedConfig({ "proxy:socks5Credentials": credentials })[
+				"proxy:socks5Credentials"
+			],
+		).toEqual({ "proxy.example:1081": { username: "user", password: "***" } });
+	});
+
+	it("reads certificatePaths into base64 DER certificates", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "camouwolf-certs-"));
+		const der = Buffer.from([0x30, 0x82, 0x01, 0x0a]);
+		const body = der.toString("base64");
+		fs.writeFileSync(path.join(dir, "a.der"), der);
+		fs.writeFileSync(
+			path.join(dir, "b.pem"),
+			`-----BEGIN CERTIFICATE-----\n${body}\n-----END CERTIFICATE-----\n`,
+		);
+		const config: Record<string, any> = {
+			certificatePaths: [path.join(dir, "a.der"), path.join(dir, "b.pem")],
+		};
+		utils.readCertificatePaths(config);
+		expect(config).toEqual({ certificates: [body, body] });
+	});
+});

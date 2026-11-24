@@ -93,10 +93,12 @@ uint16_t PortAt(base::span<const uint8_t> data, size_t at) {
 
 std::unique_ptr<net::DatagramServerSocket> CreateUdpSocket(
     std::optional<net::IPEndPoint> socks5,
+    std::optional<net::Socks5Credentials> credentials,
     net::ClientSocketFactory* client_socket_factory,
     const net::NetworkTrafficAnnotationTag& traffic_annotation,
     net::NetLog* net_log) {
-  return std::make_unique<ProxiedUdpSocket>(socks5, client_socket_factory,
+  return std::make_unique<ProxiedUdpSocket>(socks5, credentials,
+                                            client_socket_factory,
                                             traffic_annotation, net_log);
 }
 
@@ -140,6 +142,8 @@ void ProxiedP2P::OnProxyResolved(int result) {
     Done(Route::kProxied);
     return;
   }
+  credentials_ = net::Socks5CredentialsFor(
+      proxy_info_.proxy_chain().First().host_port_pair());
   host_request_ = context_->host_resolver()->CreateRequest(
       proxy_info_.proxy_chain().First().host_port_pair(),
       network_anonymization_key_, net::handles::kInvalidNetworkHandle,
@@ -222,7 +226,7 @@ net::IPAddressList ProxiedP2P::Resolve(
 P2PSocketUdp::DatagramServerSocketFactory ProxiedP2P::UdpSocketFactory(
     const net::NetworkTrafficAnnotationTag& traffic_annotation) const {
   return base::BindRepeating(
-      &CreateUdpSocket, socks5_,
+      &CreateUdpSocket, socks5_, credentials_,
       base::Unretained(
           context_->GetNetworkSessionContext()->client_socket_factory.get()),
       traffic_annotation);
@@ -230,12 +234,14 @@ P2PSocketUdp::DatagramServerSocketFactory ProxiedP2P::UdpSocketFactory(
 
 ProxiedUdpSocket::ProxiedUdpSocket(
     std::optional<net::IPEndPoint> socks5,
+    std::optional<net::Socks5Credentials> credentials,
     net::ClientSocketFactory* client_socket_factory,
     const net::NetworkTrafficAnnotationTag& traffic_annotation,
     net::NetLog* net_log)
     : socket_(std::make_unique<net::UDPServerSocket>(net_log,
                                                      net::NetLogSource())),
       socks5_(socks5),
+      credentials_(std::move(credentials)),
       client_socket_factory_(client_socket_factory),
       traffic_annotation_(traffic_annotation) {
 #if BUILDFLAG(IS_WIN)
@@ -363,15 +369,32 @@ void ProxiedUdpSocket::OnConnected(int result) {
     Fail();
     return;
   }
-  // Version 5, one method: no authentication, the only one Chromium has.
-  Write({5, 1, 0}, base::BindOnce(&ProxiedUdpSocket::Read,
-                                  base::Unretained(this), 2,
-                                  base::BindOnce(&ProxiedUdpSocket::OnMethod,
-                                                 base::Unretained(this))));
+  Write(net::Socks5Greeting(credentials_.has_value()),
+        base::BindOnce(&ProxiedUdpSocket::Read, base::Unretained(this), 2,
+                       base::BindOnce(&ProxiedUdpSocket::OnMethod,
+                                      base::Unretained(this))));
 }
 
 void ProxiedUdpSocket::OnMethod() {
-  if (control_in_[0] != 5 || control_in_[1] != 0) {
+  // Method 2 is username/password (RFC 1929), offered only with credentials.
+  const bool password = credentials_ && control_in_[1] == 2;
+  if (control_in_[0] != 5 || (control_in_[1] != 0 && !password)) {
+    Fail();
+    return;
+  }
+  control_in_.clear();
+  if (password) {
+    Write(net::Socks5PasswordRequest(*credentials_),
+          base::BindOnce(&ProxiedUdpSocket::Read, base::Unretained(this), 2,
+                         base::BindOnce(&ProxiedUdpSocket::OnAuthenticated,
+                                        base::Unretained(this))));
+    return;
+  }
+  OnAuthenticated();
+}
+
+void ProxiedUdpSocket::OnAuthenticated() {
+  if (!control_in_.empty() && control_in_[1] != 0) {
     Fail();
     return;
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Camouwolf's own suite: settled decisions, leaks, and crash behaviour.
+"""Camouwolf's own suite: settled decisions, leaks, crashes, proxies and launch options.
 
 Everything the Playwright suite cannot ask about. Split in two so the cheap
 half gives fast feedback:
@@ -10,7 +10,10 @@ half gives fast feedback:
 
   --subset browser   needs a built binary. Launches browsers through the
                      launcher, closes and kills them, and checks from the
-                     process table that nothing was left behind.
+                     process table that nothing was left behind; runs a
+                     proxied launch's traffic through a local SOCKS5 proxy;
+                     and checks each launch option that changes what the
+                     browser does against a launch without it.
 
 Run:
     python3 -m ci.run_native --subset rules
@@ -35,7 +38,8 @@ SUITE_DIR = REPO_ROOT / "tests" / "native"
 
 FILES = {
     "rules": ["test_tribal_rules.py"],
-    "browser": ["test_no_leaks.py", "test_crash_recovery.py", "test_canvas_readback.py"],
+    "browser": ["test_no_leaks.py", "test_crash_recovery.py", "test_canvas_readback.py",
+                "test_webrtc_proxied.py", "test_launch_behaviour.py"],
 }
 
 

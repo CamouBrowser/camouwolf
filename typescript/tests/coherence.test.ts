@@ -193,4 +193,77 @@ describe("coherence", () => {
 			false,
 		);
 	});
+
+	it("makes the architecture the one the GPU comes with", () => {
+		const config = {
+			...windows(),
+			"webGl:renderer":
+				"ANGLE (Qualcomm, Qualcomm(R) Adreno(TM) 8cx Gen 3 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+		};
+		expect(rules(coherence.validate(config, "win")).has("architecture")).toBe(
+			true,
+		);
+		coherence.apply(config, "win");
+		expect(config["userAgentData.architecture"]).toBe("arm");
+	});
+
+	it("names the CPU a GPU can sit beside", () => {
+		expect(
+			coherence.gpuCpu(
+				"ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)",
+				"mac",
+			),
+		).toEqual(["arm", ["apple"]]);
+		expect(
+			coherence.gpuCpu(
+				"ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+				"win",
+			),
+		).toEqual(["x86", ["intel"]]);
+		expect(
+			coherence.gpuCpu(
+				"ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)",
+				"win",
+			),
+		).toEqual(["x86", ["amd"]]);
+		expect(coherence.gpuCpu(windows()["webGl:renderer"], "win")).toEqual([
+			"x86",
+			[],
+		]);
+		expect(
+			coherence.gpuCpu(
+				"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)",
+				"lin",
+			),
+		).toEqual([null, []]);
+	});
+
+	it("names a CPU the machine cannot have", () => {
+		const intelIgpu =
+			"ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)";
+		const nvidia = windows()["webGl:renderer"];
+		expect(coherence.cpuMisfit(intelIgpu, 8, "win", "x86", "amd")).toBeTruthy();
+		expect(coherence.cpuMisfit(nvidia, 14, "win", "x86", "amd")).toBeTruthy();
+		expect(coherence.cpuMisfit(nvidia, 16, "win", "x86", "amd")).toBeNull();
+	});
+
+	it("resolves a cpu option or says why no machine has it", () => {
+		expect(coherence.resolveCpu({ manufacturer: "apple" }, "mac")).toEqual([
+			"arm",
+			"apple",
+		]);
+		expect(coherence.resolveCpu({}, "win")).toEqual(["x86", null]);
+		expect(() => coherence.resolveCpu({ arch: "arm" }, "lin")).toThrow(
+			"no Linux identity has an arm CPU",
+		);
+		expect(() => coherence.resolveCpu({ manufacturer: "amd" }, "mac")).toThrow(
+			"no macOS identity has a CPU made by 'amd'",
+		);
+		expect(() =>
+			coherence.resolveCpu({ arch: "arm", manufacturer: "intel" }, "win"),
+		).toThrow("no Windows identity has an arm CPU made by 'intel'");
+		expect(() => coherence.resolveCpu({ model: "i7" }, "win")).toThrow(
+			"cpu takes 'arch' and 'manufacturer', not 'model'",
+		);
+	});
 });

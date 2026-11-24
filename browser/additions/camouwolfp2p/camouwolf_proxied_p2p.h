@@ -38,6 +38,7 @@
 #include "net/dns/host_resolver.h"
 #include "net/proxy_resolution/proxy_info.h"
 #include "net/socket/datagram_server_socket.h"
+#include "net/socket/socks5_client_socket.h"
 #include "net/socket/udp_server_socket.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/network/p2p/socket_udp.h"
@@ -93,6 +94,7 @@ class ProxiedP2P {
   // The SOCKS5 proxy, when the context's proxy is one: the only kind that
   // carries UDP.
   std::optional<net::IPEndPoint> socks5_;
+  std::optional<net::Socks5Credentials> credentials_;
   net::ProxyInfo proxy_info_;
   std::unique_ptr<net::ProxyResolutionRequest> proxy_request_;
   std::unique_ptr<net::HostResolver::ResolveHostRequest> host_request_;
@@ -105,6 +107,7 @@ class ProxiedP2P {
 class ProxiedUdpSocket final : public net::DatagramServerSocket {
  public:
   ProxiedUdpSocket(std::optional<net::IPEndPoint> socks5,
+                   std::optional<net::Socks5Credentials> credentials,
                    net::ClientSocketFactory* client_socket_factory,
                    const net::NetworkTrafficAnnotationTag& traffic_annotation,
                    net::NetLog* net_log);
@@ -158,6 +161,7 @@ class ProxiedUdpSocket final : public net::DatagramServerSocket {
   // The UDP ASSOCIATE handshake on the control connection.
   void OnConnected(int result);
   void OnMethod();
+  void OnAuthenticated();
   void OnReplyHead();
   void OnReply();
   void Watch();
@@ -182,6 +186,7 @@ class ProxiedUdpSocket final : public net::DatagramServerSocket {
 
   const std::unique_ptr<net::UDPServerSocket> socket_;
   const std::optional<net::IPEndPoint> socks5_;
+  const std::optional<net::Socks5Credentials> credentials_;
   const raw_ptr<net::ClientSocketFactory> client_socket_factory_;
   const net::NetworkTrafficAnnotationTag traffic_annotation_;
   // The identity's address, with the port held here.

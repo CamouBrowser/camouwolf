@@ -87,7 +87,7 @@ rules:
 
   - id: context-identity-is-the-browsers
     decision: >-
-      A context gets its identity from Target.setBrowserContextIdentity (0032)
+      A context gets its identity from Target.setBrowserContextIdentity (0034)
       before its first renderer, never from Playwright's emulation overrides.
     why: >-
       Emulation answers in a page and nowhere else: the context's workers,
@@ -120,5 +120,5 @@ rules:
       GPU. The formats were never negotiable before, so nothing that worked
       breaks.
     required:
-      paths: [browser/patches/0032-media-platform-codecs.patch]
+      paths: [browser/patches/0035-media-platform-codecs.patch]
       pattern: '!base::CamouwolfConfig::Get\(\)\.Has\("media:platformDecoders"\)'

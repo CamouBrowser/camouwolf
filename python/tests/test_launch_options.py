@@ -589,14 +589,172 @@ def test_fetching_the_default_addon_verifies_and_unpacks_it(tmp_path, monkeypatc
 @pytest.mark.parametrize('option, value, names', [
     ('firefox_user_prefs', {'a.b': 1}, 'chromium_prefs'),
     ('ff_version', 150, 'chrome_version'),
-    ('cpu', {'arch': 'arm'}, 'cpu'),
-    ('fingerprint_preset', True, 'fingerprint_preset'),
-    ('disable_coop', True, 'disable_coop'),
-    ('allow_addon_new_tab', True, 'allow_addon_new_tab'),
 ])
 def test_an_option_that_is_not_implemented_says_so(options, option, value, names):
     with pytest.raises(NotImplementedError, match=names):
         options(os='linux', **{option: value})
+
+
+# ---- Camoufox's browser options ------------------------------------------
+
+
+def disabled_features(launch):
+    (switch,) = [a for a in launch['args'] if a.startswith('--disable-features=')]
+    return switch.split('=', 1)[1].split(',')
+
+
+def test_disable_coop_turns_off_the_header_and_warns(options):
+    assert 'CrossOriginOpenerPolicy' not in disabled_features(options(os='linux'))
+    with pytest.warns(LeakWarning, match='crossOriginIsolated'):
+        launch = options(os='linux', disable_coop=True)
+    assert 'CrossOriginOpenerPolicy' in disabled_features(launch)
+
+
+def test_extensions_open_no_tabs_unless_allowed(options):
+    assert config_of(options(os='linux'))['allowAddonNewtab'] is False
+    assert config_of(options(os='linux', allow_addon_new_tab=True))['allowAddonNewtab'] is True
+
+
+def test_instant_animations_and_show_cursor_are_opt_in(options):
+    config = config_of(options(os='linux'))
+    assert 'instantAnimations' not in config and 'showcursor' not in config
+    with pytest.warns(LeakWarning, match='duration of zero'):
+        config = config_of(options(os='linux', instant_animations=True, show_cursor=True))
+    assert config['instantAnimations'] is True and config['showcursor'] is True
+
+
+def test_debug_logs_to_stderr_and_masks_proxy_credentials(options, capsys):
+    proxy = {'server': 'socks5://127.0.0.1:1080', 'username': 'user', 'password': 'hunter2'}
+    launch = options(os='linux', debug=True, proxy=proxy)
+    assert '--enable-logging=stderr' in launch['args']
+    printed = capsys.readouterr().out
+    assert "'user'" in printed and 'hunter2' not in printed
+
+
+# ---- SOCKS5 credentials ----------------------------------------------------
+
+
+@pytest.mark.parametrize('server, key', [
+    ('socks5://Proxy.Example:1081', 'proxy.example:1081'),
+    ('socks5://127.0.0.1', '127.0.0.1:1080'),
+    ('socks5://[0:0::1]:9050', '[::1]:9050'),
+])
+def test_socks5_credentials_travel_in_the_config_not_argv(options, server, key):
+    proxy = {'server': server, 'username': 'user', 'password': 'p@ss word'}
+    launch = options(os='linux', proxy=proxy)
+    assert launch['proxy'] == {'server': server}
+    assert config_of(launch)['proxy:socks5Credentials'] == {key: {'username': 'user', 'password': 'p@ss word'}}
+    assert not any('p@ss word' in arg for arg in launch['args'])
+
+
+def test_http_proxy_credentials_stay_with_playwright(options):
+    proxy = {'server': 'http://127.0.0.1:3128', 'username': 'user', 'password': 'pass'}
+    launch = options(os='linux', proxy=proxy)
+    assert launch['proxy'] == proxy and 'proxy:socks5Credentials' not in config_of(launch)
+
+
+def test_socks5_credentials_longer_than_rfc_1929_allows_are_refused(options):
+    with pytest.raises(ValueError, match='1 to 255 bytes'):
+        options(os='linux', proxy={'server': 'socks5://127.0.0.1:1', 'username': 'u' * 256, 'password': 'p'})
+
+
+# ---- CA certificates -------------------------------------------------------
+
+
+def test_certificate_paths_are_read_into_base64_der(options, tmp_path):
+    body = 'MIIBszCCAVmgAwIBAgIU' + 'A' * 40
+    pem = tmp_path / 'ca.pem'
+    pem.write_text(f'-----BEGIN CERTIFICATE-----\n{body[:30]}\n{body[30:]}\n-----END CERTIFICATE-----\n')
+    der = tmp_path / 'ca.der'
+    der.write_bytes(b'\x30\x82\x01')
+    config = config_of(options(os='linux', config={'certificates': ['QUJD'], 'certificatePaths': [str(pem), str(der)]}))
+    assert config['certificates'] == ['QUJD', body, 'MIIB']
+    assert 'certificatePaths' not in config
+
+
+# ---- cpu -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('os_name, cpu, arch', [
+    ('windows', {'manufacturer': 'amd'}, 'x86'),
+    ('windows', {'arch': 'x86', 'manufacturer': 'intel'}, 'x86'),
+    ('windows', {'arch': 'arm'}, 'arm'),
+    ('macos', {'manufacturer': 'apple'}, 'arm'),
+    ('macos', {'arch': 'x86'}, 'x86'),
+    ('linux', {'manufacturer': 'intel'}, 'x86'),
+])
+def test_cpu_is_sec_ch_ua_arch_beside_a_gpu_that_machine_has(options, os_name, cpu, arch):
+    config = config_of(options(os=os_name, cpu=cpu, allow_os_mismatch=True))
+    assert config['userAgentData.architecture'] == arch
+    gpu_arch, makers = coherence.gpu_cpu(config['webGl:renderer'], utils.OS_KEYS[os_name])
+    assert gpu_arch == arch
+    assert not cpu.get('manufacturer') or not makers or cpu['manufacturer'] in makers
+    assert not [v for v in coherence.validate(config, utils.OS_KEYS[os_name]) if v.rule == 'architecture']
+
+
+@pytest.mark.parametrize('os_name, cpu, match', [
+    ('linux', {'arch': 'arm'}, 'no Linux identity has an arm CPU'),
+    ('macos', {'manufacturer': 'amd'}, "made by 'amd'"),
+    ('windows', {'arch': 'arm', 'manufacturer': 'intel'}, 'arm CPU made by'),
+    ('windows', {'arch': 'riscv'}, 'arch must be one of'),
+    ('windows', {'model': 'x'}, "not 'model'"),
+])
+def test_a_cpu_no_machine_on_that_os_has_is_refused(options, os_name, cpu, match):
+    with pytest.raises(ValueError, match=match):
+        options(os=os_name, cpu=cpu, allow_os_mismatch=True)
+
+
+def test_cpu_narrows_the_os_list_to_those_with_that_cpu(options):
+    config = config_of(
+        options(os=['windows', 'macos', 'linux'], cpu={'manufacturer': 'apple'}, allow_os_mismatch=True)
+    )
+    assert utils.get_target_os(config) == 'mac'
+
+
+def test_cpu_beside_a_gpu_another_cpu_has_is_refused(options):
+    apple = next(pair for pair in sorted(webgl.chrome_gpus('macos')) if 'Apple M' in pair[1])
+    with pytest.raises(ValueError, match='no machine has'):
+        options(os='macos', webgl_config=apple, cpu={'arch': 'x86'}, allow_os_mismatch=True)
+
+
+# ---- fingerprint_preset -----------------------------------------------------
+
+
+def chrome_preset(os_name='windows'):
+    vendor, renderer = sorted(webgl.chrome_gpus(os_name))[0]
+    user_agent = {
+        'windows': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                   'Chrome/150.0.0.0 Safari/537.36',
+        'macos': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) '
+                 'Chrome/150.0.0.0 Safari/537.36',
+    }[os_name]
+    return {
+        'navigator': {'userAgent': user_agent, 'maxTouchPoints': 0},
+        'screen': {'width': 1920, 'height': 1080, 'colorDepth': 24, 'availWidth': 1920, 'availHeight': 1040},
+        'webgl': {'unmaskedVendor': vendor, 'unmaskedRenderer': renderer},
+    }
+
+
+def test_a_chrome_preset_sets_its_os_gpu_and_screen(options):
+    preset = chrome_preset()
+    config = config_of(options(fingerprint_preset=preset))
+    assert utils.get_target_os(config) == 'win'
+    assert (config['webGl:vendor'], config['webGl:renderer']) == (
+        preset['webgl']['unmaskedVendor'], preset['webgl']['unmaskedRenderer'])
+    assert (config['screen.width'], config['screen.height'], config['screen.availHeight']) == (1920, 1080, 1040)
+    # The version is the binary's, not the recorded one.
+    assert 'Chrome/152.' in config['navigator.userAgent']
+
+
+def test_a_preset_from_firefox_or_true_is_refused(options):
+    preset = chrome_preset()
+    preset['navigator']['userAgent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0'
+    with pytest.raises(NonChromeFingerprint):
+        options(fingerprint_preset=preset)
+    with pytest.raises(ValueError, match='bundles none'):
+        options(fingerprint_preset=True)
+    with pytest.raises(ValueError, match='cannot be combined'):
+        options(os='windows', fingerprint_preset=chrome_preset())
 
 
 def test_firefox_user_prefs_names_args(options):
@@ -650,6 +808,16 @@ def test_a_drawn_gpu_comes_with_its_own_webgl_readout(monkeypatch):
     draws = iter([unread, real])
     monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
     assert utils.draw_fingerprint('windows', None, None, None) is real
+
+
+def test_a_machine_whose_webgl_was_not_recorded_is_not_drawn(monkeypatch):
+    # fpgen keeps devices whose WebGL collection failed; an identity drawn from
+    # one would claim a GPU with no limits behind it.
+    real = utils.draw_fingerprint('linux', None, None, None)
+    failed = {**real, 'webgl': 'Failed Collecting: TypeError', 'webgl2': 'Failed Collecting: TypeError'}
+    draws = iter([failed, real])
+    monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
+    assert utils.draw_fingerprint('linux', None, None, None) is real
 
 
 def test_the_identity_is_drawn_from_a_machine_in_its_language(options, places, monkeypatch):

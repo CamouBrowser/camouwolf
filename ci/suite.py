@@ -56,7 +56,7 @@ _MINIMAL = (
 # plugin's, tests/native's (run_native uses this interpreter), and the launcher's.
 _REQUIRED_MODULES = (
     "pytest", "pytest_asyncio", "pytest_timeout", "pytest_rerunfailures", "PIL", "pixelmatch",
-    "autobahn", "twisted", "OpenSSL", "objgraph", "yaml", "psutil", "orjson", "fpgen",
+    "autobahn", "twisted", "OpenSSL", "cryptography", "objgraph", "yaml", "psutil", "orjson", "fpgen",
 )
 
 

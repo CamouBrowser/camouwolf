@@ -17,6 +17,7 @@
  * TypeScript twin of python/src/camouwolf/coherence.py.
  */
 import * as clienthints from "./clienthints.js";
+import { ValueError } from "./exceptions.js";
 import { LAUNCHER_CONSTANTS } from "./paths.js";
 import { isPyInt, num, pyRepr, pyRound, pyStr, pyTruthy } from "./pycompat.js";
 import { backendMatchesOs } from "./webgl.js";
@@ -159,8 +160,144 @@ function checkGpuMatchesOs(config: Config, targetOs: string): string | null {
 	return null;
 }
 
-function appleGpu(config: Config): boolean {
-	return renderer(config).includes("Apple M");
+/** The CPU architectures an identity can claim (Sec-CH-UA-Arch). */
+export const CPU_ARCHES = ["x86", "arm"] as const;
+/** The CPUs each OS runs on, by architecture: who makes them. */
+export const CPU_MANUFACTURERS: Readonly<
+	Record<OsKey, Readonly<Record<string, readonly string[]>>>
+> = LAUNCHER_CONSTANTS.cpuManufacturers;
+/** Logical core counts only Intel's hybrid parts report. */
+export const INTEL_ONLY_CORE_COUNTS: ReadonlySet<number> = new Set(
+	LAUNCHER_CONSTANTS.intelOnlyCoreCounts,
+);
+// GPUs that come only with an ARM CPU, and who makes it.
+const ARM_GPUS: readonly [string, readonly string[]][] = [
+	["Apple M", ["apple"]],
+	["Apple GPU", ["apple"]],
+	["Adreno", ["qualcomm"]],
+];
+// Integrated GPUs, which name the x86 CPU they are part of.
+const INTEL_IGPUS = [
+	"Intel(R) HD Graphics",
+	"Intel(R) UHD Graphics",
+	"Intel(R) Iris",
+	"Intel(R) Graphics",
+	"Intel(R) Arc(TM) Graphics",
+	"Intel(R) Arc(TM) 140",
+	"Intel(R) Arc(TM) Pro 140",
+];
+const AMD_IGPUS = [
+	"AMD Radeon(TM) Graphics",
+	"AMD Radeon(TM) Vega",
+	"AMD Radeon(TM) RX Vega",
+];
+// Renderers that draw on whatever CPU the machine has.
+const SOFTWARE_RENDERERS = ["SwiftShader", "llvmpipe"];
+
+/**
+ * The CPU architecture a machine with this GPU has, and its possible makers.
+ *
+ * [null, []] for a software renderer, which runs on any CPU. No makers leaves
+ * the maker open within the architecture.
+ */
+export function gpuCpu(
+	gpuRenderer: unknown,
+	targetOs: string,
+): [string | null, readonly string[]] {
+	// fpgen hands its conditions the recorded renderer lowercased.
+	const r = (pyTruthy(gpuRenderer) ? pyStr(gpuRenderer) : "").toLowerCase();
+	const has = (names: readonly string[]) =>
+		names.some((n) => r.includes(n.toLowerCase()));
+	if (!r || has(SOFTWARE_RENDERERS)) return [null, []];
+	for (const [marker, makers] of ARM_GPUS) {
+		if (r.includes(marker.toLowerCase())) return ["arm", makers];
+	}
+	if (targetOs === "mac" || has(INTEL_IGPUS)) return ["x86", ["intel"]];
+	if (has(AMD_IGPUS)) return ["x86", ["amd"]];
+	// A discrete card: no ARM machine on sale carries one Chrome would name.
+	return ["x86", []];
+}
+
+/**
+ * [arch, manufacturer] for a caller's `cpu` option on `targetOs`.
+ *
+ * Throws ValueError for anything no machine running `targetOs` is: an unknown
+ * key, architecture or maker, or a pair such as an AMD Mac. A maker alone
+ * implies its architecture.
+ */
+export function resolveCpu(
+	cpu: unknown,
+	targetOs: OsKey,
+): [string, string | null] {
+	if (cpu === null || typeof cpu !== "object" || Array.isArray(cpu)) {
+		throw new ValueError(
+			`cpu must be a dict such as {'arch': 'x86', 'manufacturer': 'intel'}, not ${pyRepr(cpu)}`,
+		);
+	}
+	const given = cpu as Record<string, unknown>;
+	const unknown = Object.keys(given)
+		.filter((k) => k !== "arch" && k !== "manufacturer")
+		.sort();
+	if (unknown.length) {
+		throw new ValueError(
+			`cpu takes 'arch' and 'manufacturer', not ${unknown.map((k) => pyRepr(k)).join(", ")}`,
+		);
+	}
+	let arch = (given.arch ?? null) as string | null;
+	const maker = (given.manufacturer ?? null) as string | null;
+	if (arch !== null && !(CPU_ARCHES as readonly string[]).includes(arch)) {
+		throw new ValueError(
+			`cpu arch must be one of ('x86', 'arm'), not ${pyRepr(arch)}`,
+		);
+	}
+	const table = CPU_MANUFACTURERS[targetOs];
+	const name = clienthints.CH_PLATFORM[targetOs];
+	if (maker !== null) {
+		const arches = CPU_ARCHES.filter((a) => (table[a] ?? []).includes(maker));
+		if (!arches.length) {
+			const known = [...new Set(Object.values(table).flat())].sort();
+			throw new ValueError(
+				`no ${name} identity has a CPU made by ${pyRepr(maker)}; on ${name} it is one of ${known.join(", ")}`,
+			);
+		}
+		if (arch !== null && !(arches as string[]).includes(arch)) {
+			throw new ValueError(
+				`no ${name} identity has an ${arch} CPU made by ${pyRepr(maker)}`,
+			);
+		}
+		arch = arches[0];
+	} else if (arch !== null && !(table[arch] ?? []).length) {
+		throw new ValueError(`no ${name} identity has an ${arch} CPU`);
+	}
+	return [arch ?? "x86", maker];
+}
+
+/** Why a machine with this GPU and core count cannot have this CPU, or null. */
+export function cpuMisfit(
+	gpuRenderer: unknown,
+	cores: unknown,
+	targetOs: string,
+	arch: string,
+	maker: string | null,
+): string | null {
+	const [byGpu, makers] = gpuCpu(gpuRenderer, targetOs);
+	const claimed = [maker, arch].filter(Boolean).join(" ");
+	if (
+		byGpu !== null &&
+		(byGpu !== arch || (maker && makers.length && !makers.includes(maker)))
+	) {
+		return `a ${claimed} CPU beside the WebGL renderer "${pyStr(gpuRenderer)}"`;
+	}
+	if (
+		arch === "x86" &&
+		maker &&
+		maker !== "intel" &&
+		isPyInt(cores) &&
+		INTEL_ONLY_CORE_COUNTS.has(Number(num(cores)))
+	) {
+		return `a ${claimed} CPU with hardwareConcurrency ${pyStr(cores)}, which only Intel CPUs report`;
+	}
+	return null;
 }
 
 /**
@@ -206,22 +343,21 @@ function checkMacHardware(config: Config, targetOs: string): string | null {
 	);
 }
 
-function checkMacArchitecture(config: Config, targetOs: string): string | null {
+function checkArchitecture(config: Config, targetOs: string): string | null {
 	const arch = config["userAgentData.architecture"];
 	const r = renderer(config);
-	if (targetOs !== "mac" || !pyTruthy(arch) || !r) return null;
-	const expected = appleGpu(config) ? "arm" : "x86";
-	if (arch !== expected) {
+	const [expected] = gpuCpu(r, targetOs);
+	if (pyTruthy(arch) && expected && arch !== expected) {
 		return (
 			`Sec-CH-UA-Arch is "${pyStr(arch)}" beside the WebGL renderer "${r}"; ` +
-			`that GPU is in ${expected === "arm" ? "Apple Silicon" : "Intel"} Macs ("${expected}")`
+			`that GPU is only in ${expected} machines`
 		);
 	}
 	return null;
 }
 
-function repairMacArchitecture(config: Config, _targetOs: string): void {
-	config["userAgentData.architecture"] = appleGpu(config) ? "arm" : "x86";
+function repairArchitecture(config: Config, targetOs: string): void {
+	config["userAgentData.architecture"] = gpuCpu(renderer(config), targetOs)[0];
 }
 
 /** Python's `value in container` for numbers: 24.0 == 24, True == 1. */
@@ -418,9 +554,9 @@ export const RULES: readonly Rule[] = [
 	{ name: "target-os", check: checkTargetOs, repair: null },
 	{ name: "gpu-matches-os", check: checkGpuMatchesOs, repair: null },
 	{
-		name: "mac-architecture",
-		check: checkMacArchitecture,
-		repair: repairMacArchitecture,
+		name: "architecture",
+		check: checkArchitecture,
+		repair: repairArchitecture,
 	},
 	{ name: "mac-hardware", check: checkMacHardware, repair: null },
 	{ name: "color-depth", check: checkColorDepth, repair: repairColorDepth },
