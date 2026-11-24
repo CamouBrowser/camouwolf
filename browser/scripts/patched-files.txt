@@ -133,6 +133,7 @@ content/browser/preloading/prefetch/prefetch_service.cc
 content/browser/web_contents/web_contents_impl.cc
 components/client_hints/browser/client_hints.cc
 chrome/browser/net/profile_network_context_service.cc
+content/browser/speech/tts_controller_impl.cc
 chrome/browser/predictors/perform_network_context_prefetch.cc
 net/url_request/static_http_user_agent_settings.h
 services/network/public/mojom/network_context.mojom

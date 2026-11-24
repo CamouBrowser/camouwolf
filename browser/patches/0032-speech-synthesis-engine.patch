@@ -1,12 +1,11 @@
 diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_linux.cc
 --- a/content/browser/speech/tts_linux.cc
 +++ b/content/browser/speech/tts_linux.cc
-@@ -8,19 +8,28 @@
+@@ -8,19 +8,27 @@
  #include <algorithm>
  #include <map>
  #include <memory>
 -
-+#include <optional>
 +#include <string>
 +#include <vector>
 +
@@ -31,17 +30,10 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
  #include "content/browser/speech/tts_platform_impl.h"
  #include "content/public/browser/browser_task_traits.h"
  #include "content/public/browser/browser_thread.h"
-@@ -39,6 +48,32 @@
+@@ -39,6 +47,25 @@
  };
  
  using PlatformVoices = std::map<std::string, SPDChromeVoice>;
-+
-+// CAMOUWOLF: one of the identity's voices, from the 0012 "voices" key.
-+struct IdentityVoice {
-+  std::string name;
-+  std::string lang;
-+  bool local = false;
-+};
 +
 +// One event of an utterance the identity engine "speaks", at its offset from
 +// the start of speech.
@@ -64,7 +56,7 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
  
  constexpr int kInvalidUtteranceId = -1;
  constexpr int kInvalidMessageUid = -1;
-@@ -140,6 +175,12 @@
+@@ -140,6 +167,12 @@
    void Shutdown() override;
  
    void OnInitialized(bool success, PlatformVoices voices);
@@ -77,7 +69,7 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    void OnSpeakScheduled(base::OnceCallback<void(bool)> on_speak_finished,
                          bool success);
    void OnSpeakFinished(int utterance_id);
-@@ -177,6 +218,20 @@
+@@ -177,6 +210,21 @@
  
    // Hold the state and the code of the background implementation.
    base::SequenceBound<TtsPlatformImplBackgroundWorker> worker_;
@@ -85,8 +77,9 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
 +  // CAMOUWOLF: with the identity's voices present, this engine speaks them
 +  // silently instead of through speech-dispatcher, which a server lacks: a
 +  // real machine's speak() starts, reports boundaries and ends, where a host
-+  // with no engine fires only an error.
-+  std::optional<std::vector<IdentityVoice>> identity_voices_;
++  // with no engine fires only an error. The voices themselves are read per
++  // call, as each browser context may claim its own.
++  bool speaks_as_identity_ = false;
 +  // Which boundary events the claimed OS's engine sends for a local voice.
 +  bool identity_words_ = false;
 +  bool identity_sentences_ = false;
@@ -98,23 +91,14 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
  };
  
  //
-@@ -431,6 +486,29 @@
+@@ -431,6 +479,20 @@
                SpeechDispatcherLibraryPath()) {
    CHECK(BrowserThread::CurrentlyOn(content::BrowserThread::UI),
          base::NotFatalUntil::M159);
 +  const base::CamouwolfConfig& config = base::CamouwolfConfig::Get();
 +  if (config.Has("voices")) {
-+    identity_voices_.emplace();
-+    for (const std::string& packed : config.GetStringList("voices")) {
-+      // "name|lang|uri|local|default", as 0012 reads it in the renderer.
-+      std::vector<std::string> parts = base::SplitString(
-+          packed, "|", base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
-+      if (parts.size() < 3) {
-+        continue;
-+      }
-+      identity_voices_->push_back(
-+          {parts[0], parts[1], parts.size() > 3 && parts[3] == "1"});
-+    }
++    speaks_as_identity_ = true;
++    // A context shares the launch's OS, so these hold for every context.
 +    // AVSpeechSynthesizer reports words; SAPI reports words and sentences;
 +    // speech-dispatcher reports neither.
 +    const std::string platform =
@@ -128,12 +112,12 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    const base::CommandLine& command_line =
        *base::CommandLine::ForCurrentProcess();
    if (!command_line.HasSwitch(switches::kEnableSpeechDispatcher))
-@@ -487,7 +565,12 @@
+@@ -487,7 +549,12 @@
          base::NotFatalUntil::M159);
    CHECK(PlatformImplInitialized(), base::NotFatalUntil::M159);
  
 -  worker_.AsyncCall(&TtsPlatformImplBackgroundWorker::StopSpeaking);
-+  if (identity_voices_) {
++  if (speaks_as_identity_) {
 +    identity_timer_.Stop();
 +    identity_schedule_.clear();
 +  } else {
@@ -142,11 +126,11 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    paused_ = false;
  
    is_speaking_ = false;
-@@ -504,6 +587,17 @@
+@@ -504,6 +571,17 @@
    if (paused_ || !is_speaking_)
      return;
  
-+  if (identity_voices_) {
++  if (speaks_as_identity_) {
 +    identity_timer_.Stop();
 +    identity_paused_at_ = base::TimeTicks::Now() - identity_started_;
 +    paused_ = true;
@@ -160,11 +144,11 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    worker_.AsyncCall(&TtsPlatformImplBackgroundWorker::Pause);
    paused_ = true;
  }
-@@ -516,6 +610,17 @@
+@@ -516,6 +594,17 @@
    if (!paused_ || !is_speaking_)
      return;
  
-+  if (identity_voices_) {
++  if (speaks_as_identity_) {
 +    paused_ = false;
 +    identity_started_ = base::TimeTicks::Now() - identity_paused_at_;
 +    TtsController::GetInstance()->OnTtsEvent(
@@ -178,24 +162,33 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    worker_.AsyncCall(&TtsPlatformImplBackgroundWorker::Resume);
    paused_ = false;
  }
-@@ -528,6 +633,25 @@
+@@ -528,6 +617,34 @@
    CHECK(BrowserThread::CurrentlyOn(content::BrowserThread::UI),
          base::NotFatalUntil::M159);
    CHECK(PlatformImplInitialized(), base::NotFatalUntil::M159);
 +
-+  if (identity_voices_) {
-+    for (const IdentityVoice& identity_voice : *identity_voices_) {
++  if (speaks_as_identity_) {
++    // The calling context's identity: TtsControllerImpl scopes this call.
++    for (const std::string& packed :
++         base::CamouwolfConfig::Get().GetStringList("voices")) {
++      // "name|lang|uri|local|default", as 0012 reads it in the renderer.
++      std::vector<std::string> parts = base::SplitString(
++          packed, "|", base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
++      if (parts.size() < 3) {
++        continue;
++      }
++      const bool local = parts.size() > 3 && parts[3] == "1";
 +      VoiceData& voice = out_voices->emplace_back();
 +      voice.native = true;
-+      voice.remote = !identity_voice.local;
-+      voice.name = identity_voice.name;
-+      voice.lang = identity_voice.lang;
++      voice.remote = !local;
++      voice.name = parts[0];
++      voice.lang = parts[1];
 +      voice.events = {TTS_EVENT_START, TTS_EVENT_END, TTS_EVENT_PAUSE,
 +                      TTS_EVENT_RESUME};
-+      if (identity_voice.local && identity_words_) {
++      if (local && identity_words_) {
 +        voice.events.insert(TTS_EVENT_WORD);
 +      }
-+      if (identity_voice.local && identity_sentences_) {
++      if (local && identity_sentences_) {
 +        voice.events.insert(TTS_EVENT_SENTENCE);
 +      }
 +    }
@@ -204,7 +197,7 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
  
    for (auto it = voices_.begin(); it != voices_.end(); ++it) {
      out_voices->push_back(VoiceData());
-@@ -545,6 +669,7 @@
+@@ -545,6 +662,7 @@
  }
  
  void TtsPlatformImplLinux::Shutdown() {
@@ -212,11 +205,11 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    worker_.AsyncCall(&TtsPlatformImplBackgroundWorker::Shutdown);
  }
  
-@@ -599,6 +724,12 @@
+@@ -599,6 +717,12 @@
    CHECK(BrowserThread::CurrentlyOn(content::BrowserThread::UI),
          base::NotFatalUntil::M159);
  
-+  if (identity_voices_) {
++  if (speaks_as_identity_) {
 +    SpeakAsIdentity(utterance_id, voice, params.rate, parsed_utterance);
 +    std::move(on_speak_finished).Run(true);
 +    return;
@@ -225,7 +218,7 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
    // Speech dispatcher's speech params are around 3x at either limit.
    float rate = std::clamp(static_cast<float>(params.rate), 0.334f, 3.0f);
    float pitch = std::clamp(static_cast<float>(params.pitch), 0.334f, 3.0f);
-@@ -613,6 +744,92 @@
+@@ -613,6 +737,88 @@
                  matched_voice, std::move(on_speak_finished));
  }
  
@@ -234,13 +227,9 @@ diff --git a/content/browser/speech/tts_linux.cc b/content/browser/speech/tts_li
 +    const VoiceData& voice,
 +    double rate,
 +    const std::string& parsed_utterance) {
-+  bool local = false;
-+  for (const IdentityVoice& identity_voice : *identity_voices_) {
-+    if (identity_voice.name == voice.name) {
-+      local = identity_voice.local;
-+      break;
-+    }
-+  }
++  // A voice GetVoices listed carries its events; one that matched none of the
++  // identity's voices has none and is paced as a network voice.
++  const bool local = !voice.remote && !voice.events.empty();
 +  // The utterance rate is a multiplier of the voice's normal pace, clamped to
 +  // the range the Web Speech API allows.
 +  const double pace = 1.0 / std::clamp(rate, 0.1, 10.0);

@@ -766,3 +766,28 @@ diff --git a/components/language/core/browser/language_prefs.cc b/components/lan
      if (forced_languages_set_.find(language) == forced_languages_set_.end())
        deduplicated_languages.emplace_back(std::move(language));
    }
+diff --git a/content/browser/speech/tts_controller_impl.cc b/content/browser/speech/tts_controller_impl.cc
+--- a/content/browser/speech/tts_controller_impl.cc
++++ b/content/browser/speech/tts_controller_impl.cc
+@@ -10,6 +10,7 @@
+ #include <string>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/containers/queue.h"
+ #include "base/functional/bind.h"
+ #include "base/i18n/legacy_language_tag_helpers.h"
+@@ -466,8 +467,12 @@
+   // Ensure we have all built-in voices loaded. This is a no-op if already
+   // loaded.
+   tts_platform->LoadBuiltInTtsEngine(browser_context);
+-  if (TtsPlatformReady())
++  if (TtsPlatformReady()) {
++    // CAMOUWOLF: the platform engine lists the voices of the context's
++    // identity, which may differ from the launch's.
++    base::CamouwolfConfig::ScopedIdentity identity(browser_context);
+     tts_platform->GetVoices(out_voices);
++  }
+ 
+   if (browser_context && engine_delegate_ &&
+       engine_delegate_->IsBuiltInTtsEngineInitialized(browser_context)) {

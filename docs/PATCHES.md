@@ -791,16 +791,20 @@ for the context.
 - In the browser process, code that runs for a context reads
   `CamouwolfConfig::ForContext(context)`, or runs under a `ScopedIdentity`:
   client hints, the user agent of navigations, prefetches, shared and service
-  workers, touch points (0024), and the WebRTC addresses the socket dispatcher
-  hands the network service (0031).
+  workers, touch points (0024), the WebRTC addresses the socket dispatcher
+  hands the network service (0031), and the voices the speech engine lists
+  (0032).
 - The network service is shared by every context, so it is told rather than
   asked: `NetworkContext.SetUserAgent` gives a context's network context the
   user agent requests without one take, such as a worker's script fetch.
 
 **What a context shares with the launch.** The OS (the fonts and maths
 library the process was launched with), the screen and window (one native
-window and one display), and `navigator.hardwareConcurrency` (one process's
-cores). The launchers draw the rest afresh: GPU, fonts, voices, client hints,
+window and one display), `navigator.hardwareConcurrency` (one process's
+cores), and the browser's behaviour keys (`network:ipv4Only`,
+`allowAddonNewtab`, `instantAnimations`, `showcursor`), which the launchers
+copy into the context's identity because its renderers read that in place of
+the launch's. SOCKS5 credentials are not copied. The launchers draw the rest afresh: GPU, fonts, voices, client hints,
 canvas and audio seeds. An unproxied context leaves from the browser's address,
 so it keeps the launch's timezone, position, WebRTC address and languages; a
 proxied one is placed at the proxy's exit, looked up through the proxy.
@@ -882,7 +886,8 @@ voice starts after about 4 ms and ends after about 3.3 s (57 ms a character
 after a 110 ms lead); a network voice starts after about 409 ms and ends after
 about 5 s. Everything after `start` scales with `1 / rate`, as it did there.
 `pause()`, `resume()` and `cancel()` behave as on a real engine. With no
-`voices` key nothing changes.
+`voices` key nothing changes. The voices are read when they are listed, under
+the calling context's identity (0034), so a context speaks its own.
 
 ### 0033 — platform key bindings
 
