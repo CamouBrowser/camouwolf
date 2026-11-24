@@ -54,7 +54,9 @@ Results = Dict[str, Dict[str, Check]]
 # and timezone. Index 0 is the launcher's own default draw.
 VARIANTS: List[Dict[str, Any]] = [
     {},
-    {"locale": "de-DE", "config": {"timezone": "Europe/Berlin"}},
+    # No voices at launch, so a context's voices can be spoken only by an
+    # engine that lists them from the context's identity.
+    {"locale": "de-DE", "config": {"timezone": "Europe/Berlin", "voices": []}},
     {"locale": "ja-JP", "config": {"timezone": "Asia/Tokyo"}},
     {"locale": "en-GB", "config": {"timezone": "America/Sao_Paulo"}},
 ]
