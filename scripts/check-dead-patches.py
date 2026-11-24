@@ -97,6 +97,23 @@ def classify(src: pathlib.Path, patch: pathlib.Path) -> tuple[str, str]:
     return "DEAD", first
 
 
+def check_series(src: pathlib.Path, names: list[str], patches: pathlib.Path = PATCHES) -> list[tuple[str, str, str]]:
+    """(name, verdict, detail) for each patch, in series order. Each patch is
+    checked against the tree the build would hand it: pristine plus every
+    earlier patch, since two patches that each apply alone can collide."""
+    out = []
+    for name in names:
+        patch = patches / name
+        if not patch.exists():
+            verdict, detail = "MISSING", "not on disk"
+        else:
+            verdict, detail = classify(src, patch)
+        if verdict == "OK":
+            git(src, "apply", "-p1", str(patch)).check_returncode()
+        out.append((name, verdict, detail))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -111,42 +128,41 @@ def main() -> int:
     print(f"== Camouwolf {release} vs Chromium {version}\n")
 
     if args.src:
-        src = pathlib.Path(args.src)
-        if not src.is_dir():
-            print(f"!! not a directory: {src}", file=sys.stderr)
+        origin = pathlib.Path(args.src)
+        if not origin.is_dir():
+            print(f"!! not a directory: {origin}", file=sys.stderr)
             return 2
-        tmp = None
     else:
-        mirror = REPO / "browser" / ".pristine" / version
-        if not mirror.is_dir():
+        origin = REPO / "browser" / ".pristine" / version
+        if not origin.is_dir():
             print(
                 "!! no mirror — run: bash browser/scripts/fetch-sources.sh",
                 file=sys.stderr,
             )
             return 2
-        # git apply --check needs a work tree it recognises; the mirror is not a
-        # repo, so stage a throwaway copy. Cheap: it is ~40k lines, not 100 GB.
-        tmp = tempfile.mkdtemp(prefix="camouwolf-deadpatch-")
-        src = pathlib.Path(tmp) / "src"
-        shutil.copytree(mirror, src)
-        git(src, "init", "-q")
-        git(src, "add", "-A", "-f")
-        git(src, "-c", "user.email=k@k", "-c", "user.name=k", "commit", "-qm", "base")
+    # The series is applied as it is checked, so it runs on a throwaway copy of
+    # the files it touches, never on the checkout: ~40k lines, not 100 GB.
+    tmp = tempfile.mkdtemp(prefix="camouwolf-deadpatch-")
+    src = pathlib.Path(tmp) / "src"
+    touched = {f for name in series() if (PATCHES / name).exists()
+               for f in FILE_RE.findall((PATCHES / name).read_text())}
+    for rel in touched:
+        if (origin / rel).is_file():
+            (src / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin / rel, src / rel)
+    src.mkdir(parents=True, exist_ok=True)
+    git(src, "init", "-q")
+    git(src, "add", "-A", "-f")
+    git(src, "-c", "user.email=k@k", "-c", "user.name=k", "commit", "-qm", "base")
 
     counts: dict[str, int] = {}
     try:
-        for name in series():
-            patch = PATCHES / name
-            if not patch.exists():
-                verdict, detail = "MISSING", "not on disk"
-            else:
-                verdict, detail = classify(src, patch)
+        for name, verdict, detail in check_series(src, series()):
             counts[verdict] = counts.get(verdict, 0) + 1
             mark = "  " if verdict == "OK" else "!!"
             print(f"{mark} {verdict:<9} {name:<44} {detail}")
     finally:
-        if tmp:
-            shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(tmp, ignore_errors=True)
 
     print()
     print("  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))

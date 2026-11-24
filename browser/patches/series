@@ -181,7 +181,8 @@
 
 # --- CA certificates ------------------------------------------------------------
 # certificates: base64 DER certificates trusted as the CACertificates policy
-# trusts them, per launch, for a proxy that terminates TLS.
+# trusts them, per launch, for a proxy that terminates TLS. It reads the config
+# through the include 0034 adds to the same file.
 0045-ca-certificates.patch
 
 # --- Show cursor ---------------------------------------------------------------

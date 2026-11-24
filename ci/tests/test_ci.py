@@ -6,6 +6,7 @@ GitHub; everything else is offline. Run with `python -m pytest ci/tests`.
 
 from __future__ import annotations
 
+import difflib
 import importlib.util
 import json
 import re
@@ -660,3 +661,28 @@ def test_the_suite_interpreter_has_what_tests_native_imports() -> None:
                 imported.add(node.module.split(".")[0])
     third_party = imported - set(sys.stdlib_module_names) - local
     assert third_party <= set(suite._REQUIRED_MODULES), third_party - set(suite._REQUIRED_MODULES)
+
+
+def test_dead_patch_check_applies_the_series_in_order(tmp_path: Path) -> None:
+    # Two patches that each apply to pristine can still collide when the build
+    # applies them one after the other.
+    spec = importlib.util.spec_from_file_location("dead", REPO_ROOT / "scripts" / "check-dead-patches.py")
+    assert spec is not None and spec.loader is not None
+    dead = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(dead)
+    src, patches = tmp_path / "src", tmp_path / "patches"
+    src.mkdir()
+    patches.mkdir()
+    lines = [f"line {i}\n" for i in range(20)]
+    (src / "f.cc").write_text("".join(lines))
+    for cmd in (["init", "-q"], ["add", "-A"], ["-c", "user.email=k@k", "-c", "user.name=k", "commit", "-qm", "base"]):
+        subprocess.run(["git", *cmd], cwd=src, check=True)
+
+    def patch(name: str, at: int, text: str) -> str:
+        new = [*lines[:at], text, *lines[at:]]
+        diff = "".join(difflib.unified_diff(lines, new, "a/f.cc", "b/f.cc"))
+        (patches / name).write_text(f"diff --git a/f.cc b/f.cc\n{diff}")
+        return name
+
+    names = [patch("1.patch", 3, "one\n"), patch("2.patch", 4, "two\n"), patch("3.patch", 15, "three\n")]
+    assert [v for _, v, _ in dead.check_series(src, names, patches)] == ["OK", "DEAD", "OK"]
