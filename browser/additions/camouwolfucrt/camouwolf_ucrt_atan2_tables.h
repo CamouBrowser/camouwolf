@@ -4,7 +4,6 @@
 
 // atan(k/256) split high/low, lifted verbatim out of ucrtbase.dll
 // 10.0.26100.8875 (.rdata 0x112490 and 0x112c20) for the FMA3 `atan2`.
-// Regenerate with capture/ucrt-re/gen_atan2_tables.py in Holo-Harness.
 
 #ifndef BASE_CAMOUWOLF_CAMOUWOLF_UCRT_ATAN2_TABLES_H_
 #define BASE_CAMOUWOLF_CAMOUWOLF_UCRT_ATAN2_TABLES_H_

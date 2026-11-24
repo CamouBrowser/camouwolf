@@ -33,7 +33,7 @@ export const GPU_ENV_VAR = "CAMOUWOLF_GPU";
 
 /**
  * How long the browser has to render on the GPU after the probe page starts
- * drawing. A card busy with other work took 5-10s in Holo's measurements.
+ * drawing. A card busy with other work has taken 5-10s.
  */
 export const GPU_WAIT_S = 30;
 export const GPU_WAIT_ENV_VAR = "CAMOUWOLF_GPU_WAIT_S";

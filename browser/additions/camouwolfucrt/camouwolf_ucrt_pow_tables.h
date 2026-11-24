@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Lookup tables lifted verbatim out of ucrtbase.dll 10.0.26100.8875 for the
-// FMA3 `pow` implementation (see UcrtMath.cpp). Regenerate with
-// capture/ucrt-re/gen_pow_tables.py in the Holo-Harness superrepo.
+// FMA3 `pow` implementation (camouwolf_ucrt_math.h).
 
 #ifndef BASE_CAMOUWOLF_CAMOUWOLF_UCRT_POW_TABLES_H_
 #define BASE_CAMOUWOLF_CAMOUWOLF_UCRT_POW_TABLES_H_

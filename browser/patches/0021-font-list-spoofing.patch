@@ -15,9 +15,9 @@ diff --git a/third_party/blink/renderer/core/css/css_font_selector_base.h b/thir
 +  // match. Both must give the same answer as `config.fonts`, or the identity
 +  // reports one font set and renders another.
 +  //
-+  // This is the Chromium equivalent of Holo's font-hijacker.patch, which
-+  // prunes the platform font list behind kFontSystemWhitelistPref. Chromium
-+  // has no such pref, so the gate goes on the selector instead — which is
++  // This is the Chromium equivalent of Camoufox's font-hijacker.patch, which
++  // prunes Firefox's platform font list. Chromium has no single list to
++  // prune, so the gate goes on the selector instead — which is
 +  // better placed anyway, because the FontFamily here still knows whether it
 +  // came from a CSS generic keyword or from a name the page chose.
 +  //

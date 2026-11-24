@@ -9,7 +9,7 @@
 #endif
 
 // Copyright 2026 The Camouwolf Authors
-// Portions derived from Holo (MPL-2.0); see camouwolf_ucrt_math.cc.
+// Portions are MPL-2.0, as are the tables it reads.
 
 #ifndef BASE_CAMOUWOLF_CAMOUWOLF_UCRT_MATH_H_
 #define BASE_CAMOUWOLF_CAMOUWOLF_UCRT_MATH_H_

@@ -19,7 +19,7 @@
 // byte-identical, `fp-classic` — the scene commodity fingerprinters actually
 // hash — among them. There was nothing left for the noise to hide.
 //
-// CAMOUWOLF'S CASE IS STRICTLY STRONGER THAN HOLO'S. Camoufox had to KEEP one
+// CAMOUWOLF'S CASE IS STRICTLY STRONGER THAN CAMOUFOX'S. Camoufox had to KEEP one
 // randomizer: stock Firefox 152 perturbs the encode path (toDataURL/toBlob)
 // itself under baseline EfficientCanvasRandomization, so removing that would
 // have been a tell in the other direction. Stock Chrome randomizes NOTHING.
