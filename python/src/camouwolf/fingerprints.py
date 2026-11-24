@@ -445,6 +445,71 @@ def pack_voices(voices: Any) -> Optional[List[str]]:
     return packed or None
 
 
+# A WebCodecs codec string's prefix, as media::GetCodecName names the codec.
+CODEC_NAMES: Dict[str, str] = {
+    'avc1': 'h264',
+    'avc3': 'h264',
+    'vp8': 'vp8',
+    'vp09': 'vp9',
+    'av01': 'av1',
+    'hev1': 'hevc',
+    'hvc1': 'hevc',
+}
+
+# The receive formats Chrome's hardware decoder factory adds for a codec: H264
+# High at the fixed level 3.1, and HEVC Main and Main 10 at the level of an
+# 8K-capable decoder (what a recorded macOS Chrome reports).
+RTC_DECODE_FORMATS: Dict[str, List[str]] = {
+    'h264': [
+        'H264|level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f',
+        'H264|level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=64001f',
+    ],
+    'hevc': [
+        'H265|level-id=180;profile-id=1;tier-flag=0;tx-mode=SRST',
+        'H265|level-id=180;profile-id=2;tier-flag=0;tx-mode=SRST',
+    ],
+}
+
+
+def platform_codecs(fingerprint: Dict[str, Any], target_os: Optional[str]) -> Dict[str, List[str]]:
+    """The identity's hardware codecs, as the media:* keys.
+
+    A decoder is the GPU's when the record decoded it with prefer-hardware. The
+    hardware encoders are the sender formats software never offers (H264 High,
+    H265). AAC is encoded by the OS on Windows and macOS. A record without the
+    data claims nothing.
+    """
+    decoders = (fingerprint.get('mediaDecoderSupport') or {}).get('video')
+    codecs = ((fingerprint.get('rtcCapabilities') or {}).get('video') or {}).get('codecs')
+    if not isinstance(decoders, dict) or not isinstance(codecs, list):
+        return {}
+    decoded = sorted(
+        {
+            CODEC_NAMES[codec.split('.', 1)[0]]
+            for codec, configs in decoders.items()
+            if codec.split('.', 1)[0] in CODEC_NAMES
+            and isinstance(configs, list)
+            and {'hardwareAcceleration': 'prefer-hardware'} in configs
+        }
+    )
+    encode_formats = []
+    encoded = set()
+    for codec in codecs:
+        name = str(codec.get('mimeType', '')).removeprefix('video/')
+        fmtp = codec.get('sdpFmtpLine', '')
+        if name == 'H265' or (name == 'H264' and 'profile-level-id=64' in fmtp):
+            encode_formats.append(f'{name}|{fmtp}')
+            encoded.add('hevc' if name == 'H265' else 'h264')
+    if target_os in ('win', 'mac'):
+        encoded.add('aac')
+    return {
+        'media:platformDecoders': decoded,
+        'media:platformEncoders': sorted(encoded),
+        'media:rtcEncodeFormats': encode_formats,
+        'media:rtcDecodeFormats': [f for codec in decoded for f in RTC_DECODE_FORMATS.get(codec, [])],
+    }
+
+
 def webgpu_adapter(gpu_info: Any) -> Dict[str, str]:
     """The WebGPU adapter info of an fpgen record, as webGpu:* keys.
 
@@ -568,6 +633,7 @@ def from_fpgen(fingerprint: Dict[str, Any], chrome_version: Optional[Any] = None
     if parameters and camouwolf_data.get('webGl:renderer'):
         camouwolf_data['webGl:parameters'] = parameters
     camouwolf_data.update(webgpu_adapter(fingerprint.get('gpuInfo')))
+    camouwolf_data.update(platform_codecs(fingerprint, target_os))
     devices = media_devices(fingerprint.get('devices'))
     if devices:
         camouwolf_data['mediaDevices:enumerated'] = devices

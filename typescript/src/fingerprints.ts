@@ -556,6 +556,89 @@ export function packVoices(voices: unknown): string[] | null {
 	return packed.length ? packed : null;
 }
 
+/** A WebCodecs codec string's prefix, as media::GetCodecName names the codec. */
+export const CODEC_NAMES: Record<string, string> = {
+	avc1: "h264",
+	avc3: "h264",
+	vp8: "vp8",
+	vp09: "vp9",
+	av01: "av1",
+	hev1: "hevc",
+	hvc1: "hevc",
+};
+
+/**
+ * The receive formats Chrome's hardware decoder factory adds for a codec: H264
+ * High at the fixed level 3.1, and HEVC Main and Main 10 at the level of an
+ * 8K-capable decoder (what a recorded macOS Chrome reports).
+ */
+export const RTC_DECODE_FORMATS: Record<string, string[]> = {
+	h264: [
+		"H264|level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f",
+		"H264|level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=64001f",
+	],
+	hevc: [
+		"H265|level-id=180;profile-id=1;tier-flag=0;tx-mode=SRST",
+		"H265|level-id=180;profile-id=2;tier-flag=0;tx-mode=SRST",
+	],
+};
+
+/**
+ * The identity's hardware codecs, as the media:* keys.
+ *
+ * A decoder is the GPU's when the record decoded it with prefer-hardware. The
+ * hardware encoders are the sender formats software never offers (H264 High,
+ * H265). AAC is encoded by the OS on Windows and macOS. A record without the
+ * data claims nothing.
+ */
+export function platformCodecs(
+	fingerprint: Record<string, any>,
+	targetOs: OsKey | null,
+): Record<string, string[]> {
+	const decoders = fingerprint.mediaDecoderSupport?.video;
+	const codecs = fingerprint.rtcCapabilities?.video?.codecs;
+	if (!isPlainObject(decoders) || !Array.isArray(codecs)) return {};
+	const decoded = new Set<string>();
+	for (const [codec, configs] of Object.entries(decoders)) {
+		const name = CODEC_NAMES[codec.split(".", 1)[0]];
+		if (
+			name &&
+			Array.isArray(configs) &&
+			configs.some(
+				(config) =>
+					isPlainObject(config) &&
+					Object.keys(config).length === 1 &&
+					config.hardwareAcceleration === "prefer-hardware",
+			)
+		) {
+			decoded.add(name);
+		}
+	}
+	const encodeFormats: string[] = [];
+	const encoded = new Set<string>();
+	for (const codec of codecs) {
+		const name = pyStr(codec?.mimeType ?? "").replace(/^video\//, "");
+		const fmtp = codec?.sdpFmtpLine ?? "";
+		if (
+			name === "H265" ||
+			(name === "H264" && fmtp.includes("profile-level-id=64"))
+		) {
+			encodeFormats.push(`${name}|${fmtp}`);
+			encoded.add(name === "H265" ? "hevc" : "h264");
+		}
+	}
+	if (targetOs === "win" || targetOs === "mac") encoded.add("aac");
+	const decodedList = [...decoded].sort();
+	return {
+		"media:platformDecoders": decodedList,
+		"media:platformEncoders": [...encoded].sort(),
+		"media:rtcEncodeFormats": encodeFormats,
+		"media:rtcDecodeFormats": decodedList.flatMap(
+			(codec) => RTC_DECODE_FORMATS[codec] ?? [],
+		),
+	};
+}
+
 /**
  * The WebGPU adapter info of an fpgen record, as webGpu:* keys.
  *
@@ -689,6 +772,7 @@ export function fromFpgen(
 		camouwolfData["webGl:parameters"] = parameters;
 	}
 	Object.assign(camouwolfData, webgpuAdapter(fingerprint.gpuInfo));
+	Object.assign(camouwolfData, platformCodecs(fingerprint, targetOs));
 	const devices = mediaDevices(fingerprint.devices);
 	if (devices) camouwolfData["mediaDevices:enumerated"] = devices;
 	if (targetOs) {

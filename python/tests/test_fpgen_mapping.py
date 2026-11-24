@@ -147,3 +147,45 @@ def test_a_drawn_fingerprint_is_chrome_on_the_asked_os(os_name, key):
 def test_recorded_gpus_are_hardware_on_the_os_backend():
     gpus = webgl.chrome_gpus('windows')
     assert gpus and all(webgl.backend_matches_os(renderer, 'win') for _vendor, renderer in gpus)
+
+
+def _media_record(user_agent):
+    hardware = ['basic', {'hardwareAcceleration': 'prefer-hardware'}, {'hardwareAcceleration': 'prefer-software'}]
+    software = ['basic', {'hardwareAcceleration': 'prefer-software'}]
+    return {
+        **WINDOWS_FINGERPRINT,
+        'navigator': {**WINDOWS_FINGERPRINT['navigator'], 'userAgent': user_agent},
+        'mediaDecoderSupport': {'video': {
+            'avc1.42E01E': hardware, 'vp09.00.10.08': hardware, 'hvc1.1.6.L93.B0': hardware,
+            'vp8': software, 'av01.0.04M.08': software,
+            # A config that names more than the preference is not the plain prefer-hardware probe.
+            'avc3.640028': [{'codedWidth': 3840, 'codedHeight': 2160, 'hardwareAcceleration': 'prefer-hardware'}],
+        }},
+        'rtcCapabilities': {'video': {'codecs': [
+            {'mimeType': 'video/VP8'},
+            {'mimeType': 'video/H264', 'sdpFmtpLine': 'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f'},
+            {'mimeType': 'video/H264', 'sdpFmtpLine': 'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640020'},
+            {'mimeType': 'video/H265', 'sdpFmtpLine': 'level-id=123;profile-id=1;tier-flag=0;tx-mode=SRST'},
+        ]}},
+    }
+
+
+def test_the_platform_codecs_are_the_records_hardware():
+    config = from_fpgen(_media_record(WINDOWS_FINGERPRINT['navigator']['userAgent']))
+
+    assert config['media:platformDecoders'] == ['h264', 'hevc', 'vp9']
+    assert config['media:platformEncoders'] == ['aac', 'h264', 'hevc']
+    assert config['media:rtcEncodeFormats'] == [
+        'H264|level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640020',
+        'H265|level-id=123;profile-id=1;tier-flag=0;tx-mode=SRST',
+    ]
+    assert config['media:rtcDecodeFormats'] == [
+        *fingerprints.RTC_DECODE_FORMATS['h264'], *fingerprints.RTC_DECODE_FORMATS['hevc'],
+    ]
+
+
+def test_a_linux_record_encodes_no_aac_and_an_old_record_claims_nothing():
+    linux = _media_record('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36')
+    assert 'aac' not in from_fpgen(linux)['media:platformEncoders']
+    assert not any(key.startswith('media:') for key in from_fpgen(WINDOWS_FINGERPRINT))
+

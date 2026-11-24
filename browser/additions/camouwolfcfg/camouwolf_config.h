@@ -142,6 +142,11 @@ class BASE_EXPORT CamouwolfConfig {
   // allocation.
   std::vector<std::string> GetStringListLower(std::string_view key) const;
 
+  // Whether a JSON array of strings holds `item`; nullopt when the key is
+  // absent, so a claim the launcher did not make leaves upstream's answer.
+  std::optional<bool> ListContains(std::string_view key,
+                                   std::string_view item) const;
+
   // A dotted domain lookup: GetNested("webGl:parameters", "37445") reads
   // config["webGl:parameters"]["37445"]. Returns null when either level is
   // absent. Used by the WebGL and mediaDevices patches, which carry a map

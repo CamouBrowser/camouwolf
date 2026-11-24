@@ -137,3 +137,15 @@ services/network/network_context.cc
 services/network/test/test_network_context.h
 content/browser/renderer_host/p2p/socket_dispatcher_host.cc
 components/language/core/browser/language_prefs.cc
+
+# --- media codecs of the identity's platform -------------------------------
+media/base/supported_types.cc
+media/mojo/clients/mojo_audio_encoder.cc
+third_party/blink/renderer/modules/webcodecs/video_decoder.cc
+third_party/blink/renderer/modules/webcodecs/video_decoder_broker.cc
+third_party/blink/renderer/modules/webcodecs/video_encoder.cc
+third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
+third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc
+
+# --- battery status ---------------------------------------------------------
+third_party/blink/renderer/modules/battery/battery_dispatcher.cc

@@ -712,3 +712,57 @@ proxied one is placed at the proxy's exit, looked up through the proxy.
 **Not supported.** `storageState` with origins' localStorage: Playwright writes
 it from a page before the launcher can identify the context. Cookies work.
 
+### 0032 — the identity's platform codecs
+
+`supported_types.cc`, `mojo_audio_encoder.cc`, `media_capabilities.cc`,
+WebCodecs `video_decoder.cc`, `video_decoder_broker.cc` and `video_encoder.cc`,
+and `video_codec_factory.cc` (WebRTC). Which codecs a browser decodes and
+encodes in hardware, and whether it plays HEVC or records AAC at all, is a
+property of the OS and the GPU. A Linux build answers for the host on every one
+of these surfaces, so a Windows or macOS identity would describe a machine with
+no HEVC, no AAC encoder and no hardware codecs.
+
+The launcher takes the answers from the same fpgen record as the GPU, so the
+codecs belong to the card that `webgl` and `webgpu` name:
+
+- **`media:platformDecoders`** — codecs the record decodes with
+  `prefer-hardware` (`h264`, `vp8`, `vp9`, `av1`, `hevc`, by
+  `media::GetCodecName`). It answers WebCodecs `VideoDecoder.isConfigSupported`
+  with `prefer-hardware` and `decodingInfo().powerEfficient`; `hevc` also
+  answers `canPlayType`, `MediaSource.isTypeSupported` and decode support for
+  HEVC Main and Main 10, as Chrome does with a platform HEVC decoder.
+- **`media:platformEncoders`** — `h264` and `hevc` when the record's WebRTC
+  sender offers H264 High or H265 (formats only a hardware encoder offers),
+  and `aac` on a Windows or macOS identity, whose OS ships an AAC encoder. It
+  answers `VideoEncoder.isConfigSupported` with `prefer-hardware`,
+  `MediaRecorder.isTypeSupported` for HEVC and AAC, and `AudioEncoder`.
+- **`media:rtcEncodeFormats`**, **`media:rtcDecodeFormats`** — the hardware
+  formats as `"H264|<fmtp>"` / `"H265|<fmtp>"`. Send formats are the record's
+  own; receive formats are the H264 High and H265 entries a hardware decoder
+  adds, taken from Chrome on macOS (H265 at `level-id=180`). They are appended
+  after the software formats, the order `MergeFormats` gives, and
+  `RTCRtpSender/Receiver.getCapabilities` and the encoding/decoding info for
+  `webrtc` follow them.
+
+A record with no media data claims nothing, and every surface keeps the host's
+answer. Not covered: HEVC `prefer-software` encode on macOS, the Windows-only
+AAC bitrate check, VP9 and AV1 hardware encode (not recorded), and EME.
+
+A claimed codec the host cannot run fails as a broken platform codec fails in
+Chrome: `prefer-hardware` WebCodecs decode falls back to software, and HEVC
+playback, hardware encode, AAC encode and H265 or H264 High in WebRTC fail at
+use. None of those formats was negotiable before, so nothing that worked stops
+working ([`platform-codec-claims-fail-at-use`](../ci/tribal-rules.yml)).
+
+### 0033 — Battery Status API
+
+`battery_dispatcher.cc`. With `battery:charging` and `battery:level` set,
+`navigator.getBattery()` answers from them and never asks the host's battery
+service, so a laptop host's discharging battery does not show. A charging
+battery at level 1 reports `chargingTime` 0, any other state `Infinity`, as
+Chrome does for a battery with no time estimate.
+
+The launcher claims a desktop on mains power (charging, level 1): what Chrome
+reports for a machine with no battery on Windows, macOS and Linux, and fpgen
+records no battery. A caller can pass other values in `config`; a frozen
+discharging level is itself unusual, so only do so with a reason.

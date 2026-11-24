@@ -118,3 +118,15 @@
 # browser answers that context's headers and client hints from it, and its
 # renderers adopt it at start-up. Contexts without one keep the launch's.
 0032-per-context-identity.patch
+
+# --- Media codecs of the identity's platform ----------------------------------
+# The hardware decoders and encoders a page can find (HEVC playback, WebCodecs
+# prefer-hardware, powerEfficient, AAC and HEVC recording, WebRTC H264 High and
+# H265) are the identity's GPU and OS, from media:platformDecoders,
+# media:platformEncoders, media:rtcEncodeFormats and media:rtcDecodeFormats.
+0032-media-platform-codecs.patch
+
+# --- Battery Status API ---------------------------------------------------------
+# navigator.getBattery() answers the identity's device (battery:charging,
+# battery:level) and never binds the host's battery monitor.
+0033-battery-status.patch

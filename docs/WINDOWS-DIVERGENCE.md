@@ -124,8 +124,8 @@ check and is not spoofed at all.
 | `MediaRecorder.isTypeSupported('audio/mp4; mp4a.40.2')` | `true` | `false` |
 | `decodingInfo(...).powerEfficient` | `true` | `false` |
 
-HEVC support is a platform-decoder property and there is no config key for codec
-support at all.
+HEVC support is a platform-decoder property. `0032` now answers all four from
+the identity's recorded hardware codecs (`media:*` keys).
 
 ### 2.5 Patched surfaces the launcher never drives
 
@@ -205,7 +205,8 @@ Checked against leg A and matching exactly:
 
 Surfaces that need no spoofing because they already match: `Intl` (all of it),
 `storage.estimate()`, `navigator.plugins`/`mimeTypes`, the whole `permissions`
-matrix, error/stack shape and native `toString`s, `getBattery()`,
+matrix, error/stack shape and native `toString`s, `getBattery()` (on a host
+with no battery; `0033` keeps a laptop host's from showing),
 `performance.memory.jsHeapSizeLimit`, and **all 24 JS `Math.*` results
 bit-for-bit** (V8 uses its own fdlibm, not the platform libm).
 
