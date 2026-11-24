@@ -50,25 +50,12 @@ export const IGNORED_DEFAULT_ARGS: readonly string[] = [
 ];
 
 /**
- * What Playwright's headless launch tells Blink about the pointer, since a
- * headless browser has no input device: a mouse and nothing else. The launcher
- * states it in its place (headlessPointerSettings), with the touchscreen a
- * touch identity has beside it.
+ * What Playwright's headless launch tells Blink about the pointer: a mouse
+ * alone. The launcher drops it, because the browser states each context's
+ * identity's pointer (patch 0024) and a command-line one would answer for all.
  */
 export const PLAYWRIGHT_HEADLESS_BLINK_SETTINGS =
 	"--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4";
-
-/**
- * Playwright's headless pointer, plus the coarse pointer of the touchscreen a
- * touch identity has beside its mouse (ui::PointerType: 2 coarse, 4 fine;
- * ui::HoverType: 2 hover).
- */
-export function headlessPointerSettings(
-	config: Record<string, unknown>,
-): string {
-	const pointers = 4 | (config["navigator.maxTouchPoints"] ? 2 : 0);
-	return `--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=${pointers}`;
-}
 
 /**
  * The features Playwright's Chromium launch disables (playwright-core

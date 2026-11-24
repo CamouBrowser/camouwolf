@@ -460,16 +460,18 @@ all — which is why the launcher's Windows font manifest always carries it.
 ### 0024 — touch points
 
 `navigator_events.cc`, `slow_web_preference_cache.cc`. `navigator.maxTouchPoints`
-from `navigator.maxTouchPoints`, and the browser's pointer types with it: a
-touchscreen beside a mouse adds a coarse pointer, so a touch identity matches
-`(any-pointer: coarse)` and keeps `(pointer: fine)` and `(hover: hover)`, as on
-a touch laptop. `ontouchstart` is left off: desktop Chrome does not expose the
-touch event handlers even with a touchscreen (touch event feature detection
-defaults to disabled outside Android and iOS).
+from `navigator.maxTouchPoints`, and the pointer with it, as the identity's
+devices rather than the host's: a mouse, and a touchscreen beside it when the
+identity claims touch points. A touch identity matches `(any-pointer: coarse)`
+and keeps `(pointer: fine)` and `(hover: hover)`, as on a touch laptop; a
+touchless one matches only the mouse. `ontouchstart` is left off: desktop
+Chrome does not expose the touch event handlers even with a touchscreen (touch
+event feature detection defaults to disabled outside Android and iOS).
 
-Playwright's headless launch states the pointer itself (`--blink-settings`, a
-mouse alone), which overrides these types in the renderer. The launchers drop
-that default and state the same settings with the identity's coarse pointer.
+The pointer is stated whole, headless or not, and per page from the identity of
+the page's browser context (0032). Playwright's headless launch states a mouse
+on the command line (`--blink-settings`), which the renderer applies after
+these preferences and so would answer for every context; the launchers drop it.
 
 ### 0025 — device scale factor
 
@@ -676,10 +678,15 @@ for the context.
   as `CAMOU_CONFIG`) against the browser context with
   `CamouwolfConfig::SetForContext`. The launcher sends it right after creating
   the context, before the context has a renderer. Without `locale:intl` the
-  handler writes the UI locale Chrome would resolve for the first language,
-  which is what `--lang` gives the launch (0026).
+  handler writes the UI locale Chrome resolves the first language to, as it
+  does the launch's (0026). It calls `l10n_util::CheckAndResolveLocale`
+  itself: `GetApplicationLocale` ignores its argument on Linux and answers the
+  process's `LANGUAGE`, which is the launch's.
 - The context's `Accept-Language` and `navigator.languages` come from the
-  context's language pref, which the command sets from `languages`.
+  context's language prefs, which the command sets from `languages`. Each
+  tab's `LanguagePrefs` rebuilds the accept list from the selected list, where
+  `--accept-lang` holds the launch's at command-line precedence, so the patch
+  reads a selected list set in the context's own prefs ahead of it.
 - Each renderer serves one browser context. `RenderProcessHostImpl` hands a
   renderer of an identified context its JSON as a file (`context_identity`),
   and the renderer adopts it in place of the launch's before Blink starts

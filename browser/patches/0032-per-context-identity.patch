@@ -82,7 +82,7 @@ diff --git a/chrome/browser/devtools/protocol/target_handler.cc b/chrome/browser
  #include "ui/base/page_transition_types.h"
  #include "ui/base/window_open_disposition.h"
  #include "ui/gfx/geometry/rect.h"
-@@ -89,6 +101,66 @@
+@@ -89,6 +101,73 @@
        ChromeDevToolsManagerDelegate::GetInstance();
    if (delegate)
      delegate->UpdateDeviceDiscovery();
@@ -94,7 +94,7 @@ diff --git a/chrome/browser/devtools/protocol/target_handler.cc b/chrome/browser
 +// It is accepted only before the context has a renderer process: a renderer
 +// adopts its context's identity once, as it starts, and the pages of one
 +// context must never disagree. The languages go to the context's own
-+// accept-languages pref, which an off-the-record profile keeps in memory, so
++// language prefs, which an off-the-record profile keeps in memory, so
 +// the Accept-Language header and navigator.languages come from the one place
 +// they come from for the launch.
 +protocol::Response TargetHandler::SetBrowserContextIdentity(
@@ -128,16 +128,23 @@ diff --git a/chrome/browser/devtools/protocol/target_handler.cc b/chrome/browser
 +  if (!dict) {
 +    return protocol::Response::InvalidParams("identity is not a JSON object");
 +  }
-+  // Intl's default locale is the UI locale Chrome would pick for the first
-+  // language, as --lang makes it for the launch (see 0026).
++  // Intl's default locale is the UI locale Chrome resolves the first language
++  // to, as it does the launch's (see 0026). GetApplicationLocale ignores its
++  // argument on Linux and answers the process's LANGUAGE, the launch's, so the
++  // language is resolved here, with its en-US fallback.
 +  if (!dict->contains("locale:intl")) {
-+    dict->Set("locale:intl", l10n_util::GetApplicationLocale(
-+                                 languages->front(), /*set_icu_locale=*/false));
++    dict->Set("locale:intl", l10n_util::CheckAndResolveLocale(languages->front())
++                                 .value_or("en-US"));
 +  }
 +  CHECK(base::CamouwolfConfig::SetForContext(
 +      context, base::WriteJson(*dict).value()));
++  // Every tab's LanguagePrefs derives the accept list from the selected one,
++  // so both are the context's.
++  const std::string language_list = base::JoinString(*languages, ",");
++  profile->GetPrefs()->SetString(language::prefs::kSelectedLanguages,
++                                 language_list);
 +  profile->GetPrefs()->SetString(language::prefs::kAcceptLanguages,
-+                                 base::JoinString(*languages, ","));
++                                 language_list);
 +  // The network context was made with the context, under the launch's
 +  // identity; one made from now on takes the context's.
 +  base::CamouwolfConfig::ScopedIdentity scoped(context);
@@ -733,3 +740,29 @@ diff --git a/content/browser/renderer_host/p2p/socket_dispatcher_host.cc b/conte
    mojo::Remote<network::mojom::P2PTrustedSocketManager> trusted_socket_manager(
        std::move(pending_trusted_socket_manager));
    if (dump_incoming_rtp_packet_ || dump_outgoing_rtp_packet_) {
+diff --git a/components/language/core/browser/language_prefs.cc b/components/language/core/browser/language_prefs.cc
+--- a/components/language/core/browser/language_prefs.cc
++++ b/components/language/core/browser/language_prefs.cc
+@@ -117,10 +117,19 @@
+     }
+   }
+ 
++  // CAMOUWOLF: --accept-lang puts the launch's languages at command-line
++  // precedence, above the in-memory list of a context given an identity of its
++  // own (Target.setBrowserContextIdentity), so the user value is read first.
++  const base::Value* own =
++      prefs_->GetUserPrefValue(language::prefs::kSelectedLanguages);
++  const std::string& selected =
++      own && own->is_string()
++          ? own->GetString()
++          : prefs_->GetString(language::prefs::kSelectedLanguages);
++
+   // Add non-duplicate user-selected languages.
+-  for (auto& language :
+-       base::SplitString(prefs_->GetString(language::prefs::kSelectedLanguages),
+-                         ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL)) {
++  for (auto& language : base::SplitString(selected, ",", base::TRIM_WHITESPACE,
++                                          base::SPLIT_WANT_ALL)) {
+     if (forced_languages_set_.find(language) == forced_languages_set_.end())
+       deduplicated_languages.emplace_back(std::move(language));
+   }

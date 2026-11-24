@@ -519,6 +519,13 @@ def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, ind
         profile["results"] = {"Launch": {"launcherOptions": check(False, f"{type(exc).__name__}: {exc}")}}
         return profile
     profile["claimed_keys"] = sorted(claimed)
+    if os_name != "macos":
+        # The other touchscreen than the launch's, so a pointer stated for the
+        # whole browser cannot pass for the context's (no Mac has one).
+        touch = 0 if claimed.get("navigator.maxTouchPoints") else 10
+        context_variant = {**context_variant, "config": {**context_variant.get("config", {}),
+                                                         "navigator.maxTouchPoints": touch}}
+        profile["context_variant"] = context_variant
     browser = None
     try:
         browser = NewBrowser(playwright, from_options=options)

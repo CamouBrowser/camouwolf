@@ -84,7 +84,6 @@ import {
 } from "./pycompat.js";
 import {
 	auditSwitches,
-	headlessPointerSettings,
 	IGNORED_DEFAULT_ARGS,
 	LAUNCHER_DISABLED_FEATURES,
 	mergeListSwitches,
@@ -2216,9 +2215,6 @@ export async function launchOptions({
 	if (block_images) {
 		LeakWarning.warn(loadWarnings().block_images, i_know_what_im_doing);
 		args.push("--blink-settings=imagesEnabled=false");
-	}
-	if (headless === true) {
-		args.push(headlessPointerSettings(config));
 	}
 	// A proxied context's WebRTC already leaves through the proxy (patch 0031);
 	// this keeps it to TCP through the proxy, with no UDP at all.

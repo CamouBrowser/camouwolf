@@ -71,7 +71,6 @@ from .switches import (
     LAUNCHER_DISABLED_FEATURES,
     PLAYWRIGHT_DISABLED_FEATURES,
     audit_switches,
-    headless_pointer_settings,
     merge_list_switches,
 )
 from camoucore.virtdisplay import VirtualDisplay
@@ -1619,8 +1618,6 @@ def launch_options(
     if block_images:
         LeakWarning.warn(WARNINGS_DATA['block_images'], i_know_what_im_doing)
         args.append('--blink-settings=imagesEnabled=false')
-    if headless is True:
-        args.append(headless_pointer_settings(config))
     # A proxied context's WebRTC already leaves through the proxy (patch 0031);
     # this keeps it to TCP through the proxy, with no UDP at all.
     if block_webrtc:
