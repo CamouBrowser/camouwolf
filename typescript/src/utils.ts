@@ -91,7 +91,7 @@ import {
 	PLAYWRIGHT_HEADLESS_BLINK_SETTINGS,
 } from "./switches.js";
 import { LeakWarning, loadWarnings, warn } from "./warnings.js";
-import { chromeGpus, usableGpu } from "./webgl.js";
+import { chromeGpus, readoutNames, usableGpu } from "./webgl.js";
 
 type ListOrString = string | readonly string[];
 type Config = Record<string, any>;
@@ -475,7 +475,9 @@ export function validateConfig(
 				`Invalid type for property ${key}. Expected an array of strings.`,
 			);
 		}
-		if (key === "webGl:parameters") validateWebglParameters(value);
+		if (key === "webGl:parameters" || key === "webGl2:parameters") {
+			validateWebglParameters(key, value);
+		}
 		if (key === "systemColors") {
 			const allInts = Object.values(value).every(
 				(v) =>
@@ -492,25 +494,30 @@ export function validateConfig(
 }
 
 /**
- * Every webGl:parameters entry is a decimal pname and a scalar; the browser
- * reads nothing else (arrays included).
+ * Every entry is a decimal pname and a scalar, or a list of 2 to 4 numbers
+ * (the typed arrays getParameter returns); the browser reads nothing else.
  */
-export function validateWebglParameters(parameters: Config): void {
+export function validateWebglParameters(key: string, parameters: Config): void {
+	const isNumber = (v: unknown) =>
+		typeof v === "number" || typeof v === "bigint" || v instanceof PyFloat;
 	for (const [pname, value] of Object.entries(parameters)) {
 		if (!/^\p{Nd}+$/u.test(pname)) {
 			throw new InvalidPropertyType(
-				`Invalid webGl:parameters key ${pyStrRepr(pname)}: expected a decimal GLenum.`,
+				`Invalid ${key} key ${pyStrRepr(pname)}: expected a decimal GLenum.`,
 			);
 		}
 		const scalar =
 			typeof value === "boolean" ||
-			typeof value === "number" ||
-			typeof value === "bigint" ||
 			typeof value === "string" ||
-			value instanceof PyFloat;
-		if (!scalar) {
+			isNumber(value);
+		const array =
+			Array.isArray(value) &&
+			value.length >= 2 &&
+			value.length <= 4 &&
+			value.every(isNumber);
+		if (!scalar && !array) {
 			throw new InvalidPropertyType(
-				`Invalid webGl:parameters[${pname}]: expected a number, boolean or string, ` +
+				`Invalid ${key}[${pname}]: expected a number, boolean, string or a list of 2 to 4 numbers, ` +
 					`got ${pyTypeName(value)}.`,
 			);
 		}
@@ -1572,6 +1579,7 @@ export async function drawFingerprint(
 		const expected = drawnOs ? clienthints.NAV_PLATFORM[drawnOs] : null;
 		if (platform !== expected) continue;
 		if (!usableGpu(fingerprint.gpu, drawnOs)) continue;
+		if (!readoutNames(fingerprint, fingerprint.gpu.renderer)) continue;
 		const drawnScreen = pyTruthy(fingerprint.screen) ? fingerprint.screen : {};
 		if (
 			coherence.machineMisfit(

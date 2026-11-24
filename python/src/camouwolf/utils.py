@@ -74,7 +74,7 @@ from .switches import (
     merge_list_switches,
 )
 from camoucore.virtdisplay import VirtualDisplay
-from .webgl import chrome_gpus, usable_gpu
+from .webgl import chrome_gpus, readout_names, usable_gpu
 
 ListOrString: TypeAlias = Union[Tuple[str, ...], List[str], str]
 
@@ -279,22 +279,25 @@ def validate_config(config_map: Dict[str, Any], path: Optional[Union[str, Path]]
                 )
         elif expected_type == 'array' and not all(isinstance(item, str) for item in value):
             raise InvalidPropertyType(f'Invalid type for property {key}. Expected an array of strings.')
-        if key == 'webGl:parameters':
-            validate_webgl_parameters(value)
+        if key in ('webGl:parameters', 'webGl2:parameters'):
+            validate_webgl_parameters(key, value)
         if key == 'systemColors':
             if not all(isinstance(v, int) and not isinstance(v, bool) for v in value.values()):
                 raise InvalidPropertyType('Invalid systemColors: every value must be an 0xRRGGBB integer.')
 
 
-def validate_webgl_parameters(parameters: Dict[str, Any]) -> None:
-    """Every webGl:parameters entry is a decimal pname and a scalar; the
-    browser reads nothing else (arrays included)."""
+def validate_webgl_parameters(key: str, parameters: Dict[str, Any]) -> None:
+    """Every entry is a decimal pname and a scalar, or a list of 2 to 4 numbers
+    (the typed arrays getParameter returns); the browser reads nothing else."""
     for pname, value in parameters.items():
         if not str(pname).isdigit():
-            raise InvalidPropertyType(f'Invalid webGl:parameters key {pname!r}: expected a decimal GLenum.')
-        if not isinstance(value, (bool, int, float, str)):
+            raise InvalidPropertyType(f'Invalid {key} key {pname!r}: expected a decimal GLenum.')
+        is_array = isinstance(value, list) and 2 <= len(value) <= 4 and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in value
+        )
+        if not is_array and not isinstance(value, (bool, int, float, str)):
             raise InvalidPropertyType(
-                f'Invalid webGl:parameters[{pname}]: expected a number, boolean or string, '
+                f'Invalid {key}[{pname}]: expected a number, boolean, string or a list of 2 to 4 numbers, '
                 f'got {type(value).__name__}.'
             )
 
@@ -1085,6 +1088,8 @@ def draw_fingerprint(
         if platform != clienthints.NAV_PLATFORM.get(drawn_os):
             continue
         if not usable_gpu(fingerprint.get('gpu'), drawn_os):
+            continue
+        if not readout_names(fingerprint, fingerprint['gpu']['renderer']):
             continue
         if coherence.machine_misfit(
             fingerprint['gpu']['renderer'], drawn_os, (fingerprint.get('navigator') or {}).get('hardwareConcurrency'),

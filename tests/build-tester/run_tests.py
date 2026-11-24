@@ -341,6 +341,17 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         bad = [f"{p}: claimed {v}, saw {probe[probed].get(str(p))}" for p, v in wanted.items()
                if probe[probed].get(str(p)) != v and not (kind == "webgl2" and key not in claimed and probe[probed].get(str(p)) is None)]
         c[f"{kind}Parameters"] = check(not bad, "; ".join(bad)) if wanted else check(False, f"the launcher claimed no {key}")
+    for kind, prefix in (("webgl", "webGl"), ("webgl2", "webGl2")):
+        info = got["webgl"].get(kind) or {}
+        if f"{prefix}:supportedExtensions" in claimed:
+            # Hide-only: the build reports the claimed list minus what the host lacks.
+            extra = sorted(set(info.get("extensions") or []) - set(claimed[f"{prefix}:supportedExtensions"]))
+            c[f"{kind}Extensions"] = check(not extra, f"reported but not claimed: {extra}")
+        if f"{prefix}:shaderPrecisionFormats" in claimed:
+            seen = info.get("shaderPrecisionFormats") or {}
+            bad = [f"{k}: claimed {v}, saw {seen.get(k)}" for k, v in claimed[f"{prefix}:shaderPrecisionFormats"].items()
+                   if seen.get(k) != v]
+            c[f"{kind}ShaderPrecision"] = check(not bad, "; ".join(bad[:6]))
     renderer = str((got["webgl"].get("webgl") or {}).get("renderer"))
     c["rendererNamesTheOs"] = check(
         ("Direct3D" in renderer) == (os_name == "windows") and ("Metal" in renderer or "Apple" in renderer) == (os_name == "macos"),
@@ -429,6 +440,8 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         bad = [f"{k}: claimed {v:#08x}, saw {probe['systemColors'].get(k)}" for k, v in claimed["systemColors"].items()
                if probe["systemColors"].get(k) != v]
         c["systemColors"] = check(not bad, "; ".join(bad[:8]))
+    if "webGpu:preferredCanvasFormat" in claimed:
+        c["webgpuCanvasFormat"] = same(claimed, "webGpu:preferredCanvasFormat", got.get("preferredCanvasFormat"))
     if "media:platformDecoders" in claimed:
         c = out["Media Codecs"] = {}
         compare_codecs(claimed, got.get("codecs") or {}, c)
@@ -447,6 +460,10 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         c["adapterInfo"] = check(isinstance(gpu, dict) and gpu.get("vendor") == claimed["webGpu:vendor"]
                                    and gpu.get("architecture") == claimed.get("webGpu:architecture"),
                                    f"claimed {claimed['webGpu:vendor']}/{claimed.get('webGpu:architecture')}, saw {gpu}")
+        if "webGpu:subgroupMinSize" in claimed:
+            wanted = [claimed["webGpu:subgroupMinSize"], claimed.get("webGpu:subgroupMaxSize")]
+            sizes = [gpu.get("subgroupMinSize"), gpu.get("subgroupMaxSize")] if isinstance(gpu, dict) else gpu
+            c["subgroupSizes"] = check(sizes == wanted, f"claimed {wanted}, saw {sizes}")
     return out
 
 

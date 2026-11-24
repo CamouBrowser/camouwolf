@@ -136,3 +136,9 @@
 # navigator.getBattery() answers the identity's device (battery:charging,
 # battery:level) and never binds the host's battery monitor.
 0033-battery-status.patch
+
+# --- Canvas first read --------------------------------------------------------
+# An accelerated canvas's first getImageData unpremultiplied in a GPU shader and
+# every later one on the CPU, so low-alpha pixels (text edges) read differently
+# the first time. Real Windows Chrome returns the same bytes on every read.
+0032-canvas-cpu-unpremultiply.patch

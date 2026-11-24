@@ -29,6 +29,13 @@ const buildTester = (() => {
       plainVendor: gl.getParameter(gl.VENDOR),
       plainRenderer: gl.getParameter(gl.RENDERER),
       version: gl.getParameter(gl.VERSION),
+      extensions: gl.getSupportedExtensions(),
+      shaderPrecisionFormats: Object.fromEntries(
+        [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER].flatMap((st) =>
+          [gl.LOW_FLOAT, gl.MEDIUM_FLOAT, gl.HIGH_FLOAT, gl.LOW_INT, gl.MEDIUM_INT, gl.HIGH_INT].map((pt) => {
+            const f = gl.getShaderPrecisionFormat(st, pt);
+            return [`${st},${pt}`, { rangeMin: f.rangeMin, rangeMax: f.rangeMax, precision: f.precision }];
+          }))),
     };
   }
   function fromWorker(timeout = 8000) {
@@ -366,9 +373,13 @@ const buildTester = (() => {
     try {
       out.fetchHeaders = await (await fetch("/headers?from=page")).json();
     } catch (error) { out.fetchHeaders = { error: String(error) }; }
+    out.preferredCanvasFormat = navigator.gpu ? navigator.gpu.getPreferredCanvasFormat() : null;
     try {
       const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
-      out.webgpu = adapter ? { vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device } : null;
+      out.webgpu = adapter ? {
+        vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device,
+        subgroupMinSize: adapter.info.subgroupMinSize, subgroupMaxSize: adapter.info.subgroupMaxSize,
+      } : null;
     } catch (error) { out.webgpu = { error: String(error) }; }
     out.codecs = await codecs();
     try {

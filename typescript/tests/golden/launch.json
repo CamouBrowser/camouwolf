@@ -127,8 +127,8 @@
      "--disable-blink-features=AutomationControlled",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
-     "--window-size=2021,986",
-     "--window-position=6,3"
+     "--window-size=1920,958",
+     "--window-position=0,0"
     ],
     "env": {
      "HOME": "/home/golden",
@@ -868,7 +868,7 @@
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
      "--window-size=1000,700",
-     "--window-position=468,190"
+     "--window-position=460,190"
     ],
     "env": {
      "HOME": "/home/golden",
@@ -2373,8 +2373,8 @@
      "--no-sandbox",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
-     "--window-size=1694,1268",
-     "--window-position=3,3"
+     "--window-size=3840,2133",
+     "--window-position=0,0"
     ],
     "env": {
      "HOME": "/home/golden",
@@ -2734,8 +2734,8 @@
      "--disable-blink-features=AutomationControlled",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
-     "--window-size=1694,1268",
-     "--window-position=3,3"
+     "--window-size=1288,741",
+     "--window-position=10,10"
     ],
     "env": {
      "HOME": "/home/golden",
@@ -2778,8 +2778,8 @@
      "--disable-blink-features=AutomationControlled",
      "--disk-cache-size=1",
      "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion,HttpsFirstBalancedModeAutoEnable",
-     "--window-size=1417,829",
-     "--window-position=23,71"
+     "--window-size=1920,959",
+     "--window-position=0,121"
     ],
     "env": {
      "HOME": "/home/golden",

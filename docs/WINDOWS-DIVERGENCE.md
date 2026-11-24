@@ -65,8 +65,13 @@ Draw text to a canvas, then `getImageData` twice:
 
 Isolated further: a geometry-only canvas (no text) is stable from the first read
 on **both**; only the text canvas diverges, and `await document.fonts.load(...)`
-+ `document.fonts.ready` does **not** fix it. So it is glyph-cache warm-up in
-the rasteriser, not a GPU readback race and not the JS-visible font-loading API.
++ `document.fonts.ready` does **not** fix it.
+
+Since measured against a build: it is not glyph-cache warm-up. The first read
+of an accelerated canvas comes from the GPU, which unpremultiplied in a shader;
+the later reads come from a CPU copy, which rounds low-alpha pixels (the edges
+of antialiased text) differently. Only those pixels differed, and a CPU canvas
+was stable. Fixed by 0032; regression test `tests/native/test_canvas_readback.py`.
 
 This is a three-line probe that identifies Linux regardless of every other
 spoof, and **canvas farbling cannot mask it**: `0009` perturbs both reads with
@@ -101,6 +106,12 @@ Of the numeric parameters, **20 differ in WebGL2** and Camouwolf spoofs **10**
 Leg A is a complete real-Windows-D3D11 record, which is what the WebGL backend
 signatures needed.
 
+Since then the launcher sends the backend signature with the renderer: the
+fingerprint's own WebGL1 and WebGL2 limits, precision table and extension list,
+whenever its readout names the claimed renderer (0007). The Linux-only
+extensions are hidden; the Windows-only ones cannot be added where the host
+lacks them.
+
 ### 2.3 WebGPU
 
 | field | real Windows | Linux | spoofed? |
@@ -114,6 +125,12 @@ signatures needed.
 
 `navigator.gpu.getPreferredCanvasFormat()` is a one-line, zero-permission OS
 check and is not spoofed at all.
+
+Since then every Windows and macOS identity claims `bgra8unorm`, and an
+identity whose recorded adapter matches its renderer also claims that adapter's
+subgroup sizes, features and limits (0008). Features stay hide-only and limits
+tighten-only, so `shader-f16` and limits above the host's need a host GPU that
+has them.
 
 ### 2.4 Media stack
 

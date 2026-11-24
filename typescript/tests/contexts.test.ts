@@ -738,12 +738,23 @@ describe.skipIf(!MODEL.ok)("drawFingerprint", () => {
 		const record = (cores: number) => ({
 			...real,
 			gpu: { ...real.gpu, renderer: apple },
+			webgl: { ...real.webgl, renderer: apple },
+			webgl2: { ...real.webgl2, renderer: apple },
 			navigator: { ...real.navigator, hardwareConcurrency: cores },
 		});
 		const draws = [record(5), record(10)];
 		utils.utilsDeps.generateFingerprint = (() => draws.shift()) as any;
 		const drawn = await utils.drawFingerprint("macos", null, null, null);
 		expect(drawn.navigator.hardwareConcurrency).toBe(10);
+	});
+
+	it("draws a GPU with its own WebGL readout", async () => {
+		// Without one the identity has no device limits for its renderer, and
+		// the page reads the host's.
+		const real = await utils.drawFingerprint("windows", null, null, null);
+		const draws = [{ ...real, webgl2: "unsupported" }, real];
+		utils.utilsDeps.generateFingerprint = (() => draws.shift()) as any;
+		expect(await utils.drawFingerprint("windows", null, null, null)).toBe(real);
 	});
 
 	it("draws a machine in the identity's language", async () => {

@@ -43,13 +43,9 @@ const WINDOWS_FINGERPRINT = {
 	devices: { audioinput: 1, videoinput: 1, audiooutput: 2 },
 	gpu: { vendor: "Google Inc. (NVIDIA)", renderer: RTX },
 	webgl: {
+		renderer: RTX,
 		params: {
 			"3379": { name: "MAX_TEXTURE_SIZE", type: "Number", value: 16384 },
-			"34076": {
-				name: "MAX_CUBE_MAP_TEXTURE_SIZE",
-				type: "Number",
-				value: 16384,
-			},
 			"34047": {
 				name: "MAX_TEXTURE_MAX_ANISOTROPY_EXT",
 				type: "Number",
@@ -60,30 +56,66 @@ const WINDOWS_FINGERPRINT = {
 				type: "Int32Array",
 				value: [32767, 32767],
 			},
+			"33902": {
+				name: "ALIASED_LINE_WIDTH_RANGE",
+				type: "Float32Array",
+				value: [1, 1],
+			},
+			"3408": { name: "SUBPIXEL_BITS", type: "Number", value: 4 },
 			"7938": {
 				name: "VERSION",
 				type: "String",
 				value: "WebGL 1.0 (OpenGL ES 2.0 Chromium)",
 			},
 			"2884": { name: "CULL_FACE", type: "Boolean", value: false },
+			"2978": {
+				name: "VIEWPORT",
+				type: "Int32Array",
+				value: [0, 0, 300, 150],
+			},
 			"34930": { name: "MAX_TEXTURE_IMAGE_UNITS", type: "Number", value: 16 },
 		},
+		supportedExtensions: ["ANGLE_instanced_arrays", "WEBGL_draw_buffers"],
+		shaderPrecisionFormats: [
+			{
+				shaderType: 35633,
+				precisionType: 36337,
+				shaderPrecisionFormat: { rangeMin: 127, rangeMax: 127, precision: 23 },
+			},
+		],
 	},
 	webgl2: {
+		renderer: RTX,
 		params: {
 			"3379": { name: "MAX_TEXTURE_SIZE", type: "Number", value: 16384 },
-			"34076": {
-				name: "MAX_CUBE_MAP_TEXTURE_SIZE",
-				type: "Number",
-				value: 16384,
-			},
 			"34930": { name: "MAX_TEXTURE_IMAGE_UNITS", type: "Number", value: 32 },
+			"35076": { name: "MIN_PROGRAM_TEXEL_OFFSET", type: "Number", value: -8 },
+			"37447": {
+				name: "MAX_CLIENT_WAIT_TIMEOUT_WEBGL",
+				type: "Number",
+				value: 0,
+			},
 		},
+		supportedExtensions: ["OVR_multiview2"],
+		shaderPrecisionFormats: [],
 	},
 	gpuInfo: {
+		unmaskedRenderer: RTX,
+		preferredCanvasFormat: "bgra8unorm",
 		adapter: {
 			default: {
-				info: { vendor: "nvidia", architecture: "ampere", device: "" },
+				info: {
+					vendor: "nvidia",
+					architecture: "ampere",
+					device: "",
+					subgroupMinSize: 32,
+					subgroupMaxSize: 128,
+				},
+				features: ["shader-f16", "texture-compression-bc"],
+				limits: {
+					maxBufferSize: 2147483648,
+					maxComputeWorkgroupStorageSize: 32768,
+				},
 			},
 		},
 	},
@@ -128,13 +160,85 @@ describe("fromFpgen", () => {
 		);
 	});
 
-	it("sends only the limits both context versions agree on", () => {
-		// Dropped: an extension limit, an array, a string, state, and a limit
-		// WebGL2 reports differently.
-		expect(fromFpgen(WINDOWS_FINGERPRINT, 152)["webGl:parameters"]).toEqual({
+	it("claims each context version's own device limits", () => {
+		const config = fromFpgen(WINDOWS_FINGERPRINT, 152);
+		// Dropped: an extension limit, a string, state (CULL_FACE, VIEWPORT) and
+		// a WebGL2 limit named like an extension's.
+		expect(config["webGl:parameters"]).toEqual({
 			"3379": 16384,
-			"34076": 16384,
+			"3386": [32767, 32767],
+			"33902": [1, 1],
+			"3408": 4,
+			"34930": 16,
 		});
+		expect(config["webGl2:parameters"]).toEqual({
+			"3379": 16384,
+			"34930": 32,
+			"35076": -8,
+		});
+		expect(config["webGl:supportedExtensions"]).toEqual([
+			"ANGLE_instanced_arrays",
+			"WEBGL_draw_buffers",
+		]);
+		expect(config["webGl2:supportedExtensions"]).toEqual(["OVR_multiview2"]);
+		expect(config["webGl:shaderPrecisionFormats"]).toEqual({
+			"35633,36337": { rangeMin: 127, rangeMax: 127, precision: 23 },
+		});
+		expect(config).not.toHaveProperty(["webGl2:shaderPrecisionFormats"]);
+	});
+
+	it("claims no WebGL readout of another GPU", () => {
+		// fpgen occasionally pairs one device's GPU with another's WebGL
+		// readout; its limits would contradict the claimed renderer.
+		const other = {
+			...WINDOWS_FINGERPRINT,
+			webgl2: {
+				...WINDOWS_FINGERPRINT.webgl2,
+				renderer: "ANGLE (Intel, other)",
+			},
+		};
+		const keys = Object.keys(fromFpgen(other, 152));
+		expect(keys.filter((k) => /^(webGl:[ps]|webGl2:)/.test(k))).toEqual([]);
+	});
+
+	it("claims the WebGPU adapter whole", () => {
+		const config = fromFpgen(WINDOWS_FINGERPRINT, 152);
+		expect(config["webGpu:preferredCanvasFormat"]).toBe("bgra8unorm");
+		expect([
+			config["webGpu:subgroupMinSize"],
+			config["webGpu:subgroupMaxSize"],
+		]).toEqual([32, 128]);
+		expect(config["webGpu:features"]).toEqual([
+			"shader-f16",
+			"texture-compression-bc",
+		]);
+		expect(config["webGpu:limits"]).toEqual({
+			maxBufferSize: 2147483648,
+			maxComputeWorkgroupStorageSize: 32768,
+		});
+	});
+
+	it("claims no adapter of another GPU, but the OS's canvas format", () => {
+		const other = {
+			...WINDOWS_FINGERPRINT,
+			gpuInfo: {
+				...WINDOWS_FINGERPRINT.gpuInfo,
+				unmaskedRenderer: "ANGLE (Intel, other)",
+			},
+		};
+		const config = fromFpgen(other, 152);
+		expect(config["webGpu:preferredCanvasFormat"]).toBe("bgra8unorm");
+		expect(
+			Object.keys(config).filter(
+				(k) => k.startsWith("webGpu:") && k !== "webGpu:preferredCanvasFormat",
+			),
+		).toEqual([]);
+	});
+
+	it("keeps the browser's canvas format for a Linux identity", () => {
+		expect(
+			fingerprints.webgpuAdapter(WINDOWS_FINGERPRINT.gpuInfo, RTX, "lin"),
+		).not.toHaveProperty(["webGpu:preferredCanvasFormat"]);
 	});
 
 	it("gives fonts, voices and devices the browser's formats", () => {

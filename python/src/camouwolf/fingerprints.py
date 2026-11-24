@@ -510,22 +510,43 @@ def platform_codecs(fingerprint: Dict[str, Any], target_os: Optional[str]) -> Di
     }
 
 
-def webgpu_adapter(gpu_info: Any) -> Dict[str, str]:
-    """The WebGPU adapter info of an fpgen record, as webGpu:* keys.
+def webgpu_adapter(gpu_info: Any, renderer: Optional[str], target_os: Optional[str]) -> Dict[str, Any]:
+    """The WebGPU adapter of an fpgen record, as webGpu:* keys.
 
-    A record whose machine had no WebGPU adapter carries an empty list, and
-    nothing is claimed for it.
+    The preferred canvas format is the OS's, so it is claimed from any record,
+    including one of a machine that had no adapter (an empty list), except on
+    a Linux identity: the browser is Chrome on Linux at its own milestone, and
+    fpgen's Linux records predate the milestone that moved Linux to rgba8unorm.
+    The adapter is claimed only from a record of the identity's GPU, which
+    gpuInfo names in unmaskedRenderer.
     """
-    adapter = gpu_info.get('adapter') if isinstance(gpu_info, dict) else None
+    if not isinstance(gpu_info, dict):
+        return {}
+    config: Dict[str, Any] = {}
+    if target_os != 'lin' and gpu_info.get('preferredCanvasFormat') in ('bgra8unorm', 'rgba8unorm'):
+        config['webGpu:preferredCanvasFormat'] = gpu_info['preferredCanvasFormat']
+    if not renderer or gpu_info.get('unmaskedRenderer') != renderer:
+        return config
+    adapter = gpu_info.get('adapter')
     default = adapter.get('default') if isinstance(adapter, dict) else None
     info = default.get('info') if isinstance(default, dict) else None
     if not isinstance(info, dict):
-        return {}
-    return {
-        f'webGpu:{key}': info[key]
-        for key in ('vendor', 'architecture', 'device')
-        if isinstance(info.get(key), str)
-    }
+        return config
+    for key in ('vendor', 'architecture', 'device'):
+        if isinstance(info.get(key), str):
+            config[f'webGpu:{key}'] = info[key]
+    for key in ('subgroupMinSize', 'subgroupMaxSize'):
+        if isinstance(info.get(key), int) and not isinstance(info[key], bool) and info[key] >= 0:
+            config[f'webGpu:{key}'] = info[key]
+    features = default.get('features')
+    if isinstance(features, list) and all(isinstance(f, str) for f in features):
+        config['webGpu:features'] = features
+    limits = default.get('limits')
+    if isinstance(limits, dict):
+        numeric = {k: v for k, v in limits.items() if isinstance(v, int) and not isinstance(v, bool)}
+        if numeric:
+            config['webGpu:limits'] = numeric
+    return config
 
 
 def font_list(fonts: Any, target_os: str) -> Optional[List[str]]:
@@ -613,7 +634,7 @@ def from_fpgen(fingerprint: Dict[str, Any], chrome_version: Optional[Any] = None
     `chrome_version` is the Chromium milestone of the browser that will run; the
     recorded user agent is rewritten to it.
     """
-    from camouwolf.webgl import webgl_parameters
+    from camouwolf.webgl import webgl_identity
 
     camouwolf_data: Dict[str, Any] = {}
     _cast_to_properties(camouwolf_data, FPGEN_DATA, fingerprint)
@@ -629,10 +650,10 @@ def from_fpgen(fingerprint: Dict[str, Any], chrome_version: Optional[Any] = None
     voices = pack_voices(fingerprint.get('voices'))
     if voices:
         camouwolf_data['voices'] = voices
-    parameters = webgl_parameters(fingerprint.get('webgl'), fingerprint.get('webgl2'))
-    if parameters and camouwolf_data.get('webGl:renderer'):
-        camouwolf_data['webGl:parameters'] = parameters
-    camouwolf_data.update(webgpu_adapter(fingerprint.get('gpuInfo')))
+    camouwolf_data.update(webgl_identity(fingerprint, camouwolf_data.get('webGl:renderer')))
+    camouwolf_data.update(
+        webgpu_adapter(fingerprint.get('gpuInfo'), camouwolf_data.get('webGl:renderer'), target_os)
+    )
     camouwolf_data.update(platform_codecs(fingerprint, target_os))
     devices = media_devices(fingerprint.get('devices'))
     if devices:

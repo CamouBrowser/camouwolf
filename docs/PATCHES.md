@@ -221,6 +221,17 @@ readable at all.
 `{rangeMin, rangeMax, precision}`, served from `getShaderPrecisionFormat()`
 after its enum validation.
 
+The launcher sends all three from the fingerprint's own WebGL readout, and only
+when that readout names the claimed renderer: the device limits (`MAX_*`,
+`MIN_*`, `ALIASED_*`, `SUBPIXEL_BITS`, `UNIFORM_BUFFER_OFFSET_ALIGNMENT`, but no
+extension's limits, which the browser would answer whether or not the extension
+is enabled), the extension list and the precision table. A Direct3D 11 identity
+then reads D3D11's backend signature (`ALIASED_LINE_WIDTH_RANGE` `[1,1]`,
+`MAX_VIEWPORT_DIMS` `[32767,32767]`, `[127,127,23]` float precision) and no
+OpenGL-only extension. Windows-only extensions the host lacks stay absent: the
+list cannot add. A drawn record whose WebGL1 and WebGL2 readouts do not both name
+its GPU is redrawn, so every identity has its renderer's limits.
+
 Left out on purpose, following Camoufox: `webGl:contextAttributes` /
 `webGl2:contextAttributes` (Camoufox removed them in 156 — the attributes a
 page gets back depend on what it asked for, so a fixed answer contradicts the
@@ -237,6 +248,10 @@ does).
 the WebGPU twin of `WEBGL_debug_renderer_info`. A detector reading both catches
 a browser that patched only WebGL, since the two APIs would name different GPUs
 on one machine.
+
+**`webGpu:subgroupMinSize` / `webGpu:subgroupMaxSize`** — the adapter info's
+subgroup sizes, which follow the GPU family, so the claimed vendor must not
+report the host's.
 
 **`webGpu:features`** — a list of feature names, applied where the adapter's
 set is built (`MakeFeatureNameSet`). `requestDevice()` validates
@@ -256,6 +271,12 @@ tell rather than a GPU one: upstream decides it with `#if`, `rgba8unorm` on
 Linux/Android and `bgra8unorm` on Windows/macOS, so a Linux host claiming
 Windows gives itself away from `navigator.gpu` alone. Only the script-visible
 value changes; the swap chain keeps the host's format.
+
+The launcher claims the canvas format for every Windows and macOS identity, and
+the rest only from a recorded adapter whose `unmaskedRenderer` is the claimed
+renderer. A Linux identity keeps the build's `rgba8unorm`: fpgen's Linux records
+predate the milestone that moved Linux to it. Hide-only features mean a
+Windows identity on a host without `shader-f16` does not report it.
 
 Not patched: **`navigator.gpu.wgslLanguageFeatures`**. It is a property of the
 Dawn/Tint revision in the build, not of the GPU or the OS — every Chrome 158
@@ -845,3 +866,16 @@ Home/End, Ctrl+Home/End, Ctrl+Z/Y, Ctrl+A), and differ in three:
 Those three follow the editing behaviour 0029 picks, so a `Win32` identity gets
 Windows' and every other launch keeps Linux's. macOS's bindings are not ported;
 see "Not yet patched".
+
+### 0032 — canvas first read
+
+`mailbox_texture_backing.cc`. An accelerated 2D canvas answers its first
+`getImageData` from the GPU and, after a few reads, from a CPU copy.
+`getImageData` asks for unpremultiplied pixels, and Ganesh unpremultiplied them
+in a shader, which rounds low-alpha pixels differently from the CPU. So read 1
+of a canvas with antialiased text differed from read 2, on Linux GL, Vulkan and
+SwiftShader backends alike, and on no real Windows machine; 0009's farbling
+perturbs both reads with one seed and cannot hide it. The backing now reads the
+premultiplied pixels back and unpremultiplies them on the CPU, as the later
+reads do. `--disable-accelerated-2d-canvas` (the `virtual-gpu` launch) never
+had the problem. Regression test: `tests/native/test_canvas_readback.py`.
