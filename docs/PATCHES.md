@@ -229,7 +229,8 @@ is enabled), the extension list and the precision table. A Direct3D 11 identity
 then reads D3D11's backend signature (`ALIASED_LINE_WIDTH_RANGE` `[1,1]`,
 `MAX_VIEWPORT_DIMS` `[32767,32767]`, `[127,127,23]` float precision) and no
 OpenGL-only extension. Windows-only extensions the host lacks stay absent: the
-list cannot add.
+list cannot add. A drawn record whose WebGL1 and WebGL2 readouts do not both name
+its GPU is redrawn, so every identity has its renderer's limits.
 
 Left out on purpose, following Camoufox: `webGl:contextAttributes` /
 `webGl2:contextAttributes` (Camoufox removed them in 156 — the attributes a

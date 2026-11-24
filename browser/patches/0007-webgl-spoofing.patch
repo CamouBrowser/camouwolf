@@ -78,7 +78,7 @@ diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_ba
    return true;
  }
  
-@@ -4082,10 +4121,124 @@
+@@ -4082,10 +4121,125 @@
                              webgl_angle_implementation);
  }
  
@@ -122,10 +122,11 @@ diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_ba
 +  }
 +  if (v->is_double()) {
 +    // base::Value parses anything past int32 as a double, and WebGL2 has
-+    // limits up there (MAX_ELEMENT_INDEX is 4294967295). Through float that
-+    // would come back as 4294967296, so whole numbers go out as integers.
++    // limits up there (MAX_ELEMENT_INDEX is 4294967295, MAX_SERVER_WAIT_TIMEOUT
++    // near 2**63). Through float those round, so whole numbers in int64's
++    // range go out as integers, as upstream's int64 getter answers them.
 +    const double number = v->GetDouble();
-+    if (number == std::floor(number) && std::abs(number) < 9007199254740992.0) {
++    if (number == std::floor(number) && std::abs(number) < 9223372036854775808.0) {
 +      return WebGLAny(script_state, static_cast<int64_t>(number));
 +    }
 +    return WebGLAny(script_state, static_cast<float>(number));
@@ -203,7 +204,7 @@ diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_ba
    const int kIntZero = 0;
    switch (pname) {
      case GL_ACTIVE_TEXTURE:
-@@ -4295,6 +4448,19 @@
+@@ -4295,6 +4449,19 @@
        return ScriptValue::CreateNull(script_state->GetIsolate());
      case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
        if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
@@ -223,7 +224,7 @@ diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_ba
          return WebGLAny(script_state,
                          String(ContextGL()->GetString(GL_RENDERER)));
        }
-@@ -4304,6 +4470,10 @@
+@@ -4304,6 +4471,10 @@
        return ScriptValue::CreateNull(script_state->GetIsolate());
      case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
        if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
@@ -234,7 +235,7 @@ diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_ba
          return WebGLAny(script_state,
                          String(ContextGL()->GetString(GL_VENDOR)));
        }
-@@ -4599,6 +4769,38 @@
+@@ -4599,6 +4770,38 @@
        SynthesizeGLError(GL_INVALID_ENUM, "getShaderPrecisionFormat",
                          "invalid precision type");
        return nullptr;

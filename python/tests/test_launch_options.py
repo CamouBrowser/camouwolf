@@ -622,10 +622,21 @@ def test_a_drawn_mac_is_a_machine_apple_made(monkeypatch):
     real = utils.draw_fingerprint('macos', None, None, None)
     apple = 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)'
     record = lambda cores: {**real, 'gpu': {**real['gpu'], 'renderer': apple},
+                            'webgl': {**real['webgl'], 'renderer': apple}, 'webgl2': {**real['webgl2'], 'renderer': apple},
                             'navigator': {**real['navigator'], 'hardwareConcurrency': cores}}
     draws = iter([record(5), record(10)])
     monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
     assert utils.draw_fingerprint('macos', None, None, None)['navigator']['hardwareConcurrency'] == 10
+
+
+def test_a_drawn_gpu_comes_with_its_own_webgl_readout(monkeypatch):
+    # Without one the identity has no device limits for its renderer, and the
+    # page reads the host's.
+    real = utils.draw_fingerprint('windows', None, None, None)
+    unread = {**real, 'webgl2': 'unsupported'}
+    draws = iter([unread, real])
+    monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
+    assert utils.draw_fingerprint('windows', None, None, None) is real
 
 
 def test_the_identity_is_drawn_from_a_machine_in_its_language(options, places, monkeypatch):

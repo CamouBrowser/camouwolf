@@ -165,23 +165,32 @@ export function shaderPrecisionFormats(
 }
 
 /**
- * The webGl:* and webGl2:* keys of the record's WebGL1 and WebGL2 contexts.
- *
- * Both are claimed or neither: fpgen occasionally pairs one device's GPU with
- * another's WebGL readout, whose limits would contradict the claimed renderer,
- * and a WebGL2 context without its own map answers from the WebGL1 one.
+ * Whether the record's WebGL1 and WebGL2 readouts are both of `renderer`.
+ * fpgen occasionally pairs one device's GPU with another's readout, or with
+ * none; an identity drawn from such a record has no limits for its renderer.
+ */
+export function readoutNames(
+	fingerprint: Record<string, any>,
+	renderer: unknown,
+): boolean {
+	return (
+		Boolean(renderer) &&
+		[fingerprint.webgl, fingerprint.webgl2].every(
+			(r) => isPlainObject(r) && r.renderer === renderer,
+		)
+	);
+}
+
+/**
+ * The webGl:* and webGl2:* keys of the record's WebGL1 and WebGL2 contexts,
+ * claimed only from a readout of `renderer` (readoutNames).
  */
 export function webglIdentity(
 	fingerprint: Record<string, any>,
 	renderer: unknown,
 ): Record<string, unknown> {
+	if (!readoutNames(fingerprint, renderer)) return {};
 	const { webgl, webgl2 } = fingerprint;
-	if (
-		!renderer ||
-		![webgl, webgl2].every((r) => isPlainObject(r) && r.renderer === renderer)
-	) {
-		return {};
-	}
 	const claimed: Record<string, unknown> = {
 		"webGl:parameters": webglParameters(webgl),
 		"webGl2:parameters": webglParameters(webgl2),

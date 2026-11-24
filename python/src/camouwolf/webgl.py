@@ -105,16 +105,24 @@ def shader_precision_formats(context: Any) -> Dict[str, Dict[str, int]]:
     return table
 
 
-def webgl_identity(fingerprint: Dict[str, Any], renderer: Optional[str]) -> Dict[str, Any]:
-    """The webGl:* and webGl2:* keys of the record's WebGL1 and WebGL2 contexts.
+def readout_names(fingerprint: Dict[str, Any], renderer: Optional[str]) -> bool:
+    """Whether the record's WebGL1 and WebGL2 readouts are both of `renderer`.
 
-    Both are claimed or neither: fpgen occasionally pairs one device's GPU with
-    another's WebGL readout, whose limits would contradict the claimed renderer,
-    and a WebGL2 context without its own map answers from the WebGL1 one.
+    fpgen occasionally pairs one device's GPU with another's readout, or with
+    none; an identity drawn from such a record has no limits for its renderer.
     """
-    webgl, webgl2 = fingerprint.get('webgl'), fingerprint.get('webgl2')
-    if not renderer or not all(isinstance(r, dict) and r.get('renderer') == renderer for r in (webgl, webgl2)):
+    return bool(renderer) and all(
+        isinstance(r, dict) and r.get('renderer') == renderer
+        for r in (fingerprint.get('webgl'), fingerprint.get('webgl2'))
+    )
+
+
+def webgl_identity(fingerprint: Dict[str, Any], renderer: Optional[str]) -> Dict[str, Any]:
+    """The webGl:* and webGl2:* keys of the record's WebGL1 and WebGL2 contexts,
+    claimed only from a readout of `renderer` (readout_names)."""
+    if not readout_names(fingerprint, renderer):
         return {}
+    webgl, webgl2 = fingerprint['webgl'], fingerprint['webgl2']
     claimed = {
         'webGl:parameters': webgl_parameters(webgl),
         'webGl2:parameters': webgl_parameters(webgl2),
