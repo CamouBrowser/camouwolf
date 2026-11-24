@@ -91,7 +91,6 @@ export const SERVER_FLAGS = [
  * whichever ANGLE backend the host has, which is visible in the pixels and
  * cannot agree with a Windows identity (Direct3D 11); the CPU rasterizer is
  * the same on every backend. WebGL, WebGPU and compositing keep the GPU.
- * (From Kraft's src/gpu.ts.)
  */
 export const GPU_SWITCHES: readonly string[] = [
 	"--ignore-gpu-blocklist",

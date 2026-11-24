@@ -13,8 +13,6 @@ in. Chromium's is the command line, which holds three kinds of problem:
 The identity itself travels in the environment (CAMOU_CONFIG_*), never in argv:
 argv is readable in /proc/<pid>/cmdline and `ps`, and Chromium copies much of it
 to its renderers' command lines.
-
-Ported from Kraft's src/switches.ts.
 """
 
 from typing import Any, Dict, Iterable, List, NamedTuple, Tuple

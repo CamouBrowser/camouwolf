@@ -43,8 +43,8 @@ echo "    reverting ${#FILES[@]} file(s)"
 
 # ninja keys on mtime, NOT content. Reverting and re-applying rewrites all of
 # these files even when the series did not change a byte of them, so every one
-# looks dirty and the "warm" rebuild becomes a near-cold one. Observed on
-# jobswipe: a single-patch edit queued 52044 targets and was still going six
+# looks dirty and the "warm" rebuild becomes a near-cold one. Observed on a
+# 64-core build host: a single-patch edit queued 52044 targets and was still going six
 # hours later.
 #
 # So stash the pre-revert state, and afterwards put the ORIGINAL mtime back on
@@ -94,7 +94,7 @@ fi
 # important of the two to keep polite.
 #
 # `ninja -j`, not `autoninja`: autoninja recomputes its own job count from the
-# machine and silently overrides the cap. Observed on jobswipe — a run that was
+# machine and silently overrides the cap. Observed once: a run that was
 # supposed to hold 24 of 64 cores spawned 54 concurrent clang processes and
 # drove CPU pressure to 85%.
 NPROC="$(nproc)"

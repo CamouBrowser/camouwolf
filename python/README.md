@@ -156,7 +156,6 @@ pass `no_viewport=True` to `new_context()` there.
 
 ```bash
 python -m pytest python/tests -q
-python python/tests/manual/smoke_kraft.py    # needs a browser binary
 ```
 
 ## License

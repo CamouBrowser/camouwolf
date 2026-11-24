@@ -76,7 +76,6 @@ SERVER_FLAGS = ('-terminate', '2', '-nolisten', 'tcp', '-sharevts', '-novtswitch
 # whichever ANGLE backend the host has, which is visible in the pixels and
 # cannot agree with a Windows identity (Direct3D 11); the CPU rasterizer is
 # the same on every backend. WebGL, WebGPU and compositing keep the GPU.
-# (From Kraft's src/gpu.ts.)
 GPU_SWITCHES: Tuple[str, ...] = (
     '--ignore-gpu-blocklist',
     '--enable-gpu-rasterization',

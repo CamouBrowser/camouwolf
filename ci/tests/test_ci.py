@@ -20,8 +20,7 @@ import yaml
 
 from ci import _pytest as pytest_helpers
 from ci import release, results, run_build, run_build_tester, run_install, run_playwright, summarize, targets, versions
-from ci._util import BINARY_ENV, LEGACY_ENV_PREFIX_ENV, REPO_ROOT, binary_from, read_upstream_sh
-from ci.browser import with_legacy_env
+from ci._util import BINARY_ENV, REPO_ROOT, binary_from, read_upstream_sh
 from ci.pw_camouwolf_plugin import load_skiplist, merge_launch, parse_shard, shard_of, skip_reason
 from ci.run_prepare import is_transient
 from ci.run_skiplist_audit import targets as audit_targets
@@ -47,24 +46,6 @@ def test_binary_from_env_and_argument(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert binary_from(two) == two  # the argument wins
     with pytest.raises(FileNotFoundError):
         binary_from(tmp_path / "missing")
-
-
-# ------------------------------------------------------------ legacy env
-
-
-def test_legacy_env_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(LEGACY_ENV_PREFIX_ENV, raising=False)
-    env = {"CAMOU_CONFIG_1": "a"}
-    assert with_legacy_env(dict(env)) == env
-
-
-def test_legacy_env_duplicates_every_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(LEGACY_ENV_PREFIX_ENV, "KRAFT_CONFIG")
-    env = with_legacy_env({"CAMOU_CONFIG_1": "a", "CAMOU_CONFIG_2": "b", "CAMOUWOLF_UCRT_MATH": "1", "TZ": "UTC"})
-    assert env["KRAFT_CONFIG_1"] == "a" and env["KRAFT_CONFIG_2"] == "b"
-    assert env["KRAFT_UCRT_MATH"] == "1"
-    # The launcher's own variables are still there: the switch adds, never renames.
-    assert env["CAMOU_CONFIG_1"] == "a" and env["TZ"] == "UTC"
 
 
 # --------------------------------------------------------------- the plugin

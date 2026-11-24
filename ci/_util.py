@@ -40,11 +40,6 @@ EVIDENCE_DIR = RESULTS_DIR
 # chose.
 BINARY_ENV = "CAMOUWOLF_BINARY"
 
-# Test-only. A build that reads its config from another variable family than
-# CAMOU_CONFIG_1..N is driven by copying every chunk under that prefix too
-# (`KRAFT_CONFIG` for the Chromium 152 build the patch series was ported from).
-# Unset in CI: a Camouwolf build reads CAMOU_CONFIG_*.
-LEGACY_ENV_PREFIX_ENV = "CAMOUWOLF_CI_LEGACY_ENV_PREFIX"
 
 # Salt for the HMACs that stand in for sundial's private vector names. A repo
 # constant on purpose: inverting it still needs the private vector list.

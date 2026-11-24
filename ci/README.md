@@ -27,11 +27,6 @@ stage starts for itself (`ci.browser.private_display`), with
 `--ozone-platform=x11` and `WAYLAND_DISPLAY` removed -- so no window can reach a
 desktop, headless or not.
 
-`CAMOUWOLF_CI_LEGACY_ENV_PREFIX` is for testing the pipeline against a build
-that reads its config from another variable family: `KRAFT_CONFIG` makes every
-`CAMOU_CONFIG_n` chunk also appear as `KRAFT_CONFIG_n`. It changes nothing in
-the launcher and is never set in a workflow.
-
 ## Stages
 
 | Stage | Gate | Needs a browser | What it runs |

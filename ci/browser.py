@@ -12,11 +12,6 @@ Two rules hold for every launch made from here:
     That holds for headless launches too: a headless Chromium that falls back
     to a headed one must still land on the private display.
   * **The binary is named by the caller.** Nothing here has a default path.
-
-`CAMOUWOLF_CI_LEGACY_ENV_PREFIX` is test-only: it copies every `CAMOU_CONFIG_n`
-chunk under another prefix, for a build that reads its config from a different
-variable family (`KRAFT_CONFIG` for the Chromium 152 build the patch series was
-ported from). The launcher itself is not changed by it.
 """
 
 from __future__ import annotations
@@ -29,14 +24,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from ._util import LEGACY_ENV_PREFIX_ENV, REPO_ROOT, log
+from ._util import REPO_ROOT, log
 
 LAUNCHER_SRC = REPO_ROOT / "python" / "src"
 OZONE = "--ozone-platform=x11"
-CONFIG_PREFIX = "CAMOU_CONFIG_"
-# The second variable a build reads beside its config chunks, and what it is
-# called under a legacy prefix (KRAFT_CONFIG -> KRAFT_UCRT_MATH).
-UCRT_ENV = "CAMOUWOLF_UCRT_MATH"
 
 
 def import_launcher():
@@ -116,19 +107,6 @@ def require_private_display() -> str:
 # ---------------------------------------------------------------------------
 
 
-def with_legacy_env(env: Dict[str, Any]) -> Dict[str, Any]:
-    """Copy the config chunks under $CAMOUWOLF_CI_LEGACY_ENV_PREFIX, if it is set."""
-    prefix = os.environ.get(LEGACY_ENV_PREFIX_ENV, "").strip().rstrip("_")
-    if not prefix:
-        return env
-    for key, value in list(env.items()):
-        if key.startswith(CONFIG_PREFIX):
-            env[f"{prefix}_{key[len(CONFIG_PREFIX):]}"] = value
-    if UCRT_ENV in env and prefix.endswith("_CONFIG"):
-        env[prefix[: -len("_CONFIG")] + "_UCRT_MATH"] = env[UCRT_ENV]
-    return env
-
-
 def launcher_options(
     binary: Path,
     *,
@@ -161,7 +139,6 @@ def launcher_options(
     env = options.setdefault("env", {})
     env["DISPLAY"] = os.environ["DISPLAY"]
     env.pop("WAYLAND_DISPLAY", None)
-    with_legacy_env(env)
     return options
 
 

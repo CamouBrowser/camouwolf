@@ -158,7 +158,7 @@ rm -f .camouwolf-patched
 # `-j` capped deliberately. gclient defaults to one job per core, and Chromium's
 # DEPS has ~350 entries — on a many-core box that means hundreds of concurrent
 # git fetches against chromium.googlesource.com. That gets the host rate-limited:
-# the first jobswipe run died on `HTTP 429` at third_party/neon_2_sse after ~40
+# a first cold sync died on `HTTP 429` at third_party/neon_2_sse after ~40
 # minutes and 43 GB, having logged 19 backoff retries first. A lower parallelism
 # is both faster (no backoff tail) and kinder to a shared host's network budget.
 #

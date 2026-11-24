@@ -12,8 +12,7 @@
     "typecheck": "tsc --noEmit",
     "prepare": "pnpm build",
     "check:pack": "node scripts/check-pack.mjs",
-    "golden": "${CAMOUWOLF_PYTHON:-$HOME/.cache/camouwolf-venv/bin/python} scripts/golden/launch_golden.py",
-    "smoke": "pnpm build && node tests/manual/smoke_kraft.mjs"
+    "golden": "${CAMOUWOLF_PYTHON:-$HOME/.cache/camouwolf-venv/bin/python} scripts/golden/launch_golden.py"
   },
   "bin": {
     "camouwolf": "dist/__main__.js"
