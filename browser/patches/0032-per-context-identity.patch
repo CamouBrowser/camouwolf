@@ -296,8 +296,9 @@ diff --git a/content/renderer/renderer_main.cc b/content/renderer/renderer_main.
 +// CAMOUWOLF: a renderer of a context with its own identity adopts it before
 +// anything reads one. The zygote this process forked from had set ICU's
 +// default locale from the launch's identity, so it is set again here; Blink's
-+// TimeZoneController adopts the zone as it starts.
-+void AdoptContextIdentity() {
++// TimeZoneController adopts the zone as it starts. Only RendererMain may mint
++// the key that sets ICU's locale, so it hands one in.
++void AdoptContextIdentity(base::i18n::DefaultIcuLocaleSetterKey key) {
 +  base::MemoryMappedFile::Region region;
 +  base::ScopedFD fd = base::FileDescriptorStore::GetInstance().MaybeTakeFD(
 +      base::CamouwolfConfig::kProcessFileKey, &region);
@@ -312,8 +313,7 @@ diff --git a/content/renderer/renderer_main.cc b/content/renderer/renderer_main.
 +          base::CamouwolfConfig::Get().GetString("locale:intl")) {
 +    if (std::optional<base::i18n::LanguageTag> tag =
 +            base::i18n::GetLanguageTagFromString(*locale)) {
-+      base::i18n::SetDefaultIcuLocale(base::i18n::DefaultIcuLocaleSetterKey(),
-+                                      *tag);
++      base::i18n::SetDefaultIcuLocale(key, *tag);
 +    }
 +  }
 +}
@@ -322,13 +322,14 @@ diff --git a/content/renderer/renderer_main.cc b/content/renderer/renderer_main.
  void LogTimeToStartRunLoop(const base::CommandLine& command_line,
                             base::TimeTicks run_loop_start_time) {
    startup_metric_utils::GetRenderer().RecordRunLoopStart(run_loop_start_time);
-@@ -154,6 +185,10 @@
+@@ -154,6 +185,11 @@
  
    base::CurrentProcess::GetInstance().SetProcessType(
        base::CurrentProcessType::PROCESS_RENDERER);
 +
 +#if BUILDFLAG(IS_LINUX)
-+  AdoptContextIdentity();  // CAMOUWOLF
++  // CAMOUWOLF
++  AdoptContextIdentity(base::i18n::DefaultIcuLocaleSetterKey());
 +#endif
  
    const base::CommandLine& command_line = *parameters.command_line;
