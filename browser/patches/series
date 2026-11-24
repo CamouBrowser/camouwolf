@@ -36,6 +36,9 @@
 
 # --- devices -----------------------------------------------------------------
 0012-speech-voices-spoofing.patch
+# 0032 speaks 0012's voices: speak() starts, reports the claimed OS's
+# boundary events and ends at a real engine's pace, silently.
+0032-speech-synthesis-engine.patch
 0013-media-device-spoofing.patch
 0014-keyboard-layout-spoofing.patch
 0015-network-information.patch
@@ -98,6 +101,9 @@
 # Windows or macOS kept Linux's: where Ctrl+Right stops, whether a double-click
 # takes the trailing space, and a middle click that pastes the X11 selection.
 0029-platform-editing-behaviour.patch
+# 0033 is 0029's key bindings: the Linux/Windows binding differences follow the
+# claimed OS's editing behaviour.
+0033-platform-key-bindings.patch
 
 # --- WebRTC IP handling policy ----------------------------------------------
 # The launcher keeps WebRTC to the proxy with --force-webrtc-ip-handling-policy,

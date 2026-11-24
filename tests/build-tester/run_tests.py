@@ -351,6 +351,19 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
     wanted = "alpha " if os_name == "windows" else "alpha"
     c["doubleClickSelection"] = check(probe["doubleClick"] == wanted,
                                       f"{os_name} identity, a double-click selected {probe['doubleClick']!r}")
+    if os_name in KEY_BINDINGS:
+        c["keyBindings"] = check(probe["keys"] == KEY_BINDINGS[os_name],
+                                 f"{os_name} identity, wanted {KEY_BINDINGS[os_name]}, saw {probe['keys']}")
+
+    # ---- Platform APIs ------------------------------------------------------
+    # Windows and macOS Chrome ship Web Share and Web Bluetooth; Linux ships
+    # neither. A machine without a Bluetooth adapter answers as below.
+    c = out["Platform APIs"] = {}
+    desktop = os_name in ("windows", "macos")
+    c["webShare"] = check(probe["apis"]["share"] == desktop, f"{os_name} identity, navigator.share: {probe['apis']['share']}")
+    wanted_bluetooth = {"availability": "false", "requestDevice": "NotFoundError: Bluetooth adapter not available."} if desktop else None
+    c["webBluetooth"] = check(probe["apis"]["bluetooth"] == wanted_bluetooth,
+                              f"{os_name} identity, wanted {wanted_bluetooth}, saw {probe['apis']['bluetooth']}")
 
     # ---- Screen & Window ----------------------------------------------------
     c = out["Screen & Window"] = {}
@@ -391,6 +404,11 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         c["voices"] = check(seen == list(claimed["voices"]),
                             f"claimed {len(claimed['voices'])}, saw {len(seen)}; first difference: "
                             f"{next(((a, b) for a, b in zip(list(claimed['voices']) + [None], seen + [None]) if a != b), None)}")
+        for kind, events in probe["speech"].items():
+            wanted = expected_speech(os_name, kind == "local")
+            seen_events = [{k: e[k] for k in ("type", "name", "charIndex", "charLength") if k in e} for e in events]
+            c[f"speak.{kind}"] = check(seen_events == wanted and bool(events) and events[-1]["at"] >= MIN_SPEECH_MS,
+                                       f"{os_name} identity, wanted {wanted}, saw {events}")
 
     # ---- Other surfaces the config names -------------------------------------
     c = out["Other Surfaces"] = {}
@@ -476,6 +494,99 @@ def font_families(claimed: Dict[str, Any]) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+# What the claimed OS's key bindings do in a textarea: Windows has Alt+Backspace
+# undo and no Ctrl+Shift+Backspace; Linux the reverse.
+KEY_BINDINGS = {
+    "windows": {"ctrlShiftBackspace": "one two", "altBackspace": ""},
+    "linux": {"ctrlShiftBackspace": "", "altBackspace": "one two"},
+}
+
+
+def key_bindings(page: Any) -> Dict[str, str]:
+    """The textarea's value after each binding, typed into a fresh textarea."""
+    out = {}
+    for name, key in (("ctrlShiftBackspace", "Control+Shift+Backspace"), ("altBackspace", "Alt+Backspace")):
+        page.evaluate("""() => {
+            document.getElementById('keys')?.remove();
+            const t = document.createElement('textarea');
+            t.id = 'keys';
+            document.body.prepend(t);
+            t.focus();
+        }""")
+        page.keyboard.type("one two")
+        page.keyboard.press(key)
+        out[name] = page.evaluate("document.getElementById('keys').value")
+    return out
+
+
+def platform_apis(page: Any) -> Dict[str, Any]:
+    """Web Share's presence, and Web Bluetooth's answers when present."""
+    return page.evaluate("""async () => {
+        const settle = (p) => Promise.race([
+            p.then((v) => String(v), (e) => `${e.name}: ${e.message}`),
+            new Promise((resolve) => setTimeout(() => resolve('still pending after 5s'), 5000)),
+        ]);
+        return {
+            share: typeof navigator.share === 'function',
+            bluetooth: navigator.bluetooth ? {
+                availability: await settle(navigator.bluetooth.getAvailability()),
+                requestDevice: await settle(navigator.bluetooth.requestDevice({acceptAllDevices: true})),
+            } : null,
+        };
+    }""")
+
+
+SPEECH_TEXT = "Hello there. A short test."
+# A real engine takes about 60ms a character; an utterance that ends sooner
+# than this was not spoken at the claimed OS's pace.
+MIN_SPEECH_MS = 600
+
+
+def expected_speech(os_name: str, local: bool) -> List[Dict[str, Any]]:
+    """The events speak() fires: a local voice reports words (macOS, Windows)
+    and sentences (Windows); a network voice reports neither."""
+    events: List[Dict[str, Any]] = [{"type": "start"}]
+    sentence_start = True
+    for word in re.finditer(r"\S+", SPEECH_TEXT):
+        if local and os_name == "windows" and sentence_start:
+            events.append({"type": "boundary", "name": "sentence", "charIndex": word.start()})
+        if local and os_name in ("windows", "macos"):
+            events.append({"type": "boundary", "name": "word", "charIndex": word.start(), "charLength": len(word.group())})
+        sentence_start = word.group()[-1] in ".!?"
+    return events + [{"type": "end"}]
+
+
+def speech(page: Any, claimed: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """The events of speaking SPEECH_TEXT with the identity's first local and
+    first network voice."""
+    out = {}
+    for kind, local in (("local", "1"), ("network", "0")):
+        voice = next((v.split("|")[0] for v in claimed.get("voices") or [] if v.split("|")[3:4] == [local]), None)
+        if voice is None:
+            continue
+        out[kind] = page.evaluate("""([name, text]) => new Promise((resolve) => {
+            const u = new SpeechSynthesisUtterance(text);
+            u.voice = speechSynthesis.getVoices().find((v) => v.name === name);
+            const events = [];
+            const t0 = performance.now();
+            const log = (e) => {
+                const event = {type: e.type, at: Math.round(performance.now() - t0)};
+                if (e.type === 'boundary') {
+                    event.name = e.name;
+                    event.charIndex = e.charIndex;
+                    if (e.name === 'word') event.charLength = e.charLength;
+                }
+                if (e.type === 'error') event.error = e.error;
+                events.push(event);
+                if (e.type === 'end' || e.type === 'error') resolve(events);
+            };
+            for (const type of ['start', 'boundary', 'end', 'error']) u.addEventListener(type, log);
+            setTimeout(() => resolve(events), 15000);
+            speechSynthesis.speak(u);
+        })""", [voice, SPEECH_TEXT])
+    return out
+
+
 def double_click_selection(page: Any) -> str:
     """What a double-click on a word selects: Windows takes the trailing space."""
     page.evaluate("""() => {
@@ -507,6 +618,9 @@ def check_page(page: Any, server: Server, claimed: Dict[str, Any], served: Optio
         "systemColors": sorted(claimed.get("systemColors") or {}),
     })
     probe["doubleClick"] = double_click_selection(page)
+    probe["keys"] = key_bindings(page)
+    probe["apis"] = platform_apis(page)
+    probe["speech"] = speech(page, claimed)
     results = {**result["checks"], **compare(claimed, served, os_name, result["collected"], probe,
                                              server.seen.get("navigation") or {})}
     collected = result["collected"]

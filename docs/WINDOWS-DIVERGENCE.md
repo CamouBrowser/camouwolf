@@ -143,7 +143,7 @@ the identity's recorded hardware codecs (`media:*` keys).
 The first two are live leaks. `check-config-keys.py` cannot catch these — it
 checks written-but-unread, and these are the mirror case.
 
-### 2.6 Platform-gated APIs — `0019` closes one of three
+### 2.6 Platform-gated APIs — closed by `0019`
 
 Full enumeration of `window`/`navigator`/`document`/`screen` on a secure origin,
 2540 vs 2504 reachable names. **Zero Linux-only** entries; Windows-only:
@@ -151,21 +151,19 @@ Full enumeration of `window`/`navigator`/`document`/`screen` on a secure origin,
 | API | covered by 0019? |
 | --- | --- |
 | `navigator.share` / `canShare` (Web Share) | **yes** |
-| `navigator.bluetooth` + 8 `Bluetooth*` globals | no |
-| `window.EyeDropper` | no |
+| `navigator.bluetooth` + 8 `Bluetooth*` globals | **yes** |
+| `window.EyeDropper` | already exposed on every identity at 158 |
 
-`0019` enables Web Share for `Win32`/`MacIntel` and stops there. Adding
-EyeDropper is the same shape. Web Bluetooth is presence-detectable the same way,
-but note the honest caveat: on Linux there is no BlueZ backend wired up, so
-enabling the API makes it *present* without making it *work* — fine against
-presence probes, not against a probe that calls `requestDevice()`.
+Web Bluetooth answers as a machine without a Bluetooth adapter; see 0019 in
+`docs/PATCHES.md`.
 
-### 2.7 Window decoration geometry
+### 2.7 Window decoration geometry — stale
 
-`outerWidth − innerWidth` / `outerHeight − innerHeight`: **12 / 93** on Windows,
-**24 / 112** on Linux. Camouwolf drives `--window-size`/`--window-position` from the
-identity, but the frame thickness is the host WM's and is not spoofable from
-the launcher.
+This measured **12 / 93** (`outerWidth − innerWidth` / `outerHeight − innerHeight`)
+on a windowed Windows Chrome and **24 / 112** on Linux under a window manager.
+The current build reports 0 / 87 for every identity, headless or headed, which
+is the most common frame in the recorded Windows and macOS devices (a maximized
+window). See "Window frame geometry" in `docs/PATCHES.md`.
 
 ### 2.8 Audio — one narrow region, and farbling is the wrong tool
 
@@ -285,4 +283,4 @@ first-request tell.
    drives them.
 5. WebGL backend signatures + `preferredCanvasFormat` — leg A now provides the
    real D3D11 record they were waiting on.
-6. EyeDropper (and Web Bluetooth, with the caveat) in `0019`.
+6. ~~EyeDropper (and Web Bluetooth, with the caveat) in `0019`.~~ Done.

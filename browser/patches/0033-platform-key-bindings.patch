@@ -1,0 +1,73 @@
+diff --git a/third_party/blink/renderer/core/editing/editing_behavior.cc b/third_party/blink/renderer/core/editing/editing_behavior.cc
+--- a/third_party/blink/renderer/core/editing/editing_behavior.cc
++++ b/third_party/blink/renderer/core/editing/editing_behavior.cc
+@@ -26,6 +26,7 @@
+ 
+ #include "third_party/blink/renderer/core/editing/editing_behavior.h"
+ 
++#include "base/containers/span.h"
+ #include "build/build_config.h"
+ #include "third_party/blink/public/common/input/web_input_event.h"
+ #include "third_party/blink/public/web/web_settings.h"
+@@ -144,7 +145,7 @@
+     {VKEY_DELETE, 0, "DeleteForward"},
+     {VKEY_BACK, OPTION_OR_CTRL_KEY, "DeleteWordBackward"},
+     {VKEY_DELETE, OPTION_OR_CTRL_KEY, "DeleteWordForward"},
+-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
++#if BUILDFLAG(IS_CHROMEOS)
+     {VKEY_BACK, kCtrlKey | kShiftKey, "DeleteToBeginningOfLine"},
+ #endif
+ #if BUILDFLAG(IS_MAC)
+@@ -190,6 +191,19 @@
+ #endif
+ };
+ 
++#if BUILDFLAG(IS_LINUX)
++// CAMOUWOLF: the bindings Linux and Windows Chrome disagree on, picked by the
++// claimed OS's editing behaviour (0029) rather than by the build, so a page
++// sees a Windows identity's Alt+Backspace undo and no Ctrl+Shift+Backspace.
++const KeyboardCodeKeyDownEntry kLinuxOnlyKeyDownEntries[] = {
++    {VKEY_BACK, kCtrlKey | kShiftKey, "DeleteToBeginningOfLine"},
++};
++const KeyboardCodeKeyDownEntry kWindowsOnlyKeyDownEntries[] = {
++    {VKEY_BACK, kAltKey, "Undo"},
++    {VKEY_BACK, kAltKey | kShiftKey, "Redo"},
++};
++#endif
++
+ const KeyboardCodeKeyPressEntry kKeyboardCodeKeyPressEntries[] = {
+     {'\t', 0, "InsertTab"},
+     {'\t', kShiftKey, "InsertBacktab"},
+@@ -278,6 +292,21 @@
+   };
+ 
+   if (key_event->GetType() == WebInputEvent::Type::kRawKeyDown) {
++#if BUILDFLAG(IS_LINUX)
++    const bool windows =
++        type_ == mojom::blink::EditingBehavior::kEditingWindowsBehavior;
++    const base::span<const KeyboardCodeKeyDownEntry> entries =
++        windows ? base::span<const KeyboardCodeKeyDownEntry>(
++                      kWindowsOnlyKeyDownEntries)
++                : base::span<const KeyboardCodeKeyDownEntry>(
++                      kLinuxOnlyKeyDownEntries);
++    for (const auto& entry : entries) {
++      if (entry.virtual_key == static_cast<uint32_t>(event.keyCode()) &&
++          entry.modifiers == modifiers) {
++        return entry.name;
++      }
++    }
++#endif
+     const char* name =
+         FindName(key_down_commands_map,
+                  TransposeArrowKey(event.keyCode(), writing_mode));
+@@ -317,7 +346,9 @@
+   // According to XKB map no keyboard combinations with ctrl key are mapped to
+   // printable characters, however we need the filter as the DomKey/text could
+   // contain printable characters.
+-  if (event.ctrlKey())
++  // CAMOUWOLF: Windows inserts them, e.g. AltGr's Ctrl+Alt characters.
++  if (event.ctrlKey() &&
++      type_ != mojom::blink::EditingBehavior::kEditingWindowsBehavior)
+     return false;
+ #elif !BUILDFLAG(IS_WIN)
+   // Don't insert ASCII character if ctrl w/o alt or meta is on.
