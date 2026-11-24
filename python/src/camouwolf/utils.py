@@ -71,7 +71,6 @@ from .switches import (
     LAUNCHER_DISABLED_FEATURES,
     PLAYWRIGHT_DISABLED_FEATURES,
     audit_switches,
-    headless_pointer_settings,
     merge_list_switches,
 )
 from camoucore.virtdisplay import VirtualDisplay
@@ -566,7 +565,12 @@ def launch_os(from_options: Dict[str, Any]) -> str:
 def launch_geolocation(from_options: Dict[str, Any]) -> Optional[Dict[str, float]]:
     """The position these launch options place the browser at, as Playwright's
     `geolocation` option, or None."""
-    config = launch_config(from_options)
+    return geolocation_of(launch_config(from_options))
+
+
+def geolocation_of(config: Dict[str, Any]) -> Optional[Dict[str, float]]:
+    """The position an identity places its browser at, as Playwright's
+    `geolocation` option, or None."""
     latitude, longitude = config.get('geolocation:latitude'), config.get('geolocation:longitude')
     if latitude is None or longitude is None:
         return None
@@ -619,13 +623,11 @@ STOCK_MEDIA_DEFAULTS = {
     'contrast': 'no-override',
 }
 
-# Context options that would make one context of the browser a different
-# machine from the rest of it. The identity is the process's: workers, the
-# network stack and the GPU process answer from CAMOU_CONFIG whatever
-# Playwright emulates in one context's pages, so a page comparing its window
-# with a worker reads two user agents.
+# Playwright context options that would make one context's pages a different
+# machine from its workers and request headers, which answer from the
+# context's identity whatever Playwright emulates in a page.
 PER_CONTEXT_IDENTITY_OPTIONS: Dict[str, str] = {
-    'user_agent': 'navigator.userAgent comes from the launch identity; set `config`, `os` or `fingerprint` at launch',
+    'user_agent': "navigator.userAgent comes from the identity; NewContext draws a context's own",
     'is_mobile': 'Camouwolf only has desktop identities',
     'device_scale_factor': 'it changes the device pixel ratio without the screen the identity claims',
     'screen': 'the screen comes from the launch identity; use the `screen` launch option',
@@ -655,8 +657,8 @@ def _wrap_context_factories(target: Any, adjust: Any) -> Any:
 
 
 def per_context_identity_problems(kwargs: Dict[str, Any]) -> List[str]:
-    """The context options in `kwargs` that would give one context another
-    identity than the browser's, each with the reason."""
+    """The context options in `kwargs` that would make a context's pages
+    disagree with its identity, each with the reason."""
     return [
         f'{option}= cannot be set per context: {why}'
         for option, why in PER_CONTEXT_IDENTITY_OPTIONS.items()
@@ -665,14 +667,14 @@ def per_context_identity_problems(kwargs: Dict[str, Any]) -> List[str]:
 
 
 def refuse_per_context_identity(kwargs: Dict[str, Any]) -> None:
-    """Raise IncoherentIdentity for a context option that would give one
-    context another identity than the browser's."""
+    """Raise IncoherentIdentity for a context option that would make a
+    context's pages disagree with its identity."""
     problems = per_context_identity_problems(kwargs)
     if problems:
         raise IncoherentIdentity(
             '; '.join(problems)
-            + '. Workers, request headers and the GPU process would still answer as the launch '
-            'identity. Launch another browser for another identity.'
+            + ". Workers and request headers would still answer as the context's identity. "
+            'NewContext draws a context its own.'
         )
 
 
@@ -707,8 +709,15 @@ def context_defaults(geolocation: Optional[Dict[str, float]]) -> Any:
     return adjust
 
 
-# Camoufox's NewContext options that draw a second identity for one context.
-PER_CONTEXT_FINGERPRINT_OPTIONS = ('preset', 'os', 'ff_version', 'chrome_version', 'webrtc_ip')
+_LAUNCH_OPTIONS = '_camouwolf_launch_options'
+
+# Patch 0031 sends a proxied context's WebRTC through the proxy; this keeps it to
+# TCP there, with no UDP at all.
+WEBRTC_BLOCK_SWITCH = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'
+
+# Camoufox's NewContext options that would name another browser build than the
+# one running, which every context shares.
+OTHER_BUILD_OPTIONS = ('preset', 'ff_version', 'chrome_version')
 
 
 def keeps_ipv6(geo_config: Dict[str, Any], geoip_db: Optional[str], i_know_what_im_doing: Optional[bool]) -> bool:
@@ -727,43 +736,135 @@ def keeps_ipv6(geo_config: Dict[str, Any], geoip_db: Optional[str], i_know_what_
     return False
 
 
-def place_at_exit(
-    proxy: Optional[Dict[str, str]],
-    geolocation: Optional[Dict[str, float]],
-    context_kwargs: Dict[str, Any],
-) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
-    """A proxied context's timezone and position, defaulted to where the proxy
-    exits (looked up through it) unless the caller gave both. A failed lookup
-    raises: the context would otherwise sit at the launch's place beside
-    another IP. The locale stays the identity's, which patch 0026 holds."""
-    if not proxy or (geolocation and 'timezone_id' in context_kwargs):
-        return geolocation, context_kwargs
-    geoip_allowed()
-    exit_geo = get_geolocation(public_ip(Proxy(**proxy).as_string()))
-    return (
-        geolocation or {'latitude': exit_geo.latitude, 'longitude': exit_geo.longitude},
-        {'timezone_id': exit_geo.timezone, **context_kwargs},
+def refuse_context_options(context_kwargs: Dict[str, Any]) -> None:
+    """Raise for a NewContext option a context cannot take: NotImplementedError
+    for a Camoufox one naming another browser build than the one every context
+    runs in, IncoherentIdentity for one its pages would contradict."""
+    for option in OTHER_BUILD_OPTIONS:
+        if context_kwargs.get(option) is not None:
+            raise NotImplementedError(
+                f'NewContext({option}=) is not implemented in Camouwolf: a context runs in the '
+                "browser's own Chromium build. Launch another browser for another build."
+            )
+    refuse_per_context_identity(context_kwargs)
+
+
+def launch_languages(from_options: Dict[str, Any]) -> Optional[List[str]]:
+    """The language list these launch options give the browser."""
+    for arg in from_options.get('args') or []:
+        if str(arg).startswith('--accept-lang='):
+            return str(arg).split('=', 1)[1].split(',')
+    return None
+
+
+def launch_full_version(from_options: Dict[str, Any]) -> str:
+    """The Chromium version the launch's identity claims: the binary's, or the
+    chrome_version milestone the launch was given."""
+    full_version = resolve_version(from_options.get('executable_path'))
+    claimed = re.search(r'Chrome/(\d+)', launch_config(from_options).get('navigator.userAgent') or '')
+    if claimed and int(claimed[1]) != int(full_version.split('.', 1)[0]):
+        return f'{int(claimed[1])}.0.0.0'
+    return full_version
+
+
+def context_identity(
+    from_options: Dict[str, Any],
+    *,
+    proxy: Optional[Dict[str, str]] = None,
+    os: Optional[str] = None,
+    fingerprint: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    webgl_config: Optional[Tuple[str, str]] = None,
+    webrtc_ip: Optional[str] = None,
+    fonts: Optional[List[str]] = None,
+    custom_fonts_only: Optional[bool] = None,
+    locale: Optional[Union[str, List[str]]] = None,
+    timezone_id: Optional[str] = None,
+    i_know_what_im_doing: Optional[bool] = None,
+) -> Tuple[Dict[str, Any], List[str]]:
+    """A context's own identity and language list, drawn for the browser that
+    `from_options` launched.
+
+    The machine is drawn afresh on the launch's OS, screen, window and core
+    count, which one browser process cannot vary. A proxied context is placed
+    where the proxy exits, looked up through it; any other leaves from the
+    browser's address and so keeps the launch's place and languages.
+    """
+    launch = launch_config(from_options)
+    if not launch:
+        raise ValueError('NewContext needs a browser launched by Camouwolf: a context identity is drawn to fit it')
+    target_os = launch_os(from_options)
+    if os is not None and os != target_os:
+        raise ValueError(
+            f'NewContext(os={os!r}): the browser launched as {target_os!r}, and its contexts share the '
+            'fonts and maths library it launched with. Launch another browser for another OS.'
+        )
+    config = dict(config or {})
+    if not i_know_what_im_doing:
+        warn_manual_config(config)
+    if timezone_id:
+        config['timezone'] = timezone_id
+    if webrtc_ip:
+        config['webrtc:ipv4' if valid_ipv4(webrtc_ip) else 'webrtc:ipv6'] = webrtc_ip
+    if not proxy:
+        for key, value in launch.items():
+            if key == 'timezone' or key.startswith(('geolocation:', 'webrtc:')):
+                config.setdefault(key, value)
+        locale = locale or launch_languages(from_options)
+    identity, languages, _ = draw_identity(
+        config,
+        os=target_os,
+        webgl_config=webgl_config,
+        geoip=bool(proxy),
+        geoip_db=None,
+        proxy=proxy,
+        block_webrtc=WEBRTC_BLOCK_SWITCH in (from_options.get('args') or []),
+        locale=locale,
+        fingerprint=fingerprint,
+        screen=None,
+        window=None,
+        fonts=fonts,
+        custom_fonts_only=custom_fonts_only,
+        canvas_noise=bool(launch.get('canvas:randomizeReadback')),
+        pin_cpu_cores=None,
+        full_version=launch_full_version(from_options),
+        # The launch's OS already passed the policy.
+        allow_os_mismatch=True,
+        i_know_what_im_doing=i_know_what_im_doing,
+        browser_binary=from_options['executable_path'],
+        launch=launch,
     )
+    if 'network:ipv4Only' in launch:
+        identity['network:ipv4Only'] = launch['network:ipv4Only']
+    # The browser serves navigator.languages from the context's language pref.
+    identity.pop('navigator.languages', None)
+    if not languages:
+        raise ValueError('NewContext needs a locale: neither it nor the launch names one')
+    return identity, languages
 
 
 def new_context_options(
     context_kwargs: Dict[str, Any],
+    identity: Dict[str, Any],
     proxy: Optional[Dict[str, str]] = None,
     geolocation: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
-    """The new_context() options NewContext passes: the caller's, after
-    refusing any that would give the context an identity of its own."""
-    for option in PER_CONTEXT_FINGERPRINT_OPTIONS:
-        if context_kwargs.get(option) is not None:
-            raise NotImplementedError(
-                f'NewContext({option}=) is not implemented in Camouwolf: the browser reads one identity '
-                'per process (CAMOU_CONFIG), so a context cannot have its own fingerprint. Launch '
-                'another browser for another identity.'
-            )
-    refuse_per_context_identity(context_kwargs)
+    """The new_context() options NewContext passes for a context with
+    `identity`: the caller's, placed where the identity is."""
+    storage_state = context_kwargs.get('storage_state')
+    if isinstance(storage_state, (str, Path)):
+        storage_state = orjson.loads(Path(storage_state).read_bytes())
+    if storage_state and storage_state.get('origins'):
+        # Playwright writes them from a page, and a context takes its identity
+        # before its first renderer.
+        raise ValueError(
+            "NewContext(storage_state=) with origins' localStorage is not supported: set it from a "
+            'page of the new context instead. Cookies alone are.'
+        )
     options = dict(context_kwargs)
     if proxy:
         options['proxy'] = proxy
+    geolocation = geolocation or geolocation_of(identity)
     if geolocation:
         options['geolocation'] = geolocation
         permissions = list(options.get('permissions') or [])
@@ -771,6 +872,24 @@ def new_context_options(
             permissions.append('geolocation')
         options['permissions'] = permissions
     return options
+
+
+def set_context_identity_params(context_id: str, identity: Dict[str, Any], languages: List[str]) -> Dict[str, Any]:
+    """Target.setBrowserContextIdentity's parameters (patch 0032)."""
+    return {
+        'browserContextId': context_id,
+        'identity': orjson.dumps(identity).decode('utf-8'),
+        'languages': languages,
+    }
+
+
+def created_context_id(before: Dict[str, Any], after: Dict[str, Any]) -> str:
+    """The one browser context Target.getBrowserContexts lists in `after` and
+    not in `before`."""
+    new = set(after['browserContextIds']) - set(before['browserContextIds'])
+    if len(new) != 1:
+        raise RuntimeError(f'Expected one new browser context, found {len(new)}: was another made at the same time?')
+    return new.pop()
 
 
 def persistent_context_options(from_options: Dict[str, Any]) -> Dict[str, Any]:
@@ -789,9 +908,19 @@ def warn_addons_without_profile(from_options: Dict[str, Any]) -> None:
 
 
 def attach_context_defaults(browser: Any, from_options: Dict[str, Any]) -> None:
-    """Give every new_page()/new_context() of `browser` Camouwolf's defaults."""
+    """Give every new_page()/new_context() of `browser` Camouwolf's defaults,
+    and keep the launch options NewContext draws a context's identity to fit."""
     _wrap_context_factories(browser, context_defaults(launch_geolocation(from_options)))
     driver_defaults.mark(browser)
+    setattr(getattr(browser, '_impl_obj', browser), _LAUNCH_OPTIONS, from_options)
+
+
+def launch_options_of(browser: Any) -> Dict[str, Any]:
+    """The launch options a Camouwolf browser was launched with."""
+    from_options = getattr(getattr(browser, '_impl_obj', browser), _LAUNCH_OPTIONS, None)
+    if from_options is None:
+        raise ValueError('NewContext needs a browser from NewBrowser or Camouwolf: a context identity is drawn to fit it')
+    return from_options
 
 
 """
@@ -967,6 +1096,218 @@ def draw_fingerprint(
         f'fpgen drew no desktop Chrome fingerprint with a usable GPU for os={os!r} in '
         f'{MAX_FINGERPRINT_DRAWS} draws'
     )
+
+
+# The keys a context's identity takes from the launch's. The window is one
+# window and its pixel ratio the display's, whichever context draws in it.
+LAUNCH_GEOMETRY = ('screen.', 'window.')
+
+
+def draw_identity(
+    config: Dict[str, Any],
+    *,
+    os: Optional[ListOrString],
+    webgl_config: Optional[Tuple[str, str]],
+    geoip: Optional[Union[str, bool]],
+    geoip_db: Optional[str],
+    proxy: Optional[Dict[str, str]],
+    block_webrtc: Optional[bool],
+    locale: Optional[Union[str, List[str]]],
+    fingerprint: Optional[Dict[str, Any]],
+    screen: Optional[Screen],
+    window: Optional[Tuple[int, int]],
+    fonts: Optional[List[str]],
+    custom_fonts_only: Optional[bool],
+    canvas_noise: Optional[bool],
+    pin_cpu_cores: Optional[bool],
+    full_version: str,
+    allow_os_mismatch: Optional[bool],
+    i_know_what_im_doing: Optional[bool],
+    browser_binary: str,
+    display_bound: Optional[Screen] = None,
+    virtual_display: bool = False,
+    launch: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Optional[List[str]], str]:
+    """A whole identity: the config, its language list, and its OS.
+
+    `config` holds the caller's keys, which win over drawn ones. With `launch`
+    (the browser's own config) it is a context's identity: the screen, window
+    and core count are the launch's, which one browser process cannot vary.
+    """
+    _caller_keys = frozenset(config)
+    _user_set_screen_window = is_domain_set(config, 'screen.', 'window.')
+    milestone = int(full_version.split('.', 1)[0])
+
+    # ---- place: geoip, locale ---------------------------------------------
+    locale_config: Dict[str, Any] = {}
+    if geoip:
+        geoip_allowed()  # Assert that geoip is allowed
+        if geoip is True:
+            geoip = public_ip(Proxy(**proxy).as_string()) if proxy else public_ip()
+        geo_config = get_geolocation(geoip, geoip_db=geoip_db).as_config()
+        for key, value in geo_config.items():
+            if key.startswith('locale:'):
+                locale_config[key] = value
+            elif key == 'timezone':
+                config.setdefault(key, value)
+            else:
+                config[key] = value
+        # Without a proxy, a site that has an IPv6 address sees this host's,
+        # not the IPv4 address the identity was drawn from. Keep IPv6 only when
+        # it places the host where the identity does.
+        if (
+            launch is None
+            and not proxy
+            and valid_ipv4(geoip)
+            and not keeps_ipv6(geo_config, geoip_db, i_know_what_im_doing)
+        ):
+            config['network:ipv4Only'] = True
+        # Behind a proxy, WebRTC sees the network of a machine at the exit
+        # (patch 0031): its one adapter has the exit's address.
+        if proxy and not block_webrtc:
+            config.setdefault('webrtc:ipv4' if valid_ipv4(geoip) else 'webrtc:ipv6', geoip)
+    elif (
+        proxy
+        and 'localhost' not in proxy.get('server', '')
+        and '127.0.0.1' not in proxy.get('server', '')
+        and not is_domain_set(config, 'geolocation:')
+    ):
+        # This is a very bad idea; the warning cannot be silenced.
+        LeakWarning.warn(WARNINGS_DATA['proxy_without_geoip'])
+
+    if locale:
+        locale_config = {}
+        handle_locales(locale, locale_config)
+    # Chrome serves navigator.languages and Accept-Language from one pref, which
+    # --accept-lang sets, so the config does not repeat it: an off-the-record
+    # context swaps the pref's list, and a pinned copy would then disagree.
+    languages = config.get('navigator.languages') or languages_for(locale_config)
+
+    # A caller who names the user agent themselves has pinned the identity.
+    if launch is not None:
+        # The window, and so the screen it sits on, is the browser's: a
+        # context's machine is drawn with the launch's screen.
+        screen = Screen(
+            min_width=launch.get('screen.width'), max_width=launch.get('screen.width'),
+            min_height=launch.get('screen.height'), max_height=launch.get('screen.height'),
+        )
+        window = None
+    if fingerprint is None and 'navigator.userAgent' not in config:
+        fingerprint = draw_fingerprint(
+            os, screen or display_bound, window, webgl_config, languages[0] if languages else None
+        )
+    elif fingerprint is not None:
+        if webgl_config:
+            raise ValueError('webgl_config draws the fingerprint; it cannot be combined with `fingerprint`')
+        if not i_know_what_im_doing:
+            check_custom_fingerprint(fingerprint)
+        if window:
+            fingerprint = {
+                **fingerprint,
+                'screen': dict(fingerprint.get('screen') or {}),
+                'window': dict(fingerprint.get('window') or {}),
+            }
+            handle_window_size(fingerprint, *window)
+    elif webgl_config:
+        raise ValueError('webgl_config draws the fingerprint; it cannot be combined with a user agent in `config`')
+
+    if fingerprint is not None:
+        merge_into(config, from_fpgen(fingerprint, chrome_version=milestone))
+    # Patch 0012 shows the host's voices only when the key is absent, so it is
+    # always sent: the recorded list, or none, never the host's.
+    config.setdefault('voices', [])
+
+    target_os = get_target_os(config)
+    check_os_policy([OS_NAMES[target_os]], allow_os_mismatch)
+
+    config.setdefault(
+        'navigator.userAgent',
+        clienthints.build_user_agent(
+            clienthints.ChromeIdentity(milestone=milestone, full_version=full_version, os=target_os)
+        ),
+    )
+    config.setdefault('navigator.platform', clienthints.NAV_PLATFORM[target_os])
+    clienthints.fill_client_hints(config, target_os, full_version)
+
+    # The core count a page can measure is the host's, unless the browser is
+    # pinned to the drawn one.
+    if launch is not None:
+        # Measurable parallelism is the process's, pinned or not.
+        config['navigator.hardwareConcurrency'] = launch.get('navigator.hardwareConcurrency')
+    elif 'navigator.hardwareConcurrency' not in _caller_keys:
+        fix_hardware_concurrency(config, can_pin=bool(pin_cpu_cores))
+
+    # ---- fonts -------------------------------------------------------------
+    if custom_fonts_only:
+        if not fonts:
+            raise ValueError('custom_fonts_only=True needs `fonts`')
+        LeakWarning.warn(WARNINGS_DATA['custom_fonts_only'], i_know_what_im_doing)
+        config['fonts'] = list(dict.fromkeys(fonts))
+    elif fonts:
+        base = config.get('fonts') or ESSENTIAL_FONTS[target_os]
+        config['fonts'] = list(dict.fromkeys([*base, *fonts]))
+
+    # ---- devices, keyboard, colours ---------------------------------------
+    config.setdefault('mediaDevices:enumerated', list(DEFAULT_MEDIA_DEVICES[target_os]))
+    layout = keyboard_layout_map(target_os)
+    if layout:
+        config.setdefault('keyboard.layoutMap', layout)
+    colors = SYSTEM_COLORS.get(OS_NAMES[target_os])
+    if colors:
+        config.setdefault('systemColors', dict(colors))
+
+    # ---- canvas ------------------------------------------------------------
+    if canvas_noise:
+        LeakWarning.warn(WARNINGS_DATA['canvas_noise'], i_know_what_im_doing)
+        config.setdefault('canvas:seed', secrets.randbelow(2**32 - 1) + 1)
+        config.setdefault('canvas:randomizeReadback', True)
+    else:
+        # Stock Chrome returns the pixels it drew.
+        config.setdefault('canvas:seed', 0)
+        config.setdefault('canvas:randomizeReadback', False)
+    config.setdefault('canvas:quantizeTextMetrics', False)
+    config.setdefault('AudioContext:randomizeSamples', False)
+
+    # ---- geometry ----------------------------------------------------------
+    if launch is not None:
+        for key in [k for k in config if k.startswith(LAUNCH_GEOMETRY)]:
+            del config[key]
+        config.update({k: v for k, v in launch.items() if k.startswith(LAUNCH_GEOMETRY)})
+    elif not _user_set_screen_window:
+        coherence.repair_device_pixel_ratio(
+            config, target_os, keep=('window.outerWidth', 'window.outerHeight') if window else ()
+        )
+        raise_screen_to_modern_floor(config)
+        coherence.repair_screen_orientation(config)
+        if display_bound is not None:
+            # A virtual display is measured in device pixels, and the window
+            # renders at the identity's ratio.
+            scale = float(config.get('window.devicePixelRatio') or 1) if virtual_display else 1.0
+            clamp_screen_to_display(
+                config, int(display_bound.max_width / scale), int(display_bound.max_height / scale)
+            )
+        fix_screen_no_taskbar(config, target_os)
+        clamp_window_dimensions(config)
+        clamp_window_position(config)
+        snap_window_to_device_pixels(config)
+
+    # ---- coherence ---------------------------------------------------------
+    kept = _caller_keys
+    if launch is not None:
+        kept |= {k for k in config if k.startswith(LAUNCH_GEOMETRY)} | {'navigator.hardwareConcurrency'}
+    violations = coherence.apply(config, target_os, keep=kept)
+    warn_kept_incoherent(violations)
+    fatal = [v for v in violations if v.rule in coherence.FATAL_RULES]
+    if fatal and not i_know_what_im_doing:
+        raise IncoherentIdentity(
+            'Camouwolf refuses to launch an identity that contradicts itself:\n  - '
+            + '\n  - '.join(v.detail for v in fatal)
+            + '\nFix `config`, or pass i_know_what_im_doing=True to launch anyway.'
+        )
+
+    validate_config(config, path=browser_binary)
+
+    return config, languages, target_os
 
 
 def launch_options(
@@ -1223,9 +1564,6 @@ def launch_options(
     # ---- the identity ------------------------------------------------------
     if not i_know_what_im_doing:
         warn_manual_config(config)
-    _caller_keys = frozenset(config)
-    _user_set_screen_window = is_domain_set(config, 'screen.', 'window.')
-
     if os:
         check_valid_os(os)
         check_os_policy([os] if isinstance(os, str) else list(os), allow_os_mismatch)
@@ -1239,7 +1577,6 @@ def launch_options(
     if chrome_version is not None and int(chrome_version) != int(full_version.split('.', 1)[0]):
         LeakWarning.warn(WARNINGS_DATA['chrome_version'], i_know_what_im_doing)
         full_version = f'{int(chrome_version)}.0.0.0'
-    milestone = int(full_version.split('.', 1)[0])
 
     # A real display bounds the screen the identity may claim; so does a
     # virtual one of fixed size, which the real window has to fit on. One the
@@ -1253,162 +1590,38 @@ def launch_options(
             if display:
                 display_bound = Screen(max_width=display.width, max_height=display.height)
 
-    # ---- place: geoip, locale ---------------------------------------------
-    locale_config: Dict[str, Any] = {}
-    if geoip:
-        geoip_allowed()  # Assert that geoip is allowed
-        if geoip is True:
-            geoip = public_ip(Proxy(**proxy).as_string()) if proxy else public_ip()
-        geo_config = get_geolocation(geoip, geoip_db=geoip_db).as_config()
-        for key, value in geo_config.items():
-            if key.startswith('locale:'):
-                locale_config[key] = value
-            elif key == 'timezone':
-                config.setdefault(key, value)
-            else:
-                config[key] = value
-        # Without a proxy, a site that has an IPv6 address sees this host's,
-        # not the IPv4 address the identity was drawn from. Keep IPv6 only when
-        # it places the host where the identity does.
-        if not proxy and valid_ipv4(geoip) and not keeps_ipv6(geo_config, geoip_db, i_know_what_im_doing):
-            config['network:ipv4Only'] = True
-        # Behind a proxy, WebRTC sees the network of a machine at the exit
-        # (patch 0031): its one adapter has the exit's address.
-        if proxy and not block_webrtc:
-            config.setdefault('webrtc:ipv4' if valid_ipv4(geoip) else 'webrtc:ipv6', geoip)
-    elif (
-        proxy
-        and 'localhost' not in proxy.get('server', '')
-        and '127.0.0.1' not in proxy.get('server', '')
-        and not is_domain_set(config, 'geolocation:')
-    ):
-        # This is a very bad idea; the warning cannot be silenced.
-        LeakWarning.warn(WARNINGS_DATA['proxy_without_geoip'])
-
-    if locale:
-        locale_config = {}
-        handle_locales(locale, locale_config)
-    # Chrome serves navigator.languages and Accept-Language from one pref, which
-    # --accept-lang sets, so the config does not repeat it: an off-the-record
-    # context swaps the pref's list, and a pinned copy would then disagree.
-    languages = config.get('navigator.languages') or languages_for(locale_config)
-
-    # A caller who names the user agent themselves has pinned the identity.
-    if fingerprint is None and 'navigator.userAgent' not in config:
-        fingerprint = draw_fingerprint(
-            os, screen or display_bound, window, webgl_config, languages[0] if languages else None
-        )
-    elif fingerprint is not None:
-        if webgl_config:
-            raise ValueError('webgl_config draws the fingerprint; it cannot be combined with `fingerprint`')
-        if not i_know_what_im_doing:
-            check_custom_fingerprint(fingerprint)
-        if window:
-            fingerprint = {
-                **fingerprint,
-                'screen': dict(fingerprint.get('screen') or {}),
-                'window': dict(fingerprint.get('window') or {}),
-            }
-            handle_window_size(fingerprint, *window)
-    elif webgl_config:
-        raise ValueError('webgl_config draws the fingerprint; it cannot be combined with a user agent in `config`')
-
-    if fingerprint is not None:
-        merge_into(config, from_fpgen(fingerprint, chrome_version=milestone))
-    # Patch 0012 shows the host's voices only when the key is absent, so it is
-    # always sent: the recorded list, or none, never the host's.
-    config.setdefault('voices', [])
-
-    target_os = get_target_os(config)
-    check_os_policy([OS_NAMES[target_os]], allow_os_mismatch)
-
-    config.setdefault(
-        'navigator.userAgent',
-        clienthints.build_user_agent(
-            clienthints.ChromeIdentity(milestone=milestone, full_version=full_version, os=target_os)
-        ),
+    config, languages, target_os = draw_identity(
+        config,
+        os=os,
+        webgl_config=webgl_config,
+        geoip=geoip,
+        geoip_db=geoip_db,
+        proxy=proxy,
+        block_webrtc=block_webrtc,
+        locale=locale,
+        fingerprint=fingerprint,
+        screen=screen,
+        window=window,
+        fonts=fonts,
+        custom_fonts_only=custom_fonts_only,
+        canvas_noise=canvas_noise,
+        pin_cpu_cores=pin_cpu_cores,
+        full_version=full_version,
+        allow_os_mismatch=allow_os_mismatch,
+        i_know_what_im_doing=i_know_what_im_doing,
+        browser_binary=browser_binary,
+        display_bound=display_bound,
+        virtual_display=bool(virtual_display),
     )
-    config.setdefault('navigator.platform', clienthints.NAV_PLATFORM[target_os])
-    clienthints.fill_client_hints(config, target_os, full_version)
-
-    # The core count a page can measure is the host's, unless the browser is
-    # pinned to the drawn one.
-    if 'navigator.hardwareConcurrency' not in _caller_keys:
-        fix_hardware_concurrency(config, can_pin=bool(pin_cpu_cores))
-
-    # ---- fonts -------------------------------------------------------------
-    if custom_fonts_only:
-        if not fonts:
-            raise ValueError('custom_fonts_only=True needs `fonts`')
-        LeakWarning.warn(WARNINGS_DATA['custom_fonts_only'], i_know_what_im_doing)
-        config['fonts'] = list(dict.fromkeys(fonts))
-    elif fonts:
-        base = config.get('fonts') or ESSENTIAL_FONTS[target_os]
-        config['fonts'] = list(dict.fromkeys([*base, *fonts]))
-
-    # ---- devices, keyboard, colours ---------------------------------------
-    config.setdefault('mediaDevices:enumerated', list(DEFAULT_MEDIA_DEVICES[target_os]))
-    layout = keyboard_layout_map(target_os)
-    if layout:
-        config.setdefault('keyboard.layoutMap', layout)
-    colors = SYSTEM_COLORS.get(OS_NAMES[target_os])
-    if colors:
-        config.setdefault('systemColors', dict(colors))
-
-    # ---- canvas ------------------------------------------------------------
-    if canvas_noise:
-        LeakWarning.warn(WARNINGS_DATA['canvas_noise'], i_know_what_im_doing)
-        config.setdefault('canvas:seed', secrets.randbelow(2**32 - 1) + 1)
-        config.setdefault('canvas:randomizeReadback', True)
-    else:
-        # Stock Chrome returns the pixels it drew.
-        config.setdefault('canvas:seed', 0)
-        config.setdefault('canvas:randomizeReadback', False)
-    config.setdefault('canvas:quantizeTextMetrics', False)
-    config.setdefault('AudioContext:randomizeSamples', False)
-
-    # ---- geometry ----------------------------------------------------------
-    if not _user_set_screen_window:
-        coherence.repair_device_pixel_ratio(
-            config, target_os, keep=('window.outerWidth', 'window.outerHeight') if window else ()
-        )
-        raise_screen_to_modern_floor(config)
-        coherence.repair_screen_orientation(config)
-        if display_bound is not None:
-            # A virtual display is measured in device pixels, and the window
-            # renders at the identity's ratio.
-            scale = float(config.get('window.devicePixelRatio') or 1) if virtual_display else 1.0
-            clamp_screen_to_display(
-                config, int(display_bound.max_width / scale), int(display_bound.max_height / scale)
-            )
-        fix_screen_no_taskbar(config, target_os)
-        clamp_window_dimensions(config)
-        clamp_window_position(config)
-        snap_window_to_device_pixels(config)
-
-    # ---- coherence ---------------------------------------------------------
-    violations = coherence.apply(config, target_os, keep=_caller_keys)
-    warn_kept_incoherent(violations)
-    fatal = [v for v in violations if v.rule in coherence.FATAL_RULES]
-    if fatal and not i_know_what_im_doing:
-        raise IncoherentIdentity(
-            'Camouwolf refuses to launch an identity that contradicts itself:\n  - '
-            + '\n  - '.join(v.detail for v in fatal)
-            + '\nFix `config`, or pass i_know_what_im_doing=True to launch anyway.'
-        )
-
-    validate_config(config, path=browser_binary)
 
     # ---- switches ----------------------------------------------------------
     if block_images:
         LeakWarning.warn(WARNINGS_DATA['block_images'], i_know_what_im_doing)
         args.append('--blink-settings=imagesEnabled=false')
-    if headless is True:
-        args.append(headless_pointer_settings(config))
     # A proxied context's WebRTC already leaves through the proxy (patch 0031);
     # this keeps it to TCP through the proxy, with no UDP at all.
     if block_webrtc:
-        args.append('--force-webrtc-ip-handling-policy=disable_non_proxied_udp')
+        args.append(WEBRTC_BLOCK_SWITCH)
     if block_webgl:
         LeakWarning.warn(WARNINGS_DATA['block_webgl'], i_know_what_im_doing)
         args.extend(['--disable-webgl', '--disable-webgl2'])

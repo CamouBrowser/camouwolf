@@ -95,15 +95,26 @@ from one identity and refuses a launch where they disagree.
 
 ### Contexts
 
-A Camouwolf browser has one identity per process. `new_context()` and
-`new_page()` default to `no_viewport=True` and to the host's own media features
-(Playwright's defaults are emulation overrides). `NewContext()` accepts
-`proxy`, `geolocation`, `timezone_id` and `locale`, and refuses options that
-would give one context another identity (`user_agent`, `screen`, ...).
-A context with its own `proxy` is placed where that proxy exits: `timezone_id`
-and `geolocation` default to the exit IP's, looked up through the proxy (needs
-the `geoip` extra), unless both are given, and a failed lookup raises
-`InvalidIP`. Its locale stays the identity's.
+`new_context()` and `new_page()` keep the launch's identity, and default to
+`no_viewport=True` and to the host's own media features (Playwright's defaults
+are emulation overrides).
+
+`NewContext(browser, ...)` makes a context that is another machine: its pages,
+workers, request headers, client hints, WebRTC addresses, GPU and fonts answer
+with an identity drawn for it, so two contexts of one browser look like two
+devices. It keeps the browser's OS, screen, window and core count, which one
+browser process cannot vary; `os` must be the launch's. `fingerprint`,
+`config`, `webgl_config`, `fonts` and `custom_fonts_only` work as at launch,
+for that context, and `webrtc_ip`, `locale` and `timezone_id` are its own.
+Options its pages would contradict (`user_agent`, `screen`, ...) raise
+`IncoherentIdentity`, and `storage_state` with origins' localStorage raises
+(the context takes its identity before its first page).
+
+A context with its own `proxy` is placed where that proxy exits: its timezone,
+locale, position and WebRTC address are the exit IP's, looked up through the
+proxy (needs the `geoip` extra), and a failed lookup raises `InvalidIP`.
+Without a proxy it leaves from the browser's address and keeps the launch's
+place and languages.
 
 ### Differences from Camoufox
 
@@ -114,7 +125,7 @@ the `geoip` extra), unless both are given, and a failed lookup raises
 | `fingerprint_preset`, `cpu`, `disable_coop`, `allow_addon_new_tab` | Raise `NotImplementedError`. |
 | `main_world_eval` | Accepted, nothing to enable: Playwright evaluates in the main world on Chromium, and an isolated-world `evaluate` is not available. |
 | `addons` take `.xpi`-style extracted Firefox addons; uBlock Origin is bundled | Unpacked Chrome extensions; uBlock Origin Lite, installed by `camouwolf fetch`. |
-| `NewContext()` draws an identity per context | One identity per browser. |
+| `NewContext()` draws an identity per context | The same, on the browser's OS, screen, window and core count. `preset`, `ff_version` and `chrome_version` raise `NotImplementedError`: every context runs the browser's own build. |
 | SOCKS5 proxy authentication | Not available: Chromium does not support it. |
 | Xvfb screen `1x1` | The identity's screen in device pixels (screen × `devicePixelRatio`): the browser's real window renders at that ratio. `CAMOUWOLF_VIRTUAL_DISPLAY_SIZE` fixes the size instead, and the screen is then kept within it. |
 

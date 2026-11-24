@@ -111,3 +111,10 @@
 # ASSOCIATE relay, names resolved by the proxy, and no UDP at all through a
 # proxy that carries none. Adds browser/additions/camouwolfp2p.
 0031-webrtc-proxied-exit.patch
+
+# --- Per-context identity -----------------------------------------------------
+# A Playwright context the launcher makes gets an identity of its own:
+# Target.setBrowserContextIdentity stores it against the browser context, the
+# browser answers that context's headers and client hints from it, and its
+# renderers adopt it at start-up. Contexts without one keep the launch's.
+0032-per-context-identity.patch

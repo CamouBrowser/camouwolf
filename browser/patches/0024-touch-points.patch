@@ -37,23 +37,27 @@ diff --git a/content/browser/web_contents/slow_web_preference_cache.cc b/content
  #include "base/command_line.h"
  #include "base/metrics/histogram_functions.h"
  #include "base/no_destructor.h"
-@@ -175,6 +176,19 @@
+@@ -113,6 +114,23 @@
+ #endif
  
-   pointer_events_max_touch_points_ = ui::MaxTouchPoints();
- 
-+  // CAMOUWOLF: the claimed digitizer is a pointer too. A touchscreen beside a
-+  // mouse adds a coarse pointer and leaves hover as it was, so a touch
-+  // identity matches (any-pointer: coarse) and a touchless one does not.
+ #undef SET_FROM_CACHE
++
++  // CAMOUWOLF: the pointer is the identity's devices, not the host's: a
++  // desktop's mouse, and a touchscreen beside it when it claims touch points,
++  // so a touch identity matches (any-pointer: coarse) and keeps (pointer: fine)
++  // and (hover: hover). It is stated whole, headless or not, because a
++  // command-line pointer (Playwright's headless --blink-settings) would answer
++  // for every browser context. It is applied here, not in the cache they all
++  // share, so a page takes the identity of the context it loads in.
 +  if (const auto touch_points =
 +          base::CamouwolfConfig::Get().GetInt("navigator.maxTouchPoints")) {
-+    pointer_events_max_touch_points_ = *touch_points;
-+    if (*touch_points > 0) {
-+      available_pointer_types_ |= ui::POINTER_TYPE_COARSE;
-+    } else {
-+      available_pointer_types_ &= ~ui::POINTER_TYPE_COARSE;
-+    }
++    prefs->pointer_events_max_touch_points = *touch_points;
++    prefs->primary_pointer_type = blink::mojom::PointerType::kPointerFineType;
++    prefs->primary_hover_type = blink::mojom::HoverType::kHoverHoverType;
++    prefs->available_hover_types = ui::HOVER_TYPE_HOVER;
++    prefs->available_pointer_types =
++        ui::POINTER_TYPE_FINE | (*touch_points > 0 ? ui::POINTER_TYPE_COARSE : 0);
 +  }
-+
-   number_of_cpu_cores_ = base::SysInfo::NumberOfProcessors();
+ }
  
-   AllPointerTypes all_pointer_types = AllPointerTypes::kNone;
+ void SlowWebPreferenceCache::OnInputDeviceConfigurationChanged(uint8_t) {

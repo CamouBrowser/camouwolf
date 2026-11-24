@@ -4,13 +4,17 @@
 #include "base/camouwolf_config.h"
 
 #include <algorithm>
+#include <map>
+#include <utility>
 
 #include "base/environment.h"
 #include "base/json/json_reader.h"
 #include "base/logging.h"
+#include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/synchronization/lock.h"
 
 namespace base {
 
@@ -40,6 +44,29 @@ std::string ReadChunkedConfig() {
   return joined;
 }
 
+std::optional<DictValue> ParseObject(std::string_view json) {
+  std::optional<Value> parsed = JSONReader::Read(json, JSON_PARSE_RFC);
+  if (!parsed.has_value() || !parsed->is_dict()) {
+    return std::nullopt;
+  }
+  return std::move(*parsed).TakeDict();
+}
+
+// The identities given to browser contexts. Entries are read on the UI thread
+// and erased only as their context is destroyed there, so a reference handed
+// out stays valid for as long as its caller can hold the context.
+struct ContextIdentities {
+  Lock lock;
+  std::map<const content::BrowserContext*, std::unique_ptr<CamouwolfConfig>> by_context;
+};
+
+ContextIdentities& Contexts() {
+  static NoDestructor<ContextIdentities> contexts;
+  return *contexts;
+}
+
+constinit thread_local const CamouwolfConfig* g_scoped = nullptr;
+
 }  // namespace
 
 CamouwolfConfig::CamouwolfConfig() {
@@ -60,12 +87,71 @@ CamouwolfConfig::CamouwolfConfig() {
   active_ = true;
 }
 
+CamouwolfConfig::CamouwolfConfig(DictValue dict, std::string json)
+    : dict_(std::move(dict)), active_(true), json_(std::move(json)) {}
+
 CamouwolfConfig::~CamouwolfConfig() = default;
 
 // static
-const CamouwolfConfig& CamouwolfConfig::Get() {
+CamouwolfConfig& CamouwolfConfig::Launch() {
   static NoDestructor<CamouwolfConfig> instance;
   return *instance;
+}
+
+// static
+const CamouwolfConfig& CamouwolfConfig::Get() {
+  return g_scoped ? *g_scoped : Launch();
+}
+
+// static
+const CamouwolfConfig& CamouwolfConfig::ForContext(const content::BrowserContext* context) {
+  ContextIdentities& contexts = Contexts();
+  AutoLock lock(contexts.lock);
+  auto it = contexts.by_context.find(context);
+  return it == contexts.by_context.end() ? Launch() : *it->second;
+}
+
+// static
+bool CamouwolfConfig::SetForContext(const content::BrowserContext* context,
+                                    std::string_view json) {
+  std::optional<DictValue> dict = ParseObject(json);
+  if (!dict) {
+    return false;
+  }
+  ContextIdentities& contexts = Contexts();
+  AutoLock lock(contexts.lock);
+  contexts.by_context[context] =
+      WrapUnique(new CamouwolfConfig(std::move(*dict), std::string(json)));
+  return true;
+}
+
+// static
+void CamouwolfConfig::EraseContext(const content::BrowserContext* context) {
+  ContextIdentities& contexts = Contexts();
+  AutoLock lock(contexts.lock);
+  contexts.by_context.erase(context);
+}
+
+// static
+void CamouwolfConfig::AdoptForProcess(std::string_view json) {
+  std::optional<DictValue> dict = ParseObject(json);
+  // The browser parsed this same JSON before accepting it, so a failure here
+  // is a broken handoff; running on with the launch's identity would put the
+  // renderer in a different identity from its context's network requests.
+  CHECK(dict) << "context identity is not a JSON object";
+  CamouwolfConfig& launch = Launch();
+  launch.dict_ = std::move(*dict);
+  launch.active_ = true;
+  launch.json_ = std::string(json);
+}
+
+CamouwolfConfig::ScopedIdentity::ScopedIdentity(const content::BrowserContext* context)
+    : previous_(g_scoped) {
+  g_scoped = &ForContext(context);
+}
+
+CamouwolfConfig::ScopedIdentity::~ScopedIdentity() {
+  g_scoped = previous_;
 }
 
 bool CamouwolfConfig::Has(std::string_view key) const {

@@ -417,16 +417,12 @@ def blink_settings(args):
     return found[0]
 
 
-@pytest.mark.parametrize('touch_points, pointers', [(10, '6'), (0, '4')])
-def test_a_headless_touch_identity_has_a_coarse_pointer_beside_its_mouse(options, touch_points, pointers):
-    # Playwright's headless launch states a mouse alone, which on a touch
-    # identity leaves (any-pointer: coarse) unmatched beside maxTouchPoints 10.
-    fingerprint = utils.draw_fingerprint('windows', Screen(min_width=1920, min_height=1080), None, None)
-    fingerprint = {**fingerprint, 'navigator': {**fingerprint['navigator'], 'maxTouchPoints': touch_points}}
-    launch = options(fingerprint=fingerprint, headless=True)
-
-    assert config_of(launch)['navigator.maxTouchPoints'] == touch_points
-    assert f'availablePointerTypes={pointers}' in blink_settings(launch['args'])
+def test_a_headless_launch_states_no_pointer_on_the_command_line(options):
+    # A command-line pointer answers for every context, so a touchless context
+    # of a touch launch would match (any-pointer: coarse); the browser states
+    # each context's own (patch 0024).
+    launch = options(os='windows', headless=True)
+    assert not any(a.startswith('--blink-settings=') for a in launch['args'])
     assert switches.PLAYWRIGHT_HEADLESS_BLINK_SETTINGS in launch['ignore_default_args']
 
 

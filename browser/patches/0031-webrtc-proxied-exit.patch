@@ -99,7 +99,17 @@ diff --git a/services/network/p2p/socket_manager.h b/services/network/p2p/socket
  class ProxyResolvingClientSocketFactory;
  }
  
-@@ -153,6 +154,9 @@
+@@ -77,7 +78,8 @@
+           trusted_socket_manager_receiver,
+       mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver,
+       DeleteCallback delete_callback,
+-      net::URLRequestContext* url_request_context);
++      net::URLRequestContext* url_request_context,
++      std::vector<net::IPAddress> camouwolf_identity_addresses = {});
+ 
+   P2PSocketManager(const P2PSocketManager&) = delete;
+   P2PSocketManager& operator=(const P2PSocketManager&) = delete;
+@@ -153,6 +155,9 @@
    DeleteCallback delete_callback_;
    raw_ptr<net::URLRequestContext> url_request_context_;
    const net::NetworkAnonymizationKey network_anonymization_key_;
@@ -123,17 +133,28 @@ diff --git a/services/network/p2p/socket_manager.cc b/services/network/p2p/socke
  #include "services/network/proxy_resolving_client_socket_factory.h"
  #include "services/network/public/cpp/p2p_param_traits.h"
  #include "third_party/webrtc/media/base/rtp_utils.h"
-@@ -183,6 +186,9 @@
+@@ -172,7 +175,8 @@
+         trusted_socket_manager_receiver,
+     mojo::PendingReceiver<mojom::P2PSocketManager> socket_manager_receiver,
+     DeleteCallback delete_callback,
+-    net::URLRequestContext* url_request_context)
++    net::URLRequestContext* url_request_context,
++    std::vector<net::IPAddress> camouwolf_identity_addresses)
+     : delete_callback_(std::move(delete_callback)),
+       url_request_context_(url_request_context),
+       network_anonymization_key_(network_anonymization_key),
+@@ -183,6 +187,10 @@
            this,
            std::move(trusted_socket_manager_receiver)),
        socket_manager_receiver_(this, std::move(socket_manager_receiver)) {
 +  // CAMOUWOLF: see docs/PATCHES.md, 0031.
-+  camouwolf_route_ = std::make_unique<ProxiedP2P>(url_request_context_,
-+                                                  network_anonymization_key_);
++  camouwolf_route_ = std::make_unique<ProxiedP2P>(
++      url_request_context_, network_anonymization_key_,
++      std::move(camouwolf_identity_addresses));
    trusted_socket_manager_receiver_.set_disconnect_handler(base::BindOnce(
        &P2PSocketManager::OnConnectionError, base::Unretained(this)));
    socket_manager_receiver_.set_disconnect_handler(base::BindOnce(
-@@ -210,6 +216,17 @@
+@@ -210,6 +218,18 @@
      return;
    if (notifications_paused_) {
      pending_network_change_notification_ = true;
@@ -146,12 +167,13 @@ diff --git a/services/network/p2p/socket_manager.cc b/services/network/p2p/socke
 +    return;
 +  }
 +  if (camouwolf_route_->proxied()) {
-+    SendNetworkList(ProxiedP2P::Network(), ProxiedP2P::DefaultAddress(AF_INET),
-+                    ProxiedP2P::DefaultAddress(AF_INET6));
++    SendNetworkList(camouwolf_route_->Network(),
++                    camouwolf_route_->DefaultAddress(AF_INET),
++                    camouwolf_route_->DefaultAddress(AF_INET6));
      return;
    }
  
-@@ -392,6 +409,17 @@
+@@ -392,6 +412,17 @@
      std::optional<net::AddressFamily> address_family,
      bool enable_mdns,
      mojom::P2PSocketManager::GetHostAddressCallback callback) {
@@ -169,7 +191,7 @@ diff --git a/services/network/p2p/socket_manager.cc b/services/network/p2p/socke
    auto request = std::make_unique<DnsRequest>(
        url_request_context_->host_resolver(), enable_mdns);
    DnsRequest* request_ptr = request.get();
-@@ -411,6 +439,14 @@
+@@ -411,6 +442,14 @@
      const std::optional<base::UnguessableToken>& devtools_token,
      mojo::PendingRemote<mojom::P2PSocketClient> client,
      mojo::PendingReceiver<mojom::P2PSocket> receiver) {
@@ -184,7 +206,7 @@ diff --git a/services/network/p2p/socket_manager.cc b/services/network/p2p/socke
    if (port_range.min_port > port_range.max_port ||
        (port_range.min_port == 0 && port_range.max_port != 0)) {
      trusted_socket_manager_client_->InvalidSocketPortRangeRequested();
-@@ -440,11 +476,26 @@
+@@ -440,11 +479,26 @@
      LOG(ERROR) << "Too many sockets created";
      return;
    }

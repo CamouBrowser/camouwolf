@@ -5,8 +5,9 @@
 //
 // Stock Chromium sends WebRTC's UDP around a proxy, from this machine's own
 // interfaces, so STUN reports this machine's public address. Here a context
-// whose proxy is not DIRECT gets the identity's network (`webrtc:ipv4`,
-// `webrtc:ipv6`) instead of this machine's, and every UDP datagram that leaves
+// whose proxy is not DIRECT gets its identity's network (`webrtc:ipv4`,
+// `webrtc:ipv6`, which the browser hands over with the socket manager)
+// instead of this machine's, and every UDP datagram that leaves
 // the host goes through a SOCKS5 UDP ASSOCIATE relay (RFC 1928 section 7) on
 // that proxy, or nowhere: a proxy that carries no UDP looks like a firewall
 // that drops it. STUN and TURN servers given by name are resolved by the
@@ -55,7 +56,8 @@ namespace network {
 class ProxiedP2P {
  public:
   ProxiedP2P(net::URLRequestContext* context,
-             const net::NetworkAnonymizationKey& network_anonymization_key);
+             const net::NetworkAnonymizationKey& network_anonymization_key,
+             std::vector<net::IPAddress> identity_addresses);
   ProxiedP2P(const ProxiedP2P&) = delete;
   ProxiedP2P& operator=(const ProxiedP2P&) = delete;
   ~ProxiedP2P();
@@ -66,9 +68,9 @@ class ProxiedP2P {
   bool proxied() const { return route_ == Route::kProxied; }
 
   // The interfaces and default addresses WebRTC sees behind the proxy: the
-  // identity's one adapter, or none when the launch gave it no address.
-  static net::NetworkInterfaceList Network();
-  static net::IPAddress DefaultAddress(int family);
+  // identity's one adapter, or none when the identity has no address.
+  net::NetworkInterfaceList Network() const;
+  net::IPAddress DefaultAddress(int family) const;
   // A STUN or TURN server's name, behind the proxy.
   static net::IPAddressList Resolve(const std::string& host_name,
                                     std::optional<net::AddressFamily> family);
@@ -82,9 +84,11 @@ class ProxiedP2P {
   void OnProxyResolved(int result);
   void OnProxyHostResolved(int result);
   void Done(Route route);
+  std::optional<net::IPAddress> IdentityAddress(int family) const;
 
   const raw_ptr<net::URLRequestContext> context_;
   const net::NetworkAnonymizationKey network_anonymization_key_;
+  const std::vector<net::IPAddress> identity_addresses_;
   Route route_ = Route::kUnknown;
   // The SOCKS5 proxy, when the context's proxy is one: the only kind that
   // carries UDP.

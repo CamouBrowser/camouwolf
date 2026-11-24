@@ -90,8 +90,8 @@ summary states both versions.
 ## The skiplist
 
 `ci/skiplist.yml` lists upstream tests that are expected to fail, each with the
-reason. An entry is a decision that the behaviour is intended (one identity per
-browser, for example), never a way to hide a failure. `ci.run_skiplist_audit`
+reason. An entry is a decision that the behaviour is intended (an identity held
+by the browser, not emulated, for example), never a way to hide a failure. `ci.run_skiplist_audit`
 keeps the list honest: once an entry passes it must be removed.
 
 No test is retried: a test that fails once is a failure. Each launch's

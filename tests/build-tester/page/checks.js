@@ -42,6 +42,34 @@ const buildTester = (() => {
       } catch (error) { resolve({ error: String(error) }); }
     });
   }
+  function fromSharedWorker(timeout = 8000) {
+    return new Promise((resolve) => {
+      try {
+        const worker = new SharedWorker("/worker.js");
+        const timer = setTimeout(() => resolve({ error: "shared worker timeout" }), timeout);
+        worker.port.onmessage = (event) => { clearTimeout(timer); worker.port.close(); resolve(event.data); };
+        worker.onerror = (event) => { clearTimeout(timer); resolve({ error: `shared worker error: ${event.message}` }); };
+        worker.port.postMessage("go");
+      } catch (error) { resolve({ error: String(error) }); }
+    });
+  }
+  async function fromServiceWorker(timeout = 8000) {
+    const timer = new Promise((resolve) => setTimeout(() => resolve({ error: "service worker timeout" }), timeout));
+    const run = (async () => {
+      const registration = await navigator.serviceWorker.register("/worker.js");
+      const worker = registration.installing || registration.waiting || registration.active;
+      if (worker.state !== "activated") {
+        await new Promise((done) => worker.addEventListener("statechange", () => worker.state === "activated" && done()));
+      }
+      const out = await new Promise((resolve) => {
+        navigator.serviceWorker.addEventListener("message", (event) => resolve(event.data), { once: true });
+        worker.postMessage("go");
+      });
+      await registration.unregister();
+      return out;
+    })().catch((error) => ({ error: String(error) }));
+    return Promise.race([run, timer]);
+  }
   function fromIframe() {
     return new Promise((resolve) => {
       const frame = document.createElement("iframe");
@@ -320,6 +348,8 @@ const buildTester = (() => {
     };
     out.webgl = { webgl: webglInfo("webgl"), webgl2: webglInfo("webgl2") };
     out.worker = await fromWorker();
+    out.sharedWorker = await fromSharedWorker();
+    out.serviceWorker = await fromServiceWorker();
     out.canvas = [canvasHash(), canvasHash()];
     out.voices = await voices();
     try {

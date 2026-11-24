@@ -1,5 +1,7 @@
-// Dedicated worker half of the build-tester: reports the identity a worker sees.
-onmessage = async () => {
+// Worker half of the build-tester: reports the identity a worker sees. One
+// script for a dedicated, a shared and a service worker, which a renderer
+// starts by three different paths.
+async function report() {
   const out = {
     userAgent: navigator.userAgent,
     platform: navigator.platform,
@@ -39,5 +41,16 @@ onmessage = async () => {
     const headers = await (await fetch("/headers?from=worker")).json();
     out.fetchHeaders = headers;
   } catch (error) { out.fetchError = String(error); }
-  postMessage(out);
-};
+  return out;
+}
+
+if (typeof SharedWorkerGlobalScope !== "undefined" && self instanceof SharedWorkerGlobalScope) {
+  onconnect = (event) => {
+    const port = event.ports[0];
+    port.onmessage = async () => port.postMessage(await report());
+  };
+} else if (typeof ServiceWorkerGlobalScope !== "undefined" && self instanceof ServiceWorkerGlobalScope) {
+  onmessage = (event) => event.waitUntil(report().then((out) => event.source.postMessage(out)));
+} else {
+  onmessage = async () => postMessage(await report());
+}

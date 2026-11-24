@@ -48,7 +48,7 @@ skip:
       page.pause() launches the inspector in a second, launcher-less instance of
       the binary under test, which never comes up; the test then waits forever.
 
-  # --- one identity per browser ----------------------------------------------
+  # --- the identity is the browser's, not emulated ---------------------------
   #
   # The user agent is part of the identity the launcher draws and the browser
   # reads at startup (navigator.userAgent, the User-Agent header and the client

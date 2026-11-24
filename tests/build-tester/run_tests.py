@@ -6,9 +6,15 @@ For each profile this launches the browser the way a user's script does
 server, and compares three things with each other:
 
   * what the launcher **claimed** (the config it put in the environment),
-  * what the **page** sees (main frame, an iframe, a dedicated worker), and
+  * what the **page** sees (main frame, an iframe, a dedicated, a shared and a
+    service worker), and
   * what the **network** saw (request headers of the navigation, a fetch, and
-    a worker's fetch).
+    each worker's fetch).
+
+Each launch also opens a context through `NewContext()`, which draws it an
+identity of its own, and checks that context the same way against that
+identity. The launch's page is checked after the context exists, so it shows
+that a plain context keeps the launch's identity beside it.
 
 `page/checks.js` holds the checks a page can decide alone; the comparisons
 that need the claimed values are here. The output is one JSON document:
@@ -38,7 +44,7 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from ci.browser import claimed_config, launcher_options, require_private_display  # noqa: E402
+from ci.browser import claimed_config, import_launcher, launcher_options, require_private_display  # noqa: E402
 
 PAGE = HERE / "page"
 Check = Dict[str, Any]
@@ -52,6 +58,9 @@ VARIANTS: List[Dict[str, Any]] = [
     {"locale": "ja-JP", "config": {"timezone": "Asia/Tokyo"}},
     {"locale": "en-GB", "config": {"timezone": "America/Sao_Paulo"}},
 ]
+
+# The workers the page starts, each by its own path into a renderer.
+WORKERS = ("worker", "sharedWorker", "serviceWorker")
 
 # Families that exist on one OS and not the other: a Windows identity that
 # resolves a Linux family (or the reverse) names its host.
@@ -150,7 +159,7 @@ def served_languages(options: Dict[str, Any]) -> Optional[List[str]]:
     --accept-lang the launcher passed: language_prefs.cc GetIncognitoLanguageList,
     which keeps a one-language list and swaps a longer one for Chrome's default
     list of its first language."""
-    from camouwolf.utils import CHROME_LANGUAGES  # noqa: PLC0415
+    CHROME_LANGUAGES = import_launcher().utils.CHROME_LANGUAGES  # noqa: N806
 
     passed = next((arg.split("=", 1)[1].split(",") for arg in options.get("args") or []
                    if arg.startswith("--accept-lang=")), None)
@@ -181,7 +190,8 @@ def offset_minutes(zone: str, when: dt.datetime) -> int:
 def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, got: Dict[str, Any],
             probe: Dict[str, Any], navigation: Dict[str, str]) -> Results:
     out: Results = {}
-    nav, uad, worker = got["navigator"], got.get("uad") or {}, got.get("worker") or {}
+    nav, uad = got["navigator"], got.get("uad") or {}
+    workers = {kind: got.get(kind) or {} for kind in WORKERS}
     high = uad.get("high") or {}
 
     # ---- Navigator ---------------------------------------------------------
@@ -230,7 +240,7 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
             uad.get("platform") == {"windows": "Windows", "linux": "Linux", "macos": "macOS"}[os_name],
             f"{os_name} identity, userAgentData.platform {uad.get('platform')!r}")
     for label, headers in (("navigation", navigation), ("fetch", got.get("fetchHeaders") or {}),
-                           ("workerFetch", worker.get("fetchHeaders") or {})):
+                           *((f"{kind}Fetch", worker.get("fetchHeaders") or {}) for kind, worker in workers.items())):
         if not headers or "error" in headers:
             c[f"{label}Headers"] = check(False, f"no request headers recorded for the {label}: {headers}")
             continue
@@ -239,7 +249,7 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
         accept = [part.split(";")[0].strip() for part in (headers.get("accept-language") or "").split(",") if part.strip()]
         c[f"{label}AcceptLanguage"] = check(accept == header_languages(list(nav.get("languages") or [])),
                                             f"header {headers.get('accept-language')!r}, navigator.languages {nav.get('languages')}")
-        if label == "workerFetch":
+        if label not in ("navigation", "fetch"):
             # Stock Chromium sends no Sec-CH-UA on a dedicated worker's fetch to
             # a loopback origin (checked against 151); demanding it would fail
             # a correct build.
@@ -263,20 +273,22 @@ def compare(claimed: Dict[str, Any], served: Optional[List[str]], os_name: str, 
 
     # ---- Worker: the same identity off the main thread ---------------------
     c = out["Worker"] = {}
-    if "error" in worker or not worker:
-        c["workerRan"] = check(False, worker.get("error", "no worker result"))
-    else:
+    for kind, worker in workers.items():
+        if "error" in worker or not worker:
+            c[f"{kind}Ran"] = check(False, worker.get("error", f"no {kind} result"))
+            continue
         # No `webdriver`: WorkerNavigator does not have it.
         for prop in ("userAgent", "platform", "hardwareConcurrency", "deviceMemory", "languages"):
-            c[prop] = check(worker.get(prop) == nav.get(prop), f"page {nav.get(prop)!r}, worker {worker.get(prop)!r}")
-        c["timeZone"] = check(worker.get("timeZone") == got["intl"]["timeZone"], f"page {got['intl']['timeZone']}, worker {worker.get('timeZone')}")
-        c["locale"] = check(worker.get("locale") == got["intl"]["locale"], f"page {got['intl']['locale']}, worker {worker.get('locale')}")
-        c["userAgentData"] = check(json.dumps(worker.get("uad"), sort_keys=True) == json.dumps(uad, sort_keys=True),
-                                   f"page {uad}, worker {worker.get('uad')}")
+            c[f"{kind}.{prop}"] = check(worker.get(prop) == nav.get(prop), f"page {nav.get(prop)!r}, {kind} {worker.get(prop)!r}")
+        c[f"{kind}.timeZone"] = check(worker.get("timeZone") == got["intl"]["timeZone"],
+                                      f"page {got['intl']['timeZone']}, {kind} {worker.get('timeZone')}")
+        c[f"{kind}.locale"] = check(worker.get("locale") == got["intl"]["locale"], f"page {got['intl']['locale']}, {kind} {worker.get('locale')}")
+        c[f"{kind}.userAgentData"] = check(json.dumps(worker.get("uad"), sort_keys=True) == json.dumps(uad, sort_keys=True),
+                                           f"page {uad}, {kind} {worker.get('uad')}")
         page_gl = (got["webgl"].get("webgl") or {})
         worker_gl = worker.get("webgl") or {}
-        c["webgl"] = check(worker_gl.get("vendor") == page_gl.get("vendor") and worker_gl.get("renderer") == page_gl.get("renderer"),
-                           f"page {page_gl.get('vendor')} / {page_gl.get('renderer')}, worker {worker_gl}")
+        c[f"{kind}.webgl"] = check(worker_gl.get("vendor") == page_gl.get("vendor") and worker_gl.get("renderer") == page_gl.get("renderer"),
+                                   f"page {page_gl.get('vendor')} / {page_gl.get('renderer')}, {kind} {worker_gl}")
 
     # ---- Timezone & Locale --------------------------------------------------
     c = out["Timezone & Locale"] = {}
@@ -438,11 +450,65 @@ def double_click_selection(page: Any) -> str:
     return page.evaluate("String(getSelection())")
 
 
+def check_page(page: Any, server: Server, claimed: Dict[str, Any], served: Optional[List[str]],
+               os_name: str) -> tuple:
+    """Load the page in `page` and compare it with `claimed`: the results, and
+    the identity the page read."""
+    server.seen.pop("navigation", None)
+    page.goto(server.url)
+    page.wait_for_selector("#result", state="attached", timeout=60_000)
+    result = json.loads(page.evaluate("document.getElementById('result').textContent"))
+    if "error" in result:
+        raise RuntimeError(f"the page's checks threw: {result['error']}")
+    params = sorted({*(claimed.get("webGl:parameters") or {}), *(claimed.get("webGl2:parameters") or {})})
+    probe = page.evaluate("request => buildTester.probe(request)", {
+        "webglParameters": params, "webgl2Parameters": params,
+        "fonts": sorted({*font_families(claimed), *font_families(claimed).values(), *FOREIGN_FONTS[os_name]}),
+        "systemColors": sorted(claimed.get("systemColors") or {}),
+    })
+    probe["doubleClick"] = double_click_selection(page)
+    results = {**result["checks"], **compare(claimed, served, os_name, result["collected"], probe,
+                                             server.seen.get("navigation") or {})}
+    collected = result["collected"]
+    identity = {
+        "userAgent": collected["navigator"]["userAgent"],
+        "renderer": (collected["webgl"].get("webgl") or {}).get("renderer"),
+        "screen": f"{collected['screen']['width']}x{collected['screen']['height']}",
+        "timeZone": collected["intl"]["timeZone"],
+        "canvas": collected["canvas"][0],
+    }
+    return results, identity
+
+
+def new_context(browser: Any, variant: Dict[str, Any]) -> tuple:
+    """A context NewContext draws its own identity for, with that identity and
+    its language list, as the browser was handed them."""
+    launcher = import_launcher()
+    sync_api = launcher.sync_api
+    handed: List[tuple] = []
+    params = sync_api.set_context_identity_params
+
+    def record(context_id: str, identity: Dict[str, Any], languages: List[str]) -> Dict[str, Any]:
+        handed.append((identity, languages))
+        return params(context_id, identity, languages)
+
+    sync_api.set_context_identity_params = record
+    try:
+        context = launcher.NewContext(browser, i_know_what_im_doing=True, **json.loads(json.dumps(variant)))
+    finally:
+        sync_api.set_context_identity_params = params
+    (identity, languages), = handed
+    return context, identity, languages
+
+
 def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, index: int, headless: bool,
                 log: Callable[[str], None]) -> Dict[str, Any]:
     variant = VARIANTS[index % len(VARIANTS)]
+    # Another place than the launch's, so the context cannot pass on the launch's values.
+    context_variant = VARIANTS[(index + 2) % len(VARIANTS)]
     name = f"{os_name}-{index}"
-    profile: Dict[str, Any] = {"name": name, "os": os_name, "variant": variant, "results": {}}
+    profile: Dict[str, Any] = {"name": name, "os": os_name, "variant": variant, "context_variant": context_variant,
+                               "results": {}}
     try:
         options = launcher_options(binary, os_name=os_name, headless=headless, **json.loads(json.dumps(variant)))
         claimed = claimed_config(options)
@@ -450,33 +516,30 @@ def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, ind
         profile["results"] = {"Launch": {"launcherOptions": check(False, f"{type(exc).__name__}: {exc}")}}
         return profile
     profile["claimed_keys"] = sorted(claimed)
+    if os_name != "macos":
+        # The other touchscreen than the launch's, so a pointer stated for the
+        # whole browser cannot pass for the context's (no Mac has one).
+        touch = 0 if claimed.get("navigator.maxTouchPoints") else 10
+        context_variant = {**context_variant, "config": {**context_variant.get("config", {}),
+                                                         "navigator.maxTouchPoints": touch}}
+        profile["context_variant"] = context_variant
     browser = None
     try:
-        server.seen.pop("navigation", None)
-        browser = playwright.chromium.launch(**options)
-        page = browser.new_page(no_viewport=True)
-        page.goto(server.url)
-        page.wait_for_selector("#result", state="attached", timeout=60_000)
-        result = json.loads(page.evaluate("document.getElementById('result').textContent"))
-        if "error" in result:
-            raise RuntimeError(f"the page's checks threw: {result['error']}")
-        params = sorted({*(claimed.get("webGl:parameters") or {}), *(claimed.get("webGl2:parameters") or {})})
-        probe = page.evaluate("request => buildTester.probe(request)", {
-            "webglParameters": params, "webgl2Parameters": params,
-            "fonts": sorted({*font_families(claimed), *font_families(claimed).values(), *FOREIGN_FONTS[os_name]}),
-            "systemColors": sorted(claimed.get("systemColors") or {}),
-        })
-        probe["doubleClick"] = double_click_selection(page)
-        profile["results"] = {"Launch": {"launched": check(True)}, **result["checks"],
-                              **compare(claimed, served_languages(options), os_name, result["collected"], probe,
-                                        server.seen.get("navigation") or {})}
-        profile["identity"] = {
-            "userAgent": result["collected"]["navigator"]["userAgent"],
-            "renderer": (result["collected"]["webgl"].get("webgl") or {}).get("renderer"),
-            "screen": f"{result['collected']['screen']['width']}x{result['collected']['screen']['height']}",
-            "timeZone": result["collected"]["intl"]["timeZone"],
-            "canvas": result["collected"]["canvas"][0],
-        }
+        browser = import_launcher().NewBrowser(playwright, from_options=options)
+        context, identity, languages = new_context(browser, context_variant)
+        launched, profile["identity"] = check_page(browser.new_page(no_viewport=True), server, claimed,
+                                                   served_languages(options), os_name)
+        own, profile["context_identity"] = check_page(context.new_page(), server, identity, languages, os_name)
+        profile["results"] = {"Launch": {"launched": check(True)}, **launched}
+        for category, checks in own.items():
+            profile["results"].setdefault(category, {}).update({f"context:{n}": c for n, c in checks.items()})
+        # Two draws of a whole machine never land on one GPU, font list,
+        # canvas seed and voice list together.
+        place = ("timezone", "locale:", "geolocation:", "webrtc:")
+        drawn = {k for k in {*identity, *claimed} if not k.startswith(place) and identity.get(k) != claimed.get(k)}
+        profile["results"]["Launch"]["contextIsAnotherMachine"] = check(
+            bool(drawn) and profile["identity"] != profile["context_identity"],
+            f"{len(drawn)} keys differ; launch page {profile['identity']}, context page {profile['context_identity']}")
     except Exception as exc:  # noqa: BLE001
         profile["results"].setdefault("Launch", {})["launched"] = check(False, f"{type(exc).__name__}: {str(exc)[:500]}")
     finally:

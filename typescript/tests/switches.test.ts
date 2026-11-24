@@ -9,12 +9,7 @@ import { describe, expect, it } from "vitest";
 import { ValueError } from "../src/exceptions.js";
 import * as switches from "../src/switches.js";
 
-const {
-	auditSwitches,
-	headlessPointerSettings,
-	mergeListSwitches,
-	PLAYWRIGHT_HEADLESS_BLINK_SETTINGS,
-} = switches;
+const { auditSwitches, mergeListSwitches } = switches;
 
 describe("switches", () => {
 	it("adds the base switches first", () => {
@@ -137,18 +132,5 @@ describe("switches", () => {
 		expect(found.length).toBeGreaterThan(5);
 		for (const name of found)
 			expect(switches.PLAYWRIGHT_DISABLED_FEATURES).toContain(name);
-	});
-});
-
-describe("the headless pointer", () => {
-	it("adds a touch identity's coarse pointer beside the mouse", () => {
-		expect(headlessPointerSettings({ "navigator.maxTouchPoints": 10 })).toBe(
-			"--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=6",
-		);
-	});
-	it("is Playwright's mouse alone without a touchscreen", () => {
-		expect(headlessPointerSettings({ "navigator.maxTouchPoints": 0 })).toBe(
-			PLAYWRIGHT_HEADLESS_BLINK_SETTINGS,
-		);
 	});
 });

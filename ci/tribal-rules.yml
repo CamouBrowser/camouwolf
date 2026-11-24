@@ -85,6 +85,20 @@ rules:
       paths: [ci/sundial.yml]
       pattern: '(?m)^enabled: (true|false)$'
 
+  - id: context-identity-is-the-browsers
+    decision: >-
+      A context gets its identity from Target.setBrowserContextIdentity (0032)
+      before its first renderer, never from Playwright's emulation overrides.
+    why: >-
+      Emulation answers in a page and nowhere else: the context's workers,
+      request headers, client hints, WebRTC and GPU process still answer as
+      the launch, and a page that compares its window with a worker reads two
+      machines. Only an identity the browser holds for the context reaches them
+      all.
+    forbidden:
+      paths: ["python/src/**/*.py", "typescript/src/**/*.ts"]
+      pattern: 'Emulation\.set(UserAgentOverride|TimezoneOverride|LocaleOverride)'
+
   - id: storage-quota-is-stock
     decision: Nothing patches or configures navigator.storage.estimate().quota.
     why: >-

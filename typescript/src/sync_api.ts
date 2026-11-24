@@ -24,17 +24,22 @@ import { normalize } from "./humanize.js";
 import {
 	attachContextDefaults,
 	attachVirtualDisplay,
+	type ContextIdentityOptions,
+	contextIdentity,
+	createdContextId,
 	driverPid,
 	type GeolocationOption,
 	type GpuDisplayOptions,
 	type Headless,
 	type LaunchOptions,
 	launchOptions,
+	launchOptionsOf,
 	launchOs,
 	newContextOptions,
 	persistentContextOptions,
 	pinnedCoreCount,
-	placeAtExit,
+	refuseContextOptions,
+	setContextIdentityParams,
 	startVirtualDisplay,
 	warnAddonsWithoutProfile,
 } from "./utils.js";
@@ -202,7 +207,9 @@ async function launchWith(
 	return attachVirtualDisplay(browser, virtualDisplay);
 }
 
-export interface NewContextOptions extends Record<string, any> {
+export interface NewContextOptions
+	extends ContextIdentityOptions,
+		Record<string, any> {
 	/** Per-context proxy, in Playwright's format. */
 	proxy?: ProxyConfig;
 	/** Per-context geolocation; the permission is granted with it. */
@@ -222,33 +229,99 @@ export function camelCase(snake: string): string {
 }
 
 /**
- * Creates a new browser context on a Camouwolf browser.
+ * Creates a new browser context with an identity of its own.
  *
- * Unlike Camoufox, a Camouwolf context has no identity of its own: the browser
- * reads its identity once, per process, from the launch environment, and
- * workers, request headers and the GPU process answer from it whatever a
- * context emulates. So a context can differ in where it is, not in what
- * machine it is.
+ * The context is another machine than the rest of the browser: its pages,
+ * workers, request headers, WebRTC, GPU and fonts answer with an identity
+ * drawn for it. It shares the browser's OS, screen, window and core count,
+ * which one browser process cannot vary. A plain browser.newContext() keeps
+ * the launch's identity.
  *
- * A `proxy` places the context where it exits: timezoneId and geolocation
- * default to the exit IP's, looked up through the proxy (needs the geoip
- * database) unless both are given; InvalidIP is thrown if the lookup fails.
- * The locale stays the browser's identity's.
+ * A `proxy` places the context where it exits: its timezone, locale, position
+ * and WebRTC address are the exit IP's, looked up through the proxy (needs the
+ * geoip database); InvalidIP is thrown if the lookup fails. Without one, the
+ * context leaves from the browser's address and keeps its place. `os` must be
+ * the launch's; `fingerprint`, `config`, `webgl_config`, `fonts` and
+ * `custom_fonts_only` are as at launch, for this context; `webrtc_ip`,
+ * `locale` and `timezoneId` are this context's.
  *
- * Other keys are Playwright newContext() options, such as timezoneId and
- * locale. Options that would change the identity (userAgent, screen,
- * deviceScaleFactor, isMobile, hasTouch) throw IncoherentIdentity, and
- * Camoufox's per-context identity options (preset, os, ff_version, webrtc_ip)
- * throw NotImplementedError.
+ * Other keys are Playwright newContext() options. Options that would make the
+ * pages disagree with the identity (userAgent, screen, deviceScaleFactor,
+ * isMobile, hasTouch) throw IncoherentIdentity; Camoufox's preset, ff_version
+ * and chrome_version throw NotImplementedError.
  */
 export async function NewContext(
 	browser: Browser,
-	{ proxy, geolocation, ...contextOptions }: NewContextOptions = {},
-): Promise<BrowserContext> {
-	const [placed, options] = await placeAtExit(
+	{
 		proxy,
 		geolocation,
-		contextOptions,
+		os,
+		fingerprint,
+		config,
+		webgl_config,
+		webrtc_ip,
+		fonts,
+		custom_fonts_only,
+		locale,
+		timezoneId,
+		i_know_what_im_doing,
+		...contextOptions
+	}: NewContextOptions = {},
+): Promise<BrowserContext> {
+	refuseContextOptions(contextOptions);
+	const { identity, languages } = await contextIdentity(
+		launchOptionsOf(browser),
+		{
+			proxy,
+			os,
+			fingerprint,
+			config,
+			webgl_config,
+			webrtc_ip,
+			fonts,
+			custom_fonts_only,
+			locale,
+			timezoneId,
+			i_know_what_im_doing,
+		},
 	);
-	return browser.newContext(newContextOptions(options, proxy, placed));
+	const options = newContextOptions(
+		contextOptions,
+		identity,
+		proxy,
+		geolocation,
+	);
+	// The new context is the one getBrowserContexts gains, and it takes its
+	// identity before its first renderer.
+	return serialized(browser, async () => {
+		const session = await browser.newBrowserCDPSession();
+		try {
+			const before = await session.send("Target.getBrowserContexts");
+			const context = await browser.newContext(options);
+			const contextId = createdContextId(
+				before,
+				await session.send("Target.getBrowserContexts"),
+			);
+			await (session as any).send(
+				"Target.setBrowserContextIdentity",
+				setContextIdentityParams(contextId, identity, languages),
+			);
+			return context;
+		} finally {
+			await session.detach();
+		}
+	});
+}
+
+const contextQueues = new WeakMap<Browser, Promise<unknown>>();
+
+/** Run `task` after every earlier one queued on `browser`. */
+function serialized<T>(browser: Browser, task: () => Promise<T>): Promise<T> {
+	const previous = contextQueues.get(browser) ?? Promise.resolve();
+	const run = previous.then(task, task);
+	contextQueues.set(
+		browser,
+		run.catch(() => undefined),
+	);
+	return run;
 }

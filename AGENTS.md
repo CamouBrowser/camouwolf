@@ -150,8 +150,10 @@ option; the TypeScript launcher takes the same options in camelCase.
   Playwright `user_agent`, or a `navigator.*` key in `config`, leaves the rest
   describing a different machine. Use `os`, `screen`, `window`, `locale` and
   `geoip`.
-- **One identity per browser.** A context-level user agent or device descriptor
-  does not override it.
+- **One identity per context.** `NewContext()` draws a context its own identity
+  on the browser's OS, screen, window and core count; a plain `new_context()`
+  keeps the launch's. A context-level user agent or device descriptor does not
+  override either.
 - **Use `geoip=True` with a proxy**, or the timezone and locale are the
   identity's and not the exit's.
 - **`os` values are lowercase** `windows`, `macos`, `linux`.

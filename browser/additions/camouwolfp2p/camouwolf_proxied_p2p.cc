@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <utility>
 
-#include "base/camouwolf_config.h"
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_util.h"
@@ -78,19 +77,6 @@ std::optional<std::string> NameForPlaceholder(const net::IPAddress& address) {
   return Names()[index - 1];
 }
 
-std::optional<net::IPAddress> IdentityAddress(int family) {
-  const base::CamouwolfConfig& config = base::CamouwolfConfig::Get();
-  std::optional<std::string> value = family == AF_INET
-                                         ? config.GetString("webrtc:ipv4")
-                                         : config.GetString("webrtc:ipv6");
-  std::optional<net::IPAddress> address =
-      value ? net::IPAddress::FromIPLiteral(*value) : std::nullopt;
-  if (!address || address->IsIPv4() != (family == AF_INET)) {
-    return std::nullopt;
-  }
-  return address;
-}
-
 void AppendAddress(std::vector<uint8_t>& out, const net::IPAddress& address) {
   out.push_back(address.IsIPv4() ? 1 : 4);
   out.insert(out.end(), address.bytes().begin(), address.bytes().end());
@@ -118,9 +104,11 @@ std::unique_ptr<net::DatagramServerSocket> CreateUdpSocket(
 
 ProxiedP2P::ProxiedP2P(
     net::URLRequestContext* context,
-    const net::NetworkAnonymizationKey& network_anonymization_key)
+    const net::NetworkAnonymizationKey& network_anonymization_key,
+    std::vector<net::IPAddress> identity_addresses)
     : context_(context),
-      network_anonymization_key_(network_anonymization_key) {
+      network_anonymization_key_(network_anonymization_key),
+      identity_addresses_(std::move(identity_addresses)) {
   int result = context_->proxy_resolution_service()->ResolveProxy(
       GURL(kProbeUrl), net::HttpRequestHeaders::kPostMethod,
       network_anonymization_key_, net::handles::kInvalidNetworkHandle,
@@ -179,8 +167,16 @@ void ProxiedP2P::Done(Route route) {
   }
 }
 
-// static
-net::NetworkInterfaceList ProxiedP2P::Network() {
+std::optional<net::IPAddress> ProxiedP2P::IdentityAddress(int family) const {
+  for (const net::IPAddress& address : identity_addresses_) {
+    if (address.IsIPv4() == (family == AF_INET)) {
+      return address;
+    }
+  }
+  return std::nullopt;
+}
+
+net::NetworkInterfaceList ProxiedP2P::Network() const {
   net::NetworkInterfaceList list;
   for (int family : {AF_INET, AF_INET6}) {
     if (std::optional<net::IPAddress> address = IdentityAddress(family)) {
@@ -193,8 +189,7 @@ net::NetworkInterfaceList ProxiedP2P::Network() {
   return list;
 }
 
-// static
-net::IPAddress ProxiedP2P::DefaultAddress(int family) {
+net::IPAddress ProxiedP2P::DefaultAddress(int family) const {
   return IdentityAddress(family).value_or(net::IPAddress());
 }
 
