@@ -426,11 +426,11 @@ def media_devices(devices: Any) -> Optional[List[str]]:
     return listed or None
 
 
-def pack_voices(voices: Any) -> Optional[List[str]]:
+def pack_voices(voices: Any, network: bool = False) -> Optional[List[str]]:
     """fpgen's speechSynthesis voices as `voices` entries: name|lang|uri|local|default.
 
-    Only local voices: the network ones (Google's) come with Chrome, not
-    Chromium, and Chrome emulation is Pro's.
+    Network voices (Google's) only with `network`: they come with Chrome, not
+    Chromium, so only a build whose product is Chrome claims them.
     """
     if not isinstance(voices, list):
         return None
@@ -438,14 +438,14 @@ def pack_voices(voices: Any) -> Optional[List[str]]:
     for voice in voices:
         if not isinstance(voice, dict) or not voice.get('name') or not voice.get('lang'):
             continue
-        if not voice.get('localService'):
+        if not network and not voice.get('localService'):
             continue
         fields = (voice['name'], voice['lang'], voice.get('voiceURI') or voice['name'])
         if any('|' in str(field) for field in fields):
             continue  # the separator; no recorded voice has one
         packed.append(
             '|'.join(
-                [*map(str, fields), '1', '1' if voice.get('default') else '0']
+                [*map(str, fields), '1' if voice.get('localService') else '0', '1' if voice.get('default') else '0']
             )
         )
     return packed or None
@@ -633,12 +633,15 @@ def fingerprint_os(fingerprint: Dict[str, Any]) -> Optional[str]:
     return ua_os(user_agent) if isinstance(user_agent, str) else None
 
 
-def from_fpgen(fingerprint: Dict[str, Any], chrome_version: Optional[Any] = None) -> Dict[str, Any]:
+def from_fpgen(
+    fingerprint: Dict[str, Any], chrome_version: Optional[Any] = None, network_voices: bool = False
+) -> Dict[str, Any]:
     """
     Converts an fpgen Chrome fingerprint to a Camouwolf config.
 
     `chrome_version` is the Chromium milestone of the browser that will run; the
-    recorded user agent is rewritten to it.
+    recorded user agent is rewritten to it. `network_voices` keeps the recorded
+    network voices, for a build whose product is Chrome (pack_voices).
     """
     from camouwolf.webgl import webgl_identity
 
@@ -653,7 +656,7 @@ def from_fpgen(fingerprint: Dict[str, Any], chrome_version: Optional[Any] = None
         )
     target_os = fingerprint_os(fingerprint)
 
-    voices = pack_voices(fingerprint.get('voices'))
+    voices = pack_voices(fingerprint.get('voices'), network=network_voices)
     if voices:
         camouwolf_data['voices'] = voices
     camouwolf_data.update(webgl_identity(fingerprint, camouwolf_data.get('webGl:renderer')))

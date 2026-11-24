@@ -85,13 +85,16 @@ done
 
 # The launcher reads version.json to decide which milestone the identity should
 # claim and to enforce the CONSTRAINTS range. A bundle without it launches with
-# the launcher's pinned fallback, which is right only by luck.
+# the launcher's pinned fallback, which is right only by luck. `product` is
+# "chromium" unless an overlay that emulates Chrome set it in upstream.sh; the
+# launcher claims Chrome's network voices only for "chrome".
 cat > "$PKG/version.json" <<JSON
 {
   "version": "${version}",
   "release": "${release}",
   "milestone": ${milestone},
-  "target": "${TARGET}"
+  "target": "${TARGET}",
+  "product": "${product:-chromium}"
 }
 JSON
 

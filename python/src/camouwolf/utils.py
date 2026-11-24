@@ -464,6 +464,15 @@ def resolve_version(executable_path: Optional[Union[str, Path]] = None) -> str:
     return match.group(0)
 
 
+def build_product(executable_path: Union[str, Path]) -> str:
+    """What the build claims to be: 'chromium' for the public build, 'chrome'
+    for one built with Chrome emulation (version.json's `product`)."""
+    version_file = build_file(executable_path, 'version.json')
+    if not version_file.exists():
+        return 'chromium'
+    return orjson.loads(version_file.read_bytes()).get('product', 'chromium')
+
+
 def keyboard_layout_map(target_os: str) -> Optional[List[str]]:
     """The navigator.keyboard.getLayoutMap() of a US QWERTY keyboard on the
     target OS, as "code=key" entries. None on macOS, where the host's map is
@@ -1358,7 +1367,12 @@ def draw_identity(
         raise ValueError('webgl_config draws the fingerprint; it cannot be combined with a user agent in `config`')
 
     if fingerprint is not None:
-        merge_into(config, from_fpgen(fingerprint, chrome_version=milestone))
+        merge_into(
+            config,
+            from_fpgen(
+                fingerprint, chrome_version=milestone, network_voices=build_product(browser_binary) == 'chrome'
+            ),
+        )
     if recorded:
         recorded = {k: v for k, v in recorded.items() if k not in _caller_keys}
         config.update(recorded)

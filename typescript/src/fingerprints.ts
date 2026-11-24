@@ -529,10 +529,10 @@ export function mediaDevices(devices: unknown): string[] | null {
 /**
  * fpgen's speechSynthesis voices as `voices` entries: name|lang|uri|local|default.
  *
- * Only local voices: the network ones (Google's) come with Chrome, not
- * Chromium, and Chrome emulation is Pro's.
+ * Network voices (Google's) only with `network`: they come with Chrome, not
+ * Chromium, so only a build whose product is Chrome claims them.
  */
-export function packVoices(voices: unknown): string[] | null {
+export function packVoices(voices: unknown, network = false): string[] | null {
 	if (!Array.isArray(voices)) return null;
 	const packed: string[] = [];
 	for (const voice of voices) {
@@ -540,7 +540,7 @@ export function packVoices(voices: unknown): string[] | null {
 			!isPlainObject(voice) ||
 			!pyTruthy(voice.name) ||
 			!pyTruthy(voice.lang) ||
-			!pyTruthy(voice.localService)
+			(!network && !pyTruthy(voice.localService))
 		) {
 			continue;
 		}
@@ -552,7 +552,11 @@ export function packVoices(voices: unknown): string[] | null {
 		// The separator; no recorded voice has one.
 		if (fields.some((field) => field.includes("|"))) continue;
 		packed.push(
-			[...fields, "1", pyTruthy(voice.default) ? "1" : "0"].join("|"),
+			[
+				...fields,
+				pyTruthy(voice.localService) ? "1" : "0",
+				pyTruthy(voice.default) ? "1" : "0",
+			].join("|"),
 		);
 	}
 	return packed.length ? packed : null;
@@ -780,11 +784,13 @@ export function fingerprintOs(fingerprint: Record<string, any>): OsKey | null {
  * Converts an fpgen Chrome fingerprint to a Camouwolf config.
  *
  * `chromeVersion` is the Chromium milestone of the browser that will run; the
- * recorded user agent is rewritten to it.
+ * recorded user agent is rewritten to it. `networkVoices` keeps the recorded
+ * network voices, for a build whose product is Chrome (packVoices).
  */
 export function fromFpgen(
 	fingerprint: Record<string, any>,
 	chromeVersion?: string | number | null,
+	networkVoices = false,
 ): Config {
 	const camouwolfData: Config = {};
 	castToProperties(camouwolfData, FPGEN_DATA, fingerprint);
@@ -799,7 +805,7 @@ export function fromFpgen(
 	}
 	const targetOs = fingerprintOs(fingerprint);
 
-	const voices = packVoices(fingerprint.voices);
+	const voices = packVoices(fingerprint.voices, networkVoices);
 	if (voices) camouwolfData.voices = voices;
 	Object.assign(
 		camouwolfData,

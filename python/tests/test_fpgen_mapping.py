@@ -145,6 +145,21 @@ def test_fonts_voices_and_devices_take_the_browsers_formats():
     assert all(entry.endswith('|||') for entry in config['mediaDevices:enumerated'])
 
 
+def test_a_chrome_build_keeps_the_recorded_network_voices():
+    config = from_fpgen(WINDOWS_FINGERPRINT, chrome_version=152, network_voices=True)
+
+    assert config['voices'][1] == 'Google US English|en-US|Google US English|0|0'
+
+
+def test_the_build_states_its_product(tmp_path):
+    from camouwolf.utils import build_product
+
+    binary = tmp_path / 'camouwolf'
+    assert build_product(binary) == 'chromium'
+    (tmp_path / 'version.json').write_text('{"version": "158.0.8127.36", "product": "chrome"}')
+    assert build_product(binary) == 'chrome'
+
+
 @pytest.mark.parametrize('target_os', ['win', 'mac', 'lin'])
 def test_fonts_the_bundle_cannot_render_are_not_claimed(target_os):
     # fpgen records name families no bundled OS ships (CI caught 109 of 150 on

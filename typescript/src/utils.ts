@@ -719,6 +719,18 @@ export function resolveVersion(executablePath?: string | null): string {
 }
 
 /**
+ * What the build claims to be: "chromium" for the public build, "chrome" for
+ * one built with Chrome emulation (version.json's `product`).
+ */
+export function buildProduct(executablePath: string): string {
+	const versionFile = buildFile(executablePath, "version.json");
+	if (!fs.existsSync(versionFile)) return "chromium";
+	return (
+		JSON.parse(fs.readFileSync(versionFile, "utf8"))?.product ?? "chromium"
+	);
+}
+
+/**
  * The navigator.keyboard.getLayoutMap() of a US QWERTY keyboard on the target
  * OS, as "code=key" entries. null on macOS, where the host's map is left as it
  * is.
@@ -2116,7 +2128,14 @@ export async function drawIdentity(
 	}
 
 	if (fingerprint !== undefined && fingerprint !== null) {
-		mergeInto(config, fromFpgen(fingerprint, milestone));
+		mergeInto(
+			config,
+			fromFpgen(
+				fingerprint,
+				milestone,
+				buildProduct(browserBinary) === "chrome",
+			),
+		);
 	}
 	if (recorded) {
 		const kept = Object.fromEntries(

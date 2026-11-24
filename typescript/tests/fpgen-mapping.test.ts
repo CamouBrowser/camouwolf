@@ -2,6 +2,9 @@
  * An fpgen Chrome fingerprint becomes the config the browser reads.
  * Twin of python/tests/test_fpgen_mapping.py.
  */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MODEL } from "./fpgen-setup.js";
 import { fingerprints, utils } from "./launch-host.js";
@@ -247,6 +250,25 @@ describe("fromFpgen", () => {
 		expect(
 			fingerprints.webgpuAdapter(WINDOWS_FINGERPRINT.gpuInfo, RTX, "lin"),
 		).not.toHaveProperty(["webGpu:preferredCanvasFormat"]);
+	});
+
+	it("keeps the recorded network voices for a Chrome build", () => {
+		const config = fromFpgen(WINDOWS_FINGERPRINT, 152, true);
+		expect(config.voices[1]).toBe(
+			"Google US English|en-US|Google US English|0|0",
+		);
+	});
+
+	it("reads the product the build states", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "camouwolf-product-"));
+		const binary = path.join(dir, "camouwolf");
+		expect(utils.buildProduct(binary)).toBe("chromium");
+		fs.writeFileSync(
+			path.join(dir, "version.json"),
+			'{"version": "158.0.8127.36", "product": "chrome"}',
+		);
+		expect(utils.buildProduct(binary)).toBe("chrome");
+		fs.rmSync(dir, { recursive: true });
 	});
 
 	it("gives fonts, voices and devices the browser's formats", () => {
