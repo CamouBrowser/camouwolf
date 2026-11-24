@@ -290,6 +290,18 @@ def test_playwright_runs_through_the_plugin_as_full_chromium() -> None:
 # ------------------------------------------------------------- build-tester policy
 
 
+def test_build_tester_imports_the_launcher_from_the_tree() -> None:
+    # CI's suite Python does not have the launcher installed, so a plain
+    # `import camouwolf` in the driver fails there and nowhere else.
+    import ast  # noqa: PLC0415
+
+    tree = ast.parse((REPO_ROOT / "tests" / "build-tester" / "run_tests.py").read_text())
+    named = [node.lineno for node in ast.walk(tree)
+             if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "camouwolf"
+             or isinstance(node, ast.Import) and any(a.name.split(".")[0] == "camouwolf" for a in node.names)]
+    assert not named, f"run_tests.py imports camouwolf directly at lines {named}; use ci.browser.import_launcher()"
+
+
 def test_build_tester_policy_names_every_category_once() -> None:
     policy = run_build_tester.load_policy()
     required, reported = set(policy["required_categories"]), set(policy["reported_categories"])

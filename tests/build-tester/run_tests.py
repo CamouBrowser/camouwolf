@@ -44,7 +44,7 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from ci.browser import claimed_config, launcher_options, require_private_display  # noqa: E402
+from ci.browser import claimed_config, import_launcher, launcher_options, require_private_display  # noqa: E402
 
 PAGE = HERE / "page"
 Check = Dict[str, Any]
@@ -159,7 +159,7 @@ def served_languages(options: Dict[str, Any]) -> Optional[List[str]]:
     --accept-lang the launcher passed: language_prefs.cc GetIncognitoLanguageList,
     which keeps a one-language list and swaps a longer one for Chrome's default
     list of its first language."""
-    from camouwolf.utils import CHROME_LANGUAGES  # noqa: PLC0415
+    CHROME_LANGUAGES = import_launcher().utils.CHROME_LANGUAGES  # noqa: N806
 
     passed = next((arg.split("=", 1)[1].split(",") for arg in options.get("args") or []
                    if arg.startswith("--accept-lang=")), None)
@@ -483,9 +483,8 @@ def check_page(page: Any, server: Server, claimed: Dict[str, Any], served: Optio
 def new_context(browser: Any, variant: Dict[str, Any]) -> tuple:
     """A context NewContext draws its own identity for, with that identity and
     its language list, as the browser was handed them."""
-    from camouwolf import NewContext  # noqa: PLC0415
-    from camouwolf import sync_api  # noqa: PLC0415
-
+    launcher = import_launcher()
+    sync_api = launcher.sync_api
     handed: List[tuple] = []
     params = sync_api.set_context_identity_params
 
@@ -495,7 +494,7 @@ def new_context(browser: Any, variant: Dict[str, Any]) -> tuple:
 
     sync_api.set_context_identity_params = record
     try:
-        context = NewContext(browser, i_know_what_im_doing=True, **json.loads(json.dumps(variant)))
+        context = launcher.NewContext(browser, i_know_what_im_doing=True, **json.loads(json.dumps(variant)))
     finally:
         sync_api.set_context_identity_params = params
     (identity, languages), = handed
@@ -504,8 +503,6 @@ def new_context(browser: Any, variant: Dict[str, Any]) -> tuple:
 
 def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, index: int, headless: bool,
                 log: Callable[[str], None]) -> Dict[str, Any]:
-    from camouwolf import NewBrowser  # noqa: PLC0415
-
     variant = VARIANTS[index % len(VARIANTS)]
     # Another place than the launch's, so the context cannot pass on the launch's values.
     context_variant = VARIANTS[(index + 2) % len(VARIANTS)]
@@ -528,7 +525,7 @@ def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, ind
         profile["context_variant"] = context_variant
     browser = None
     try:
-        browser = NewBrowser(playwright, from_options=options)
+        browser = import_launcher().NewBrowser(playwright, from_options=options)
         context, identity, languages = new_context(browser, context_variant)
         launched, profile["identity"] = check_page(browser.new_page(no_viewport=True), server, claimed,
                                                    served_languages(options), os_name)
