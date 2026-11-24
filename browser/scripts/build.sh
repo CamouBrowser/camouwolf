@@ -11,11 +11,25 @@
 # Env:
 #   CHROMIUM_VERSION  override the pin in browser/upstream.sh
 #   CAMOUWOLF_BUILD_DIR   where the checkout lives
+#   CAMOUWOLF_TARGET  linux (default), windows or macos; always built on a
+#                     Linux host (docs/CROSS-COMPILING.md). windows needs
+#                     CAMOUWOLF_WIN_TOOLCHAIN_ZIP, the <hash>.zip that
+#                     browser/scripts/pack-win-toolchain.sh writes; macos needs
+#                     CAMOUWOLF_MAC_SDK_DIR, an Xcode.app-shaped directory holding
+#                     Contents/version.plist and the MacOSX.sdk
+#                     (browser/scripts/pack-mac-sdk.sh).
+#   CAMOUWOLF_ARCH    x86_64 (default) or arm64
+#   CAMOUWOLF_OUT     the out/ directory name (default Camouwolf)
+#   CAMOUWOLF_BUILD_SECONDS  stop the compile after this long and exit 0 with
+#                     out/<dir>/.camouwolf-unfinished in place: a hosted CI job
+#                     has a time limit, so a release build is a chain of jobs,
+#                     each resuming the previous one's out/ directory.
 #   TMPDIR            point at real disk; a tmpfs /tmp WILL fill and fail the link
 #
 # Resource caps — for building on a box that is doing something else:
 #   CAMOUWOLF_NINJA_JOBS  cap ninja parallelism (default: all cores)
 #   CAMOUWOLF_NICE=1      run the compile under `nice -n 19` + `ionice -c3`
+#   CAMOUWOLF_START_FREE_GB refuse to start with less free than this (default 130)
 #   CAMOUWOLF_MIN_FREE_GB abort if free space on the work volume drops below this
 #                     (default 40). A Chromium link that runs the disk to zero
 #                     takes the whole machine's other tenants down with it, so
@@ -39,7 +53,19 @@ source "$REPO/browser/upstream.sh"
 
 WORK="${1:-${CAMOUWOLF_BUILD_DIR:-$REPO/.camouwolf-build}}"
 VER="${CHROMIUM_VERSION:-$version}"
-OUT="Camouwolf"
+OUT="${CAMOUWOLF_OUT:-Camouwolf}"
+TARGET="${CAMOUWOLF_TARGET:-linux}"
+ARCH="${CAMOUWOLF_ARCH:-x86_64}"
+case "$TARGET" in
+  linux) GCLIENT_OS="" ;;
+  windows) GCLIENT_OS="win" ;;
+  macos) GCLIENT_OS="mac" ;;
+  *) echo "!! CAMOUWOLF_TARGET must be linux, windows or macos, not $TARGET" >&2; exit 2 ;;
+esac
+case "$ARCH" in
+  x86_64|arm64) ;;
+  *) echo "!! CAMOUWOLF_ARCH must be x86_64 or arm64, not $ARCH" >&2; exit 2 ;;
+esac
 export TMPDIR="${TMPDIR:-$WORK/tmp}"
 mkdir -p "$WORK" "$TMPDIR"
 
@@ -47,6 +73,7 @@ mkdir -p "$WORK" "$TMPDIR"
 NPROC="$(nproc)"
 JOBS="${CAMOUWOLF_NINJA_JOBS:-$NPROC}"
 MIN_FREE_GB="${CAMOUWOLF_MIN_FREE_GB:-40}"
+START_FREE_GB="${CAMOUWOLF_START_FREE_GB:-130}"
 
 # nice/ionice are applied to the COMPILE only, not to the sync. `gclient sync`
 # is network-bound and already polite; niceing it just makes the slowest phase
@@ -60,16 +87,17 @@ fi
 free_gb() { df -BG --output=avail "$WORK" | tail -1 | tr -dc '0-9'; }
 
 # The startup check. Cold, a Chromium checkout plus an official build lands
-# around 100-120 GB, so refuse rather than discover it three hours in.
+# around 100-120 GB, so refuse rather than discover it three hours in. A hosted
+# CI job has less, and builds a non-official target in a chain of jobs.
 AVAIL="$(free_gb)"
-if [ "$AVAIL" -lt 130 ]; then
+if [ "$AVAIL" -lt "$START_FREE_GB" ]; then
   echo "!! only ${AVAIL}G free on $(df --output=target "$WORK" | tail -1)." >&2
   echo "   A cold Chromium checkout + official build needs ~120G." >&2
   echo "   Point CAMOUWOLF_BUILD_DIR at a bigger volume." >&2
   exit 1
 fi
 
-echo "==> Camouwolf $release | Chromium $VER | out/$OUT | $WORK"
+echo "==> Camouwolf $release | Chromium $VER | $TARGET $ARCH | out/$OUT | $WORK"
 echo "    ${JOBS}/${NPROC} jobs${NICE:+ | niced}| ${AVAIL}G free | abort below ${MIN_FREE_GB}G"
 
 # ----------------------------------------------------------- disk watchdog
@@ -155,6 +183,24 @@ git fetch --depth 1 origin "refs/tags/$VER:refs/tags/$VER"
 git checkout -f "tags/$VER"
 rm -f .camouwolf-patched
 
+# A cross build needs the target's DEPS (its toolchain hooks, the deps gated on
+# checkout_win/checkout_mac/checkout_arm64, such as the arm64 Linux sysroot) on
+# top of the Linux host's own.
+sed -i '/^target_os *=/d; /^target_cpu *=/d' ../.gclient
+[ -z "$GCLIENT_OS" ] || echo "target_os = ['$GCLIENT_OS']" >> ../.gclient
+[ "$ARCH" = x86_64 ] || echo "target_cpu = ['$ARCH']" >> ../.gclient
+
+# The sync's win_toolchain hook unpacks the Visual Studio zip named for this
+# tag's TOOLCHAIN_HASH; GYP_MSVS_HASH_<that> maps it to the zip packed here.
+if [ "$TARGET" = windows ]; then
+  ZIP="${CAMOUWOLF_WIN_TOOLCHAIN_ZIP:?windows needs CAMOUWOLF_WIN_TOOLCHAIN_ZIP}"
+  [ -f "$ZIP" ] || { echo "!! no toolchain zip at $ZIP" >&2; exit 1; }
+  PIN="$(sed -nE "s/^TOOLCHAIN_HASH = '(.*)'/\1/p" build/vs_toolchain.py)"
+  export DEPOT_TOOLS_WIN_TOOLCHAIN=1
+  export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL="$(cd "$(dirname "$ZIP")" && pwd)"
+  export "GYP_MSVS_HASH_$PIN=$(basename "$ZIP" .zip)"
+fi
+
 # `-j` capped deliberately. gclient defaults to one job per core, and Chromium's
 # DEPS has ~350 entries — on a many-core box that means hundreds of concurrent
 # git fetches against chromium.googlesource.com. That gets the host rate-limited:
@@ -199,12 +245,54 @@ stage patch && bash "$REPO/browser/scripts/apply-patches.sh" "$WORK/chromium/src
 
 # ------------------------------------------------------------ configure, build
 stage build || { echo "==> stages done:$STAGES"; exit 0; }
-gn gen "out/$OUT" --args="$(cat "$REPO/browser/args.gn")"
+
+# The hermetic Xcode layout Chromium reads on a non-mac host. GN picks the SDK
+# directory name from the Xcode version (mac_sdk.gni), so both names it can
+# ask for point at the one SDK.
+if [ "$TARGET" = macos ]; then
+  XCODE="build/mac_files/xcode_binaries"
+  [ -f "${CAMOUWOLF_MAC_SDK_DIR:?macos needs CAMOUWOLF_MAC_SDK_DIR}/Contents/version.plist" ] \
+    || { echo "!! $CAMOUWOLF_MAC_SDK_DIR has no Contents/version.plist" >&2; exit 1; }
+  rm -rf "$XCODE" && mkdir -p "$(dirname "$XCODE")" && ln -s "$CAMOUWOLF_MAC_SDK_DIR" "$XCODE"
+  SDKS="$XCODE/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs"
+  for v in $(sed -nE 's/^ *mac_sdk_official(_universal)?_version = "(.*)"/\2/p' build/config/mac/mac_sdk.gni); do
+    [ -e "$SDKS/MacOSX$v.sdk" ] || ln -s MacOSX.sdk "$SDKS/MacOSX$v.sdk"
+  done
+fi
+
+GN_ARGS="$(bash "$REPO/browser/scripts/gn-args.sh" "$TARGET" "$ARCH")"
+gn gen "out/$OUT" --args="$GN_ARGS"
+
+# On Linux the crash handler is its own executable; on Windows and macOS
+# `chrome` already contains or bundles it.
+NINJA_TARGETS=(chrome)
+[ "$TARGET" = linux ] && NINJA_TARGETS+=(chrome_crashpad_handler)
 
 # `ninja -j`, not `autoninja`. autoninja recomputes its own job count from the
 # machine (and from reclient/goma when configured), which silently overrides the
 # cap — the whole point of CAMOUWOLF_NINJA_JOBS on a shared box.
-"${NICE[@]}" ninja -C "out/$OUT" -j "$JOBS" chrome chrome_crashpad_handler
+#
+# With CAMOUWOLF_BUILD_SECONDS, SIGINT at the deadline: ninja stops starting
+# steps, lets the running ones finish or removes their partial outputs, and
+# saves its log, so the next job resumes exactly where this one stopped.
+UNFINISHED="out/$OUT/.camouwolf-unfinished"
+touch "$UNFINISHED"
+LIMIT=()
+[ -n "${CAMOUWOLF_BUILD_SECONDS:-}" ] && LIMIT=(timeout --signal=INT --kill-after=600 "$CAMOUWOLF_BUILD_SECONDS")
+set +e
+"${LIMIT[@]}" "${NICE[@]}" ninja -C "out/$OUT" -j "$JOBS" "${NINJA_TARGETS[@]}"
+code=$?
+set -e
+if [ "$code" = 124 ] && [ ${#LIMIT[@]} -gt 0 ]; then
+  echo "==> stopped at the ${CAMOUWOLF_BUILD_SECONDS}s limit; the next stage resumes out/$OUT"
+  exit 0
+fi
+[ "$code" = 0 ] || exit "$code"
+rm -f "$UNFINISHED"
+
+# A cross-compiled binary cannot be run here; ci.run_install and the stages
+# after it run it on its own OS.
+[ "$TARGET" = linux ] && [ "$ARCH" = x86_64 ] || { echo "==> built out/$OUT ($TARGET $ARCH)"; exit 0; }
 
 BIN="$WORK/chromium/src/out/$OUT/chrome"
 echo "==> built: $BIN"

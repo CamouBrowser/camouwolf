@@ -1,0 +1,13 @@
+target_cpu = "x64"
+
+# Pin the whole tree to the x86-64-v2 (SSE4.2) baseline.
+#
+# Chromium's bundled clang auto-vectorizes some baseline paths with post-Haswell
+# instructions (LZCNT/TZCNT, AVX2, FMA). On a pre-2013 CPU that lacks them,
+# LZCNT/TZCNT silently decode as BSR/BSF with different zero-input semantics,
+# which corrupts a PartitionAlloc bucket index and trips a PA_CHECK during
+# static init — a SIGTRAP before main(), unreachable by any runtime flag. Stock
+# Chrome runs fine on those CPUs, so a Camouwolf that does not is itself a tell for
+# anyone comparing crash behavior, besides being unusable on older proxy boxes.
+extra_cflags = "-mno-avx -mno-avx2 -mno-bmi -mno-bmi2 -mno-lzcnt -mno-fma -mno-f16c -mno-movbe"
+extra_cxxflags = "-mno-avx -mno-avx2 -mno-bmi -mno-bmi2 -mno-lzcnt -mno-fma -mno-f16c -mno-movbe"

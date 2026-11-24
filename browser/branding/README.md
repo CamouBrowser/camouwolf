@@ -36,12 +36,12 @@ Two traps worth writing down:
   non-Linux paths are kept in sync anyway so a future macOS or Windows target
   does not ship a half-rebranded tree.
 
-## Carried but not currently compiled in
+## Carried for the other targets
 
 `chromium/win/chromium.ico`, `chromium/mac/app.icns` and
-`chromium/linux/product_logo_32.xpm`. `args.gn` pins `target_os = "linux"`, so
-none of these reach today's build; they exist so that flipping the target does
-not silently ship Chromium's icon. The macOS `Assets.car` / `AppIcon.icon`
+`chromium/linux/product_logo_32.xpm` are used, if at all, only by a build for
+their own OS (browser/args/); they exist so that a Windows or macOS build does
+not ship Chromium's icon. The macOS `Assets.car` / `AppIcon.icon`
 bundle is **not** generated — it needs Xcode's `actool` — so a real macOS
 release still needs that step added.
 

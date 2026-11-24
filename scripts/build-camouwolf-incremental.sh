@@ -7,7 +7,8 @@
 # would invalidate the objdir and turn a 15-minute rebuild into a cold one.
 #
 # Usage:  bash scripts/build-camouwolf-incremental.sh
-# Env:    CAMOUWOLF_BUILD_DIR (default .camouwolf-build)
+# Env:    CAMOUWOLF_BUILD_DIR (default .camouwolf-build), and CAMOUWOLF_TARGET,
+#         CAMOUWOLF_ARCH, CAMOUWOLF_OUT as browser/scripts/build.sh reads them
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,7 +17,10 @@ source "$ROOT/browser/upstream.sh"
 
 BUILD_DIR="${CAMOUWOLF_BUILD_DIR:-$ROOT/.camouwolf-build}"
 SRC="$BUILD_DIR/chromium/src"
-OUT="$SRC/out/Camouwolf"
+OUT_NAME="${CAMOUWOLF_OUT:-Camouwolf}"
+OUT="$SRC/out/$OUT_NAME"
+TARGET="${CAMOUWOLF_TARGET:-linux}"
+ARCH="${CAMOUWOLF_ARCH:-x86_64}"
 
 [ -d "$SRC" ] || {
   echo "!! no warm tree at $SRC — run browser/scripts/build.sh first." >&2
@@ -79,13 +83,14 @@ for f in "${FILES[@]}"; do
 done
 echo "    ${kept}/${#FILES[@]} file(s) unchanged — mtime restored, ninja will skip them"
 
-# gn gen only when args.gn moved. Re-running it needlessly rewrites build.ninja
+# gn gen only when the args moved. Re-running it needlessly rewrites build.ninja
 # and can cascade into a much larger rebuild than the edit justified.
 ARGS_STAMP="$OUT/.camouwolf-args-sha"
-NEW_SHA="$(sha256sum "$ROOT/browser/args.gn" | cut -d' ' -f1)"
+GN_ARGS="$(bash "$ROOT/browser/scripts/gn-args.sh" "$TARGET" "$ARCH")"
+NEW_SHA="$(sha256sum <<<"$GN_ARGS" | cut -d' ' -f1)"
 if [ ! -f "$ARGS_STAMP" ] || [ "$(cat "$ARGS_STAMP")" != "$NEW_SHA" ]; then
-  echo "==> args.gn changed — regenerating"
-  gn gen "out/Camouwolf" --args="$(cat "$ROOT/browser/args.gn")"
+  echo "==> the GN args changed — regenerating"
+  gn gen "out/$OUT_NAME" --args="$GN_ARGS"
   echo "$NEW_SHA" > "$ARGS_STAMP"
 fi
 
@@ -106,7 +111,8 @@ if [ "${CAMOUWOLF_NICE:-0}" = 1 ]; then
 fi
 
 echo "==> ninja (${JOBS}/${NPROC} jobs${NICE:+, niced})"
-"${NICE[@]}" ninja -C "out/Camouwolf" -j "$JOBS" chrome
+"${NICE[@]}" ninja -C "out/$OUT_NAME" -j "$JOBS" chrome
 
+[ "$TARGET" = linux ] || { echo "==> built $OUT ($TARGET $ARCH)"; exit 0; }
 echo "==> $OUT/chrome"
 "$OUT/chrome" --version

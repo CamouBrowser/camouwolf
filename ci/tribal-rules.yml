@@ -136,3 +136,21 @@ rules:
     forbidden:
       paths: ["browser/patches/*.patch", "browser/settings/properties.json", "python/src/**/*.py", "typescript/src/**/*.ts"]
       pattern: 'Google Chrome|["'']userAgentData\.(brands|fullVersionList)'
+
+  - id: releases-on-hosted-runners
+    decision: >-
+      Releases are cross-compiled on GitHub-hosted runners; no self-hosted
+      runner builds a release.
+    why: >-
+      A self-hosted runner executes whatever commit it is handed and keeps state
+      between runs, so a release built on one is only as trustworthy as that
+      machine, and its provenance attestation says nothing about it. A hosted
+      runner starts clean, and every OS builds the same way, from Linux, with the
+      toolchains packed inside the run (docs/CROSS-COMPILING.md).
+    forbidden:
+      paths:
+        - .github/workflows/release.yml
+        - .github/workflows/build-browser.yml
+        - .github/actions/build-host/action.yml
+        - .github/actions/build-stage/action.yml
+      pattern: 'self-hosted'

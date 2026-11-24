@@ -24,8 +24,9 @@ name: Tests
 # registered). When they do not run, the summary says so in words; the hosted
 # tiers still gate.
 #
-# Only linux x86_64 is built. `python -m ci.targets` lists the other two
-# targets and the reason each is off.
+# Only linux x86_64 is built and tested here. Releases build every enabled
+# target on GitHub-hosted runners (release.yml); `python -m ci.targets` lists
+# the targets and the reason each disabled one is off.
 
 on:
   pull_request:
@@ -122,7 +123,7 @@ jobs:
           import json, os
           from ci.targets import TARGETS, archive_name
           count = int(os.environ["SHARDS"])
-          print("archive=" + archive_name(TARGETS["linux"]))
+          print("archive=" + archive_name(TARGETS["linux-x86_64"]))
           print("shards=" + json.dumps([f"{i}/{count}" for i in range(1, count + 1)]))
           PY
 

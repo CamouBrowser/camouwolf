@@ -43,7 +43,6 @@ from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 from ._util import REPO_ROOT, http_json, read_upstream_sh, run, set_output
-from .targets import TARGETS, archive_name
 
 PYPROJECT = REPO_ROOT / "python" / "pyproject.toml"
 PACKAGE_JSON = REPO_ROOT / "typescript" / "package.json"
@@ -171,13 +170,11 @@ def cmd_check(_: argparse.Namespace) -> int:
 
 def cmd_browser_plan(_: argparse.Namespace) -> int:
     up = read_upstream_sh()
-    enabled = [t for t in TARGETS.values() if t.enabled]
     _emit({
         "tag": browser_tag(up),
         "version": up["version"],
         "release": up["release"],
         "prerelease": "false" if re.fullmatch(r"\d+", up["release"]) else "true",
-        "matrix": json.dumps({"include": [{"target": t.name, "archive": archive_name(t)} for t in enabled]}),
     })
     return 0
 

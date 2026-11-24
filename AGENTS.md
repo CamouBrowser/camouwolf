@@ -99,7 +99,9 @@ environment variables, so there is no injected JavaScript for a page to find.
 
 ## Building
 
-Linux x86_64 only. A cold build needs about 100 GB of disk and several hours.
+Built on a Linux x86_64 host for every target; `CAMOUWOLF_TARGET` and
+`CAMOUWOLF_ARCH` pick one ([`docs/CROSS-COMPILING.md`](docs/CROSS-COMPILING.md)).
+A cold build needs about 100 GB of disk and several hours.
 
 ```bash
 bash browser/scripts/build.sh               # sync, patch, compile (CAMOUWOLF_STAGES picks stages)

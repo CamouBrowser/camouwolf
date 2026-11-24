@@ -46,7 +46,7 @@ desktop, headless or not.
 
 Supporting modules: `ci.versions` (which suite goes with which Chromium),
 `ci.suite` (fetches that suite and builds its interpreter), `ci.targets` (the
-build targets and why two are disabled), `ci.release` (release planning),
+build targets and why each disabled one is off), `ci.release` (release planning),
 `ci.summarize`.
 
 ## Running it locally
@@ -108,9 +108,13 @@ to run in GitHub Actions.
 
 ## Targets
 
-`python -m ci.targets` prints them. Only `linux` (x86_64) is enabled; `windows`
-and `macos` are defined, with the reason each is off, and every build stage
-refuses a disabled target by quoting that reason.
+A target is an OS (`linux`, `windows`, `macos`) and a CPU (`x86_64`, `arm64`).
+`python -m ci.targets` prints them. Only `linux-x86_64` is enabled; the others
+are defined, each with the reason it is off, every build stage refuses a
+disabled target by quoting that reason, and `release.yml`'s build matrix
+excludes exactly those (`ci/tests` checks the two agree). Every target is
+cross-compiled on Linux: [`docs/CROSS-COMPILING.md`](../docs/CROSS-COMPILING.md)
+says what each needs and how far each has been proven.
 
 ## Workflows
 
@@ -133,10 +137,19 @@ where `fetch-fonts.py` keeps camoufox's font bundle archive between runs
 passed** (`ci/branch-protection.json`); when the browser tiers did not run, the
 summary says so.
 
-`release.yml` is started by hand. It calls `tests.yml` on the same commit,
-publishes the archive those tests ran against (it is not rebuilt), and
-publishes both launchers under one version from `ci.release lib-plan`:
-`X.Y.Z.devN` / `X.Y.Z-dev.N` for a prerelease, `X.Y.Z` for a stable release.
+`release.yml` is started by hand, and follows the shape of camoufox's. It calls
+`tests.yml` on the same commit; once that passes, `build-browser.yml` builds
+every enabled target from that commit on GitHub-hosted runners, never on the
+self-hosted one (`ci/tribal-rules.yml`: `releases-on-hosted-runners`). A hosted
+job stops at six hours, so each build is a chain of up to 16 jobs that hand the
+out/ directory on, then a `package` job. The Windows and macOS toolchains are
+packed inside the run on a hosted Windows or macOS runner, encrypted with the
+repository secret `CAMOUWOLF_TOOLCHAIN_KEY` (any long random string; set it
+before the first release that builds either), and passed on as artifacts that
+expire after a day; they are licensed software and are never published. One
+GitHub release then carries every archive, and both launchers go out under one
+version from `ci.release lib-plan`: `X.Y.Z.devN` / `X.Y.Z-dev.N` for a
+prerelease, `X.Y.Z` for a stable release.
 
 Both registries use trusted publishing; no token is stored. Before the first
 release, register the publisher once on each:

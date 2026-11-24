@@ -333,20 +333,35 @@ def test_build_tester_flatten() -> None:
 # ------------------------------------------------------------------ packaging
 
 
-def test_only_linux_is_enabled_and_the_others_say_why() -> None:
-    assert [t.name for t in targets.TARGETS.values() if t.enabled] == ["linux"]
+def test_only_linux_x86_64_is_enabled_and_the_others_say_why() -> None:
+    assert [t.name for t in targets.TARGETS.values() if t.enabled] == ["linux-x86_64"]
     for target in targets.TARGETS.values():
         assert target.enabled or (target.disabled_reason and "\n" not in target.disabled_reason)
     with pytest.raises(SystemExit):
         targets.require_enabled("windows")
+    with pytest.raises(SystemExit):
+        targets.get("linux", "i686")
+
+
+def test_release_matrix_excludes_exactly_the_disabled_targets() -> None:
+    import yaml
+
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "release.yml").read_text())
+    matrix = workflow["jobs"]["build-browser"]["strategy"]["matrix"]
+    every = {f"{os}-{arch}" for os in matrix["target"] for arch in matrix["arch"]}
+    excluded = {f"{e['target']}-{e['arch']}" for e in matrix["exclude"]}
+    assert every == set(targets.TARGETS)
+    assert excluded == {t.name for t in targets.TARGETS.values() if not t.enabled}
 
 
 def test_archive_name_matches_the_packaging_script() -> None:
     script = (REPO_ROOT / "scripts" / "release-camouwolf.sh").read_text()
-    for target in targets.TARGETS.values():
-        assert f"${{PREFIX}}-{target.archive_suffix}.zip" in script
+    assert 'ARCHIVE="${PREFIX}-${OS_SHORT}.${ARCH}.zip"' in script
+    for os_name, short in targets.OS_SHORT.items():
+        assert f"{os_name}) " in script and f"OS_SHORT={short};" in script
     up = read_upstream_sh()
-    assert targets.archive_name(targets.TARGETS["linux"]) == f"camouwolf-{up['version']}-{up['release']}-lin.x86_64.zip"
+    assert targets.archive_name(targets.TARGETS["linux-x86_64"]) == f"camouwolf-{up['version']}-{up['release']}-lin.x86_64.zip"
+    assert targets.archive_name(targets.TARGETS["macos-arm64"]).endswith("-mac.arm64.zip")
 
 
 def test_checksum_must_match(tmp_path: Path) -> None:

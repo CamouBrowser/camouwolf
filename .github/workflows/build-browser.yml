@@ -1,0 +1,539 @@
+name: Build the browser
+
+# One target's release build, called by release.yml's build-browser matrix.
+# Every target is cross-compiled on a GitHub-hosted Linux runner
+# (ci/tribal-rules.yml: releases-on-hosted-runners; docs/CROSS-COMPILING.md).
+#
+# A hosted job stops at six hours and a Chromium build takes several times
+# that on a standard runner, so the build is a chain of identical jobs, as
+# ungoogled-chromium builds its Windows releases: each one syncs and patches the
+# source, restores the previous job's out/ directory, compiles until its time is
+# nearly up and hands out/ on (.github/actions/build-stage). Once a job finishes
+# the build, the rest pass straight through, and `package` writes the archive.
+#
+# The toolchain a Windows or macOS build needs -- Visual Studio and the Windows
+# SDK, or Xcode's macOS SDK -- is Microsoft's or Apple's licensed software, and
+# may not be redistributed. It is never committed and never published: the
+# `toolchain` job packs it from the hosted Windows or macOS runner's own install,
+# encrypts it with the CAMOUWOLF_TOOLCHAIN_KEY repository secret, and passes it
+# to the build jobs as an artifact of this run that expires after one day.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: linux, windows or macos
+        required: true
+        type: string
+      arch:
+        description: x86_64 or arm64
+        required: true
+        type: string
+      ref:
+        description: the commit to build
+        required: true
+        type: string
+    secrets:
+      toolchain_key:
+        description: encrypts the toolchain artifact (windows and macos)
+        required: false
+
+permissions: {}
+
+env:
+  PYTHON_VERSION: "3.12"
+  CAMOUWOLF_BUILD_DIR: ${{ github.workspace }}/.camouwolf-build
+  # A hosted runner has a fraction of the disk build.sh asks a workstation for.
+  CAMOUWOLF_START_FREE_GB: "45"
+  CAMOUWOLF_MIN_FREE_GB: "4"
+
+jobs:
+  toolchain:
+    name: Toolchain (${{ inputs.target }} ${{ inputs.arch }})
+    if: inputs.target != 'linux'
+    # The hosted image whose Visual Studio, or whose Xcode, has the SDK the
+    # pinned Chromium asks for; the pack scripts check that.
+    runs-on: ${{ inputs.target == 'windows' && 'windows-2025-vs2026' || 'macos-26' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Pack and encrypt
+        shell: bash
+        env:
+          KEY: ${{ secrets.toolchain_key }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::the CAMOUWOLF_TOOLCHAIN_KEY secret is not set"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/tc" enc
+          if [ "$TARGET" = windows ]; then
+            bash browser/scripts/pack-win-toolchain.sh "$RUNNER_TEMP/tc"
+          else
+            bash browser/scripts/pack-mac-sdk.sh "$RUNNER_TEMP/tc/macsdk.tar.gz"
+          fi
+          for f in "$RUNNER_TEMP"/tc/*; do
+            openssl enc -aes-256-cbc -pbkdf2 -pass env:KEY -in "$f" -out "enc/$(basename "$f").enc"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: toolchain-${{ inputs.target }}-${{ inputs.arch }}
+          path: enc/
+          retention-days: 1
+          compression-level: 0
+
+  stage-1:
+    name: Stage 1 ({{ inputs.target }} {{ inputs.arch }})
+    needs: toolchain
+    if: >-
+      !cancelled() && (needs.toolchain.result == 'success' || needs.toolchain.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "true"
+          finished: ${{ 'false' }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-2:
+    name: Stage 2 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-1
+    if: >-
+      !cancelled() && needs.stage-1.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-1.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-3:
+    name: Stage 3 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-2
+    if: >-
+      !cancelled() && needs.stage-2.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-2.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-4:
+    name: Stage 4 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-3
+    if: >-
+      !cancelled() && needs.stage-3.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-3.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-5:
+    name: Stage 5 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-4
+    if: >-
+      !cancelled() && needs.stage-4.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-4.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-6:
+    name: Stage 6 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-5
+    if: >-
+      !cancelled() && needs.stage-5.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-5.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-7:
+    name: Stage 7 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-6
+    if: >-
+      !cancelled() && needs.stage-6.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-6.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-8:
+    name: Stage 8 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-7
+    if: >-
+      !cancelled() && needs.stage-7.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-7.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-9:
+    name: Stage 9 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-8
+    if: >-
+      !cancelled() && needs.stage-8.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-8.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-10:
+    name: Stage 10 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-9
+    if: >-
+      !cancelled() && needs.stage-9.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-9.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-11:
+    name: Stage 11 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-10
+    if: >-
+      !cancelled() && needs.stage-10.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-10.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-12:
+    name: Stage 12 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-11
+    if: >-
+      !cancelled() && needs.stage-11.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-11.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-13:
+    name: Stage 13 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-12
+    if: >-
+      !cancelled() && needs.stage-12.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-12.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-14:
+    name: Stage 14 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-13
+    if: >-
+      !cancelled() && needs.stage-13.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-13.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-15:
+    name: Stage 15 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-14
+    if: >-
+      !cancelled() && needs.stage-14.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-14.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  stage-16:
+    name: Stage 16 ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-15
+    if: >-
+      !cancelled() && needs.stage-15.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      finished: ${{ steps.stage.outputs.finished }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: stage
+        uses: ./.github/actions/build-stage
+        with:
+          target: ${{ inputs.target }}
+          arch: ${{ inputs.arch }}
+          first: "false"
+          finished: ${{ needs.stage-15.outputs.finished }}
+          toolchain-key: ${{ secrets.toolchain_key }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+  package:
+    name: Package ({{ inputs.target }} {{ inputs.arch }})
+    needs: stage-16
+    if: "!cancelled() && needs.stage-16.result == 'success'"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: The build finished
+        if: needs.stage-16.outputs.finished != 'true'
+        run: |
+          echo "::error::out/ is still unfinished after 16 stages; add stages to build-browser.yml"
+          exit 1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/build-host
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: out-${{ inputs.target }}-${{ inputs.arch }}
+          path: /mnt/camouwolf/out
+      - name: Restore out/
+        run: |
+          mkdir -p "$CAMOUWOLF_BUILD_DIR/chromium/src/out"
+          tar -C "$CAMOUWOLF_BUILD_DIR/chromium/src/out" --zstd -xf /mnt/camouwolf/out/out.tar.zst
+      - name: Package
+        # The fonts, fontconfig and version.json go in beside the binary, as
+        # for every build (scripts/release-camouwolf.sh).
+        run: python3 -m ci.run_build --target "${{ inputs.target }}" --arch "${{ inputs.arch }}" --package-only
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: CamouwolfBuilds-${{ inputs.target }}-${{ inputs.arch }}
+          path: browser/dist/*
+          compression-level: 0 # already a zip

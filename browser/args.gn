@@ -1,5 +1,5 @@
-# Camouwolf — GN build args. Consumed by browser/scripts/build.sh:
-#   gn gen out/Camouwolf --args="$(cat browser/args.gn)"
+# Camouwolf — GN build args shared by every target. browser/scripts/gn-args.sh
+# appends the target's OS and CPU fragments from browser/args/.
 #
 # Every flag here is either "make this an official Chrome-shaped binary" or
 # "remove a headless/Chromium tell". Nothing is here for build speed.
@@ -47,20 +47,3 @@ chrome_pgo_phase = 0
 # warns "Build argument has no effect" for args with no declare_args() block.
 # A dead arg is not harmless — it reads as a setting that is doing something.
 enable_widevine = false
-
-# ---------------------------------------------------------------------- target
-target_cpu = "x64"
-target_os = "linux"
-
-# ------------------------------------------------------------- CPU compatibility
-# Pin the whole tree to the x86-64-v2 (SSE4.2) baseline.
-#
-# Chromium's bundled clang auto-vectorizes some baseline paths with post-Haswell
-# instructions (LZCNT/TZCNT, AVX2, FMA). On a pre-2013 CPU that lacks them,
-# LZCNT/TZCNT silently decode as BSR/BSF with different zero-input semantics,
-# which corrupts a PartitionAlloc bucket index and trips a PA_CHECK during
-# static init — a SIGTRAP before main(), unreachable by any runtime flag. Stock
-# Chrome runs fine on those CPUs, so a Camouwolf that does not is itself a tell for
-# anyone comparing crash behavior, besides being unusable on older proxy boxes.
-extra_cflags = "-mno-avx -mno-avx2 -mno-bmi -mno-bmi2 -mno-lzcnt -mno-fma -mno-f16c -mno-movbe"
-extra_cxxflags = "-mno-avx -mno-avx2 -mno-bmi -mno-bmi2 -mno-lzcnt -mno-fma -mno-f16c -mno-movbe"

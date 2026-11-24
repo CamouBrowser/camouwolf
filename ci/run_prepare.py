@@ -12,6 +12,7 @@ same thing.
 
 Run (on a build machine: this downloads a Chromium checkout):
     python3 -m ci.run_prepare
+    python3 -m ci.run_prepare --target macos --arch arm64
     python3 -m ci.run_prepare --dry-run
 """
 
@@ -26,7 +27,7 @@ from typing import Dict, List, Optional
 
 from . import results
 from ._util import BROWSER_ROOT, REPO_ROOT, RESULTS_DIR, log, read_upstream_sh, run
-from .targets import require_enabled
+from .targets import Target, require_enabled
 
 BUILD_SH = BROWSER_ROOT / "scripts" / "build.sh"
 
@@ -42,8 +43,8 @@ def is_transient(output: str) -> bool:
     return bool(_TRANSIENT.search(output))
 
 
-def build_env(stages: str, jobs: Optional[int] = None) -> Dict[str, str]:
-    env = {"CAMOUWOLF_STAGES": stages}
+def build_env(stages: str, target: Target, jobs: Optional[int] = None) -> Dict[str, str]:
+    env = {"CAMOUWOLF_STAGES": stages, "CAMOUWOLF_TARGET": target.os, "CAMOUWOLF_ARCH": target.arch}
     if jobs:
         env["CAMOUWOLF_NINJA_JOBS"] = str(jobs)
     return env
@@ -52,6 +53,7 @@ def build_env(stages: str, jobs: Optional[int] = None) -> Dict[str, str]:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--target", default="linux")
+    parser.add_argument("--arch", default="x86_64")
     parser.add_argument("--attempts", type=int, default=3)
     parser.add_argument("--backoff", type=int, default=60, help="seconds before the first retry")
     parser.add_argument("--timeout", type=int, default=6 * 3600)
@@ -59,15 +61,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--results-dir", type=Path, default=RESULTS_DIR)
     args = parser.parse_args(argv)
 
-    require_enabled(args.target)
-    env = build_env("sync patch")
+    target = require_enabled(args.target, args.arch)
+    env = build_env("sync patch", target)
     cmd = ["bash", str(BUILD_SH)]
     if args.dry_run:
         print(" ".join(f"{k}={v!r}" for k, v in env.items()), " ".join(cmd))
         return 0
 
     result = results.GateResult(gate="prepare")
-    result.metrics.update(read_upstream_sh(), target=args.target)
+    result.metrics.update(read_upstream_sh(), target=target.name)
     code = 1
     for attempt in range(1, args.attempts + 1):
         proc = run(cmd, cwd=REPO_ROOT, env=env, timeout=args.timeout)
