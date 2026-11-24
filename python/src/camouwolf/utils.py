@@ -77,7 +77,7 @@ from .switches import (
     merge_list_switches,
 )
 from camoucore.virtdisplay import VirtualDisplay
-from .webgl import chrome_gpus, usable_gpu
+from .webgl import chrome_gpus, usable_gpu, webgl_parameters
 
 ListOrString: TypeAlias = Union[Tuple[str, ...], List[str], str]
 
@@ -1095,6 +1095,9 @@ def draw_fingerprint(
         if platform != clienthints.NAV_PLATFORM.get(drawn_os):
             continue
         if not usable_gpu(fingerprint.get('gpu'), drawn_os):
+            continue
+        # fpgen also keeps devices whose WebGL collection failed.
+        if not webgl_parameters(fingerprint.get('webgl'), fingerprint.get('webgl2')):
             continue
         if coherence.machine_misfit(
             fingerprint['gpu']['renderer'], drawn_os, (fingerprint.get('navigator') or {}).get('hardwareConcurrency'),

@@ -645,6 +645,20 @@ describe.skipIf(!MODEL.ok)("drawFingerprint", () => {
 		expect(drawn.navigator.hardwareConcurrency).toBe(10);
 	});
 
+	it("draws no machine whose WebGL was not recorded", async () => {
+		// fpgen keeps devices whose WebGL collection failed; an identity drawn
+		// from one would claim a GPU with no limits behind it.
+		const real = await utils.drawFingerprint("linux", null, null, null);
+		const failed = {
+			...real,
+			webgl: "Failed Collecting: TypeError",
+			webgl2: "Failed Collecting: TypeError",
+		};
+		const draws = [failed, real];
+		utils.utilsDeps.generateFingerprint = (() => draws.shift()) as any;
+		expect(await utils.drawFingerprint("linux", null, null, null)).toBe(real);
+	});
+
 	it("draws a machine in the identity's language", async () => {
 		// A machine's voices and fonts follow the language its OS was installed in.
 		const real = await utils.drawFingerprint("windows", null, null, null);

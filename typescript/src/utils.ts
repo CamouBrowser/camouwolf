@@ -92,7 +92,7 @@ import {
 	PLAYWRIGHT_HEADLESS_BLINK_SETTINGS,
 } from "./switches.js";
 import { LeakWarning, loadWarnings, warn } from "./warnings.js";
-import { chromeGpus, usableGpu } from "./webgl.js";
+import { chromeGpus, usableGpu, webglParameters } from "./webgl.js";
 
 type ListOrString = string | readonly string[];
 type Config = Record<string, any>;
@@ -1587,6 +1587,12 @@ export async function drawFingerprint(
 		const expected = drawnOs ? clienthints.NAV_PLATFORM[drawnOs] : null;
 		if (platform !== expected) continue;
 		if (!usableGpu(fingerprint.gpu, drawnOs)) continue;
+		// fpgen also keeps devices whose WebGL collection failed.
+		if (
+			Object.keys(webglParameters(fingerprint.webgl, fingerprint.webgl2))
+				.length === 0
+		)
+			continue;
 		const drawnScreen = pyTruthy(fingerprint.screen) ? fingerprint.screen : {};
 		if (
 			coherence.machineMisfit(

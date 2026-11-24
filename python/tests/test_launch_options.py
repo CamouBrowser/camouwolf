@@ -786,6 +786,16 @@ def test_a_drawn_mac_is_a_machine_apple_made(monkeypatch):
     assert utils.draw_fingerprint('macos', None, None, None)['navigator']['hardwareConcurrency'] == 10
 
 
+def test_a_machine_whose_webgl_was_not_recorded_is_not_drawn(monkeypatch):
+    # fpgen keeps devices whose WebGL collection failed; an identity drawn from
+    # one would claim a GPU with no limits behind it.
+    real = utils.draw_fingerprint('linux', None, None, None)
+    failed = {**real, 'webgl': 'Failed Collecting: TypeError', 'webgl2': 'Failed Collecting: TypeError'}
+    draws = iter([failed, real])
+    monkeypatch.setattr(utils, 'generate_fingerprint', lambda **kwargs: next(draws))
+    assert utils.draw_fingerprint('linux', None, None, None) is real
+
+
 def test_the_identity_is_drawn_from_a_machine_in_its_language(options, places, monkeypatch):
     # A machine's voices and fonts follow the language its OS was installed in.
     real = utils.draw_fingerprint('windows', None, None, None)
