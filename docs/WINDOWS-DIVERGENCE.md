@@ -52,6 +52,9 @@ So a Camouwolf Windows persona reports **`Segoe UI` at `16px`** — a pairing no
 Windows machine produces, and one that only appears *because* the patch ran.
 Fix: override `SystemFontSize` for the same three keywords.
 
+Since then 0022 overrides `SystemFontSize` for the same three keywords, so they
+report Segoe UI at 12px.
+
 ## 2. Confirmed unspoofed divergences
 
 ### 2.1 Canvas text: the first read differs on Linux only
@@ -157,8 +160,8 @@ the identity's recorded hardware codecs (`media:*` keys).
 | `navigator.vendor` | 0002 | none — `Google Inc.` on both |
 | `timezone` | 0006 | none here; only drawn on a geoip launch |
 
-The first two are live leaks. `check-config-keys.py` cannot catch these — it
-checks written-but-unread, and these are the mirror case.
+The first two were live leaks. Since then the launcher writes both for every
+OS, from the recorded layouts and device lists.
 
 `connection.rtt`/`downlink` stay unwritten on purpose. Chrome computes both
 from the transfers it has timed, by the same code on every OS, so the two
@@ -268,6 +271,10 @@ persona can claim a current Windows 11**, and seed 1 draws `10.0.0` — Windows
 The UA version is a live-detectability issue *today*: a browser claiming Chrome
 152 while stable is 151 is claiming a Dev/Canary build, which is rare traffic.
 
+Since then the ladder ends at `19.0.0`, the pin is Chromium 158,
+and `deviceMemory` is drawn from the buckets Chrome reports since it raised
+the cap to 32 (`coherence.py`).
+
 Branding: the Chromium build emits two brands (`Chromium` + GREASE); real Chrome
 emits three, including `"Google Chrome"`. Camouwolf writes no `brands` key, so
 whether `0003` synthesises the Chrome triple is **[needs binary]** — but a
@@ -281,8 +288,10 @@ first-request tell.
 - Behavioural/timing signals; a single sample of `connection.*`.
 - `maxTouchPoints`: the ground-truth box is a **touchscreen** laptop (10 points,
   `any-pointer: coarse`). Camouwolf claims 0 and cannot model a touch device
-  (`navigator.maxTouchPoints` is in `KNOWN_DEAD`) — self-consistent, but it
-  means every Camouwolf Windows persona is a non-touch desktop.
+  (`navigator.maxTouchPoints` was in `KNOWN_DEAD`) — self-consistent, but it
+  meant every Camouwolf Windows persona was a non-touch desktop. Since then
+  0024 answers `maxTouchPoints` and the pointer media queries from the
+  identity.
 
 ## 6. Harness artifacts, not findings
 
@@ -299,13 +308,11 @@ first-request tell.
   `voiceschanged` (it captured 19 of 22 voices, missing the local SAPI ones that
   arrive ~1s later).
 
-## 7. Suggested order
+## 7. Suggested order — done
 
-1. `0022` font size — self-inflicted, small, and the fix is local.
-2. `platformVersion` ladder — stale data, no C++ needed.
-3. Canvas first-read instability — cheapest possible probe for an attacker.
-4. `keyboard.layoutMap` and `mediaDevices:enumerated` — patches exist, nothing
-   drives them.
-5. WebGL backend signatures + `preferredCanvasFormat` — leg A now provides the
-   real D3D11 record they were waiting on.
-6. ~~EyeDropper (and Web Bluetooth, with the caveat) in `0019`.~~ Done.
+Every item this report ordered has since been addressed: the `0022` font size,
+the `platformVersion` ladder, the canvas first read (`0037`),
+`keyboard.layoutMap` and `mediaDevices:enumerated`, the WebGL backend
+signatures and `preferredCanvasFormat` (`0007`, `0008`), and Web Share and
+Web Bluetooth (`0019`). What stays open is hardware the host lacks: WebGL
+extensions and WebGPU features can be hidden but not added.
