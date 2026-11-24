@@ -1,0 +1,146 @@
+diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink/renderer/core/frame/screen.cc
+--- a/third_party/blink/renderer/core/frame/screen.cc
++++ b/third_party/blink/renderer/core/frame/screen.cc
+@@ -28,6 +28,7 @@
+ 
+ #include "third_party/blink/renderer/core/frame/screen.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/numerics/safe_conversions.h"
+ #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
+ #include "third_party/blink/renderer/core/dom/document.h"
+@@ -87,19 +88,36 @@
+   return true;
+ }
+ 
++// CAMOUWOLF: read one screen.* key, falling back to the real value.
++//
++// These are separate keys rather than a rect because the launcher fixes the
++// four of them to a *coherent* set: a real desktop always has
++// availHeight < height (the taskbar/menu-bar inset) on at least one axis.
++// CreepJS raises a `noTaskbar` headless flag when screen == avail on BOTH axes,
++// which is exactly what a stock headless Chromium reports, so the launcher
++// enforces the inset and this patch just serves what it decided.
+ int Screen::height() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.height")) {
++    return *v;
++  }
+   if (!DomWindow())
+     return 0;
+   return GetRect(/*available=*/false).height();
+ }
+ 
+ int Screen::width() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.width")) {
++    return *v;
++  }
+   if (!DomWindow())
+     return 0;
+   return GetRect(/*available=*/false).width();
+ }
+ 
+ unsigned Screen::colorDepth() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetUint32("screen.colorDepth")) {
++    return *v;
++  }
+   // "If the user agent does not know the color depth or does not want to
+   // return it for privacy considerations, it should return 24."
+   //
+@@ -115,28 +133,46 @@
+ }
+ 
+ unsigned Screen::pixelDepth() const {
++  // CAMOUWOLF: Chrome ties pixelDepth to colorDepth, and so does this when only
++  // colorDepth is configured. The separate key exists for schema parity with
++  // Camoufox, whose fingerprints carry both; the launcher writes them equal.
++  if (const auto v = base::CamouwolfConfig::Get().GetUint32("screen.pixelDepth")) {
++    return *v;
++  }
+   return colorDepth();
+ }
+ 
+ int Screen::availLeft() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.availLeft")) {
++    return *v;
++  }
+   if (!DomWindow())
+     return 0;
+   return GetRect(/*available=*/true).x();
+ }
+ 
+ int Screen::availTop() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.availTop")) {
++    return *v;
++  }
+   if (!DomWindow())
+     return 0;
+   return GetRect(/*available=*/true).y();
+ }
+ 
+ int Screen::availHeight() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.availHeight")) {
++    return *v;
++  }
+   if (!DomWindow())
+     return 0;
+   return GetRect(/*available=*/true).height();
+ }
+ 
+ int Screen::availWidth() const {
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.availWidth")) {
++    return *v;
++  }
+   if (!DomWindow())
+     return 0;
+   return GetRect(/*available=*/true).width();
+@@ -157,6 +193,15 @@
+ }
+ 
+ bool Screen::isExtended() const {
++  // CAMOUWOLF: a multi-monitor claim the identity did not ask for is a mismatch with
++  // the single screen.* rect above, so this is configurable and defaults false
++  // whenever any screen.* key is set.
++  if (const auto v = base::CamouwolfConfig::Get().GetBool("screen.isExtended")) {
++    return *v;
++  }
++  if (base::CamouwolfConfig::Get().Has("screen.width")) {
++    return false;
++  }
+   if (!DomWindow()) {
+     return false;
+   }
+diff --git a/third_party/blink/renderer/core/css/media_values.cc b/third_party/blink/renderer/core/css/media_values.cc
+--- a/third_party/blink/renderer/core/css/media_values.cc
++++ b/third_party/blink/renderer/core/css/media_values.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/core/css/media_values.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/public/common/css/scripting.h"
+ #include "third_party/blink/renderer/core/css/css_resolution_units.h"
+ #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
+@@ -163,6 +164,11 @@
+ }
+ 
+ int MediaValues::CalculateDeviceWidth(LocalFrame* frame) {
++  // CAMOUWOLF: device-width is the screen.width the page reads, or a
++  // matchMedia probe finds the host's screen behind the claimed one.
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.width")) {
++    return *v;
++  }
+   DCHECK(frame && frame->View() && frame->GetSettings() && frame->GetPage());
+   const display::ScreenInfo& screen_info =
+       frame->GetPage()->GetChromeClient().GetScreenInfo(*frame);
+@@ -175,6 +181,11 @@
+ }
+ 
+ int MediaValues::CalculateDeviceHeight(LocalFrame* frame) {
++  // CAMOUWOLF: device-height is the screen.height the page reads, or a
++  // matchMedia probe finds the host's screen behind the claimed one.
++  if (const auto v = base::CamouwolfConfig::Get().GetInt("screen.height")) {
++    return *v;
++  }
+   DCHECK(frame && frame->View() && frame->GetSettings() && frame->GetPage());
+   const display::ScreenInfo& screen_info =
+       frame->GetPage()->GetChromeClient().GetScreenInfo(*frame);

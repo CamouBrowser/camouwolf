@@ -1,0 +1,9 @@
+target_os = "mac"
+
+# Built on a Linux host: read the SDK from build/mac_files/xcode_binaries
+# (CAMOUWOLF_MAC_SDK_DIR, see browser/scripts/build.sh), not from xcrun.
+use_system_xcode = false
+
+# dSYMs need Apple's dsymutil, which Chromium fetches only for a mac host, and
+# a release ships no debug symbols (symbol_level = 0) to put in one.
+enable_dsyms = false

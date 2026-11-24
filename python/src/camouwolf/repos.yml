@@ -1,0 +1,23 @@
+# Default configurations
+default:
+  browser: Official
+
+# Browser repositories
+#
+# A release is tagged v{version}-{build} ("v152.0.7977.42-alpha.1") and carries
+# one asset per target: camouwolf-{version}-{build}-{os}.{arch}.zip, with os one
+# of lin, win, mac.
+browsers:
+  - repo: CamouBrowser/camouwolf
+    name: Official
+    pattern: "{name}-{version}-{build}-{os}.{arch}.zip"
+    versions:
+      - python_library:
+          min: "0.1.0"
+          max: "1"
+        browser:
+          # Stable channel
+          stable:
+            min: "beta.1"
+            max: "1"
+          # Prerelease channel (including "alpha.*" builds) matches all versions

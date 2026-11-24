@@ -1,0 +1,108 @@
+diff --git a/components/embedder_support/user_agent_utils.cc b/components/embedder_support/user_agent_utils.cc
+--- a/components/embedder_support/user_agent_utils.cc
++++ b/components/embedder_support/user_agent_utils.cc
+@@ -15,6 +15,7 @@
+ 
+ #include "base/android/device_info.h"
+ #include "base/command_line.h"
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/feature_list.h"
+ #include "base/logging.h"
+ #include "base/no_destructor.h"
+@@ -483,6 +484,20 @@
+ }
+ 
+ std::string GetUserAgent() {
++  // CAMOUWOLF: the configured UA wins over both --user-agent and the built string.
++  //
++  // We deliberately do NOT reuse the --user-agent path. Upstream treats a
++  // command-line UA as an *override* and then either blanks the client-hint
++  // metadata or leaves it describing the real host (see GetUserAgentMetadata
++  // below) — so `--user-agent` produces a browser whose UA string says one thing
++  // and whose Sec-CH-UA-Platform / Sec-CH-UA-Platform-Version headers say
++  // another. That desync is trivially checkable server-side and is the single
++  // most common way a "spoofed" Chrome gives itself away. Camouwolf drives the UA
++  // and the full hint set from one config, so they cannot disagree; the launcher
++  // refuses to pass --user-agent at all (see src/switches.ts).
++  if (const auto ua = base::CamouwolfConfig::Get().GetString("navigator.userAgent")) {
++    return *ua;
++  }
+   std::optional<std::string> custom_ua = GetUserAgentFromCommandLine();
+   if (custom_ua.has_value()) {
+     return custom_ua.value();
+@@ -601,6 +616,12 @@
+ }
+ 
+ std::string GetPlatformForUAMetadata() {
++  // CAMOUWOLF: Sec-CH-UA-Platform. Must match the OS named in navigator.userAgent
++  // and in navigator.platform; the launcher derives all three from one identity.
++  if (const auto p =
++          base::CamouwolfConfig::Get().GetString("userAgentData.platform")) {
++    return *p;
++  }
+ #if BUILDFLAG(IS_ANDROID)
+   if (base::android::device_info::is_desktop() ||
+       base::android::device_info::is_xr()) {
+@@ -640,6 +661,17 @@
+       GetUserAgentBrandMajorVersionListInternal(std::nullopt);
+   metadata.mobile = GetMobileBitForUAMetadata();
+   metadata.platform = GetPlatformForUAMetadata();
++
++  // CAMOUWOLF: override the low-entropy hints from config before the command-line
++  // early-return below, so they are coherent on every path.
++  //
++  // The `mobile` bit is included on purpose: Sec-CH-UA-Mobile is sent on EVERY
++  // request, needs no permission, and a desktop UA arriving with `?1` is an
++  // instant fail. It is derived from the same identity as the UA, not sampled.
++  const base::CamouwolfConfig& kcfg = base::CamouwolfConfig::Get();
++  if (const auto mobile = kcfg.GetBool("userAgentData.mobile")) {
++    metadata.mobile = *mobile;
++  }
+ 
+   // For users providing a valid user-agent override via the command line:
+   // If kUACHOverrideBlank is enabled, set user-agent metadata with the
+@@ -668,6 +700,44 @@
+   metadata.bitness = GetCpuBitness();
+   metadata.wow64 = IsWoW64();
+   metadata.platform_version = GetPlatformVersion();
++
++  // CAMOUWOLF: high-entropy hints.
++  //
++  // These are what a page gets from
++  // navigator.userAgentData.getHighEntropyValues() and, on an Accept-CH site,
++  // from the Sec-CH-UA-Arch / -Bitness / -Model / -Platform-Version / -Wow64
++  // headers. Upstream fills them from the REAL host — so a Linux box claiming to
++  // be Windows still reports its own platformVersion, and (on a machine whose
++  // Chromium was built for a different arch than the persona) its own
++  // architecture. Every one of them is cross-checkable against the UA.
++  //
++  // platformVersion is the sharpest: on Windows it encodes the build via the
++  // UA-CH ladder ("15.0.0" = Win11 24H2, "10.0.0" = Win10 21H2+), and a value
++  // that is impossible for the claimed platform, or a Windows persona reporting
++  // a Linux kernel version, fails immediately.
++  if (const auto v = kcfg.GetString("userAgentData.architecture")) {
++    metadata.architecture = *v;
++  }
++  if (const auto v = kcfg.GetString("userAgentData.bitness")) {
++    metadata.bitness = *v;
++  }
++  if (const auto v = kcfg.GetString("userAgentData.model")) {
++    metadata.model = *v;
++  }
++  if (const auto v = kcfg.GetString("userAgentData.platformVersion")) {
++    metadata.platform_version = *v;
++  }
++  if (const auto v = kcfg.GetString("userAgentData.uaFullVersion")) {
++    metadata.full_version = *v;
++  }
++  if (const auto v = kcfg.GetBool("userAgentData.wow64")) {
++    metadata.wow64 = *v;
++  }
++  // form_factors was computed from the pre-override mobile bit; recompute so a
++  // config that flipped `mobile` does not leave "Desktop" behind.
++  if (kcfg.Has("userAgentData.mobile")) {
++    metadata.form_factors = GetFormFactorsClientHint(metadata, metadata.mobile);
++  }
+   return metadata;
+ }
+ 

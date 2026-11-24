@@ -1,0 +1,303 @@
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
+@@ -1155,6 +1155,12 @@
+   ScriptValue GetWebGLFloatArrayParameter(ScriptState*, GLenum);
+   ScriptValue GetWebGLIntArrayParameter(ScriptState*, GLenum);
+ 
++  // CAMOUWOLF: the configured answer for getParameter(pname), or nullopt when
++  // the identity does not carry one. Shared by this class's getParameter and
++  // WebGL2RenderingContextBase's, which handles the WebGL2-only names itself
++  // and never reaches the base switch for them.
++  std::optional<ScriptValue> CamouwolfParameter(ScriptState*, GLenum pname);
++
+   // Clear the backbuffer if it was composited since the last operation.
+   // clearMask is set to the bitfield of any clear that would happen anyway at
+   // this time and the function returns |CombinedClear| if that clear is now
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -27,7 +27,12 @@
+ 
+ #include <inttypes.h>
+ 
++#include <array>
++#include <cmath>
+ #include <memory>
++#include <optional>
++#include <string>
++#include <string_view>
+ #include <utility>
+ 
+ #include "base/bit_cast.h"
+@@ -38,6 +43,10 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+ #include "base/notimplemented.h"
++#include "base/camouwolf_config.h"   // CAMOUWOLF
++#include "base/strings/string_number_conversions.h"  // CAMOUWOLF
++#include "base/camouwolf_farble.h"   // CAMOUWOLF
++#include "base/values.h"  // CAMOUWOLF
+ #include "base/numerics/checked_math.h"
+ #include "base/strings/stringprintf.h"
+ #include "base/synchronization/lock.h"
+@@ -3933,6 +3942,36 @@
+     return false;
+   if (disabled_extensions_.Contains(String(tracker->ExtensionName())))
+     return false;
++  // CAMOUWOLF: the claimed GPU's extension list.
++  //
++  // Hooked here, and only here, because this predicate is what both
++  // getSupportedExtensions() and getExtension() ask. A list that only
++  // filtered the former would leave getExtension() handing out objects for
++  // names the list says do not exist, which is a contradiction a page finds by
++  // calling both — and every fingerprinting script does call both.
++  //
++  // It is placed after upstream's own checks on purpose: a configured name can
++  // hide an extension the host has, but cannot conjure one it lacks. An
++  // extension object backed by nothing fails on first use, and "listed but
++  // broken" is a worse tell than "not listed". The launcher draws the list
++  // from the same adapter record as the renderer string, and what survives is
++  // that list intersected with what this build can really do.
++  //
++  // WebGL1 and WebGL2 have separate keys with no fallback between them: the
++  // two lists share almost nothing (most WebGL1 extensions are core in
++  // WebGL2), so one applied to the other would strip the context bare.
++  const base::CamouwolfConfig& kcfg = base::CamouwolfConfig::Get();
++  if (const base::ListValue* listed =
++          IsWebGL2() ? kcfg.GetList("webGl2:supportedExtensions")
++                     : kcfg.GetList("webGl:supportedExtensions")) {
++    const std::string_view name(tracker->ExtensionName());
++    for (const base::Value& item : *listed) {
++      if (item.is_string() && item.GetString() == name) {
++        return true;
++      }
++    }
++    return false;
++  }
+   return true;
+ }
+ 
+@@ -4082,10 +4121,125 @@
+                             webgl_angle_implementation);
+ }
+ 
++// CAMOUWOLF: one getParameter() value from the identity.
++//
++// A WebGL2 context reads `webGl2:parameters`; a WebGL1 context reads
++// `webGl:parameters`. They are separate maps because the two contexts really
++// do answer differently on one GPU — VERSION and SHADING_LANGUAGE_VERSION
++// always, and a WebGL2-only name such as MAX_3D_TEXTURE_SIZE has no WebGL1
++// answer at all — and a page that opens both compares them. When the identity
++// carries no `webGl2:parameters` map at all, a WebGL2 context falls back to
++// `webGl:parameters`, which is what this patch did before the second map
++// existed; a name missing from a map that IS present is the host's answer.
++//
++// JSON null is a configured null: the parameter is one this GPU does not have.
++// A list becomes the typed array upstream returns for that name — Float32Array
++// for the float ranges and colours, Int32Array otherwise.
++std::optional<ScriptValue> WebGLRenderingContextBase::CamouwolfParameter(
++    ScriptState* script_state,
++    GLenum pname) {
++  const base::CamouwolfConfig& kcfg = base::CamouwolfConfig::Get();
++  const base::DictValue* params = nullptr;
++  if (IsWebGL2()) {
++    params = kcfg.GetDict("webGl2:parameters");
++  }
++  if (!params) {
++    params = kcfg.GetDict("webGl:parameters");
++  }
++  if (!params) {
++    return std::nullopt;
++  }
++  const base::Value* v = params->Find(base::NumberToString(pname));
++  if (!v) {
++    return std::nullopt;
++  }
++  if (v->is_none()) {
++    return ScriptValue::CreateNull(script_state->GetIsolate());
++  }
++  if (v->is_int()) {
++    return WebGLAny(script_state, v->GetInt());
++  }
++  if (v->is_double()) {
++    // base::Value parses anything past int32 as a double, and WebGL2 has
++    // limits up there (MAX_ELEMENT_INDEX is 4294967295, MAX_SERVER_WAIT_TIMEOUT
++    // near 2**63). Through float those round, so whole numbers in int64's
++    // range go out as integers, as upstream's int64 getter answers them.
++    const double number = v->GetDouble();
++    if (number == std::floor(number) && std::abs(number) < 9223372036854775808.0) {
++      return WebGLAny(script_state, static_cast<int64_t>(number));
++    }
++    return WebGLAny(script_state, static_cast<float>(number));
++  }
++  if (v->is_bool()) {
++    return WebGLAny(script_state, v->GetBool());
++  }
++  if (v->is_string()) {
++    return WebGLAny(script_state, String::FromUtf8(v->GetString()));
++  }
++  if (const base::ListValue* list = v->GetIfList()) {
++    bool as_float = false;
++    switch (pname) {
++      case GL_ALIASED_POINT_SIZE_RANGE:
++      case GL_ALIASED_LINE_WIDTH_RANGE:
++      case GL_DEPTH_RANGE:
++      case GL_BLEND_COLOR:
++      case GL_COLOR_CLEAR_VALUE:
++        as_float = true;
++        break;
++      default:
++        break;
++    }
++    // Every array-valued name upstream answers with a Float32Array or an
++    // Int32Array has two or four elements (see GetWebGLFloatArrayParameter /
++    // GetWebGLIntArrayParameter below). Anything longer is not one of them.
++    std::array<GLfloat, 4> floats = {0};
++    std::array<GLint, 4> ints = {0};
++    if (list->size() > floats.size()) {
++      return std::nullopt;
++    }
++    size_t length = 0;
++    for (const base::Value& item : *list) {
++      // GetIfDouble() answers for an int as well; anything else is malformed
++      // and the host's value is the safer answer.
++      const std::optional<double> number = item.GetIfDouble();
++      if (!number) {
++        return std::nullopt;
++      }
++      floats[length] = static_cast<GLfloat>(*number);
++      ints[length] = static_cast<GLint>(*number);
++      ++length;
++    }
++    if (as_float) {
++      return WebGLAny(script_state,
++                      DOMFloat32Array::Create(base::span(floats).first(length)));
++    }
++    return WebGLAny(script_state,
++                    DOMInt32Array::Create(base::span(ints).first(length)));
++  }
++  return std::nullopt;
++}
++
+ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+                                                     GLenum pname) {
+   if (isContextLost())
+     return ScriptValue::CreateNull(script_state->GetIsolate());
++  // CAMOUWOLF: numeric limit overrides, applied before the upstream switch.
++  //
++  // The unmasked vendor/renderer strings are not the whole GPU fingerprint.
++  // Detectors also read the numeric limits (MAX_TEXTURE_SIZE,
++  // MAX_VERTEX_UNIFORM_VECTORS, MAX_VIEWPORT_DIMS, ...) and cross-check them
++  // against the claimed adapter: a renderer string naming an RTX 4070 whose
++  // MAX_TEXTURE_SIZE is 8192 (SwiftShader's value, not the 16384 every modern
++  // discrete GPU reports) is a mismatch, and it is a check that costs the
++  // detector one extra call.
++  //
++  // The launcher writes this map as part of the same adapter record the
++  // vendor/renderer pair came from, so the limits are the ones that adapter
++  // really reports rather than a hand-picked set.
++  if (std::optional<ScriptValue> configured =
++          CamouwolfParameter(script_state, pname)) {
++    return *configured;
++  }
+   const int kIntZero = 0;
+   switch (pname) {
+     case GL_ACTIVE_TEXTURE:
+@@ -4295,6 +4449,19 @@
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        // CAMOUWOLF: the claimed GPU. This string is THE canonical GPU fingerprint —
++        // it is what every commercial detector reads first, and stock headless
++        // Chromium answers with "ANGLE (Google, Vulkan 1.3.0 (SwiftShader
++        // Device (Subzero)...))", which is a hard headless tell on its own.
++        //
++        // The launcher only ever writes a vendor/renderer PAIR drawn from a
++        // table of real, contemporaneous adapters, keyed to the persona's OS:
++        // an "ANGLE (NVIDIA, ... Direct3D11 ...)" renderer on a persona claiming
++        // macOS is a contradiction, as is a D3D11 renderer with a Linux UA.
++        if (const auto r =
++                base::CamouwolfConfig::Get().GetString("webGl:renderer")) {
++          return WebGLAny(script_state, String::FromUtf8(*r));
++        }
+         return WebGLAny(script_state,
+                         String(ContextGL()->GetString(GL_RENDERER)));
+       }
+@@ -4304,6 +4471,10 @@
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        // CAMOUWOLF: see kUnmaskedRendererWebgl. Written as a pair with it.
++        if (const auto v = base::CamouwolfConfig::Get().GetString("webGl:vendor")) {
++          return WebGLAny(script_state, String::FromUtf8(*v));
++        }
+         return WebGLAny(script_state,
+                         String(ContextGL()->GetString(GL_VENDOR)));
+       }
+@@ -4599,6 +4770,38 @@
+       SynthesizeGLError(GL_INVALID_ENUM, "getShaderPrecisionFormat",
+                         "invalid precision type");
+       return nullptr;
++  }
++
++  // CAMOUWOLF: the claimed GPU's shader precision table.
++  //
++  // Keyed "<shaderType>,<precisionType>" in decimal — the form Camoufox uses,
++  // so one adapter record serves both browsers — with a
++  // {rangeMin, rangeMax, precision} object as the value. Desktop GPUs nearly
++  // all answer 127/127/23 for the floats and 31/30/0 for the ints; mobile GPUs
++  // and software rasterizers do not, which is what makes the table worth
++  // reading for a detector and worth carrying for a mobile identity. Placed
++  // after the enum validation so an invalid call still raises the GL error it
++  // would on real hardware. Separate maps per context version, no fallback.
++  {
++    const std::string format_key =
++        base::NumberToString(shader_type) + "," +
++        base::NumberToString(precision_type);
++    const base::Value* configured =
++        IsWebGL2() ? base::CamouwolfConfig::Get().GetNested(
++                         "webGl2:shaderPrecisionFormats", format_key)
++                   : base::CamouwolfConfig::Get().GetNested(
++                         "webGl:shaderPrecisionFormats", format_key);
++    if (const base::DictValue* format =
++            configured ? configured->GetIfDict() : nullptr) {
++      const std::optional<int> range_min = format->FindInt("rangeMin");
++      const std::optional<int> range_max = format->FindInt("rangeMax");
++      const std::optional<int> configured_precision =
++          format->FindInt("precision");
++      if (range_min && range_max && configured_precision) {
++        return MakeGarbageCollected<WebGLShaderPrecisionFormat>(
++            *range_min, *range_max, *configured_precision);
++      }
++    }
+   }
+ 
+   GLint range[2] = {0, 0};
+diff --git a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+--- a/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+@@ -5,6 +5,7 @@
+ #include "third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.h"
+ 
+ #include <memory>
++#include <optional>  // CAMOUWOLF
+ 
+ #include "base/compiler_specific.h"
+ #include "base/containers/heap_array.h"
+@@ -4838,6 +4839,15 @@
+                                                      GLenum pname) {
+   if (isContextLost())
+     return ScriptValue::CreateNull(script_state->GetIsolate());
++  // CAMOUWOLF: the configured limits, before this class's own switch. The
++  // WebGL2-only names (MAX_3D_TEXTURE_SIZE, MAX_DRAW_BUFFERS, MAX_SAMPLES,
++  // the uniform-block limits ...) are answered below and never reach the base
++  // class, so the hook there cannot cover them. Reads `webGl2:parameters`; see
++  // WebGLRenderingContextBase::CamouwolfParameter.
++  if (std::optional<ScriptValue> configured =
++          CamouwolfParameter(script_state, pname)) {
++    return *configured;
++  }
+   switch (pname) {
+     case GL_SHADING_LANGUAGE_VERSION: {
+       return WebGLAny(

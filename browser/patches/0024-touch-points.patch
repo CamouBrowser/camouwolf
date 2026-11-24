@@ -1,0 +1,63 @@
+diff --git a/third_party/blink/renderer/core/events/navigator_events.cc b/third_party/blink/renderer/core/events/navigator_events.cc
+--- a/third_party/blink/renderer/core/events/navigator_events.cc
++++ b/third_party/blink/renderer/core/events/navigator_events.cc
+@@ -30,6 +30,7 @@
+ 
+ #include "third_party/blink/renderer/core/events/navigator_events.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
+ #include "third_party/blink/renderer/core/frame/navigator.h"
+@@ -38,6 +39,16 @@
+ namespace blink {
+ 
+ int32_t NavigatorEvents::maxTouchPoints(Navigator& navigator) {
++  // CAMOUWOLF: the claimed touch digitizer. Upstream reports the host's, which
++  // on a server is 0 — right for most desktop identities, wrong for a
++  // touchscreen laptop (10 on Windows) and for any mobile one. Served ahead of
++  // the frame lookup so a detached window answers like an attached one.
++  // `(any-pointer: coarse)` follows it from the browser's pointer types;
++  // `ontouchstart` stays off, as desktop Chrome keeps it with a touchscreen.
++  if (const auto v =
++          base::CamouwolfConfig::Get().GetInt("navigator.maxTouchPoints")) {
++    return *v;
++  }
+   LocalDOMWindow* window = navigator.DomWindow();
+   return window ? window->GetFrame()->GetSettings()->GetMaxTouchPoints() : 0;
+ }
+diff --git a/content/browser/web_contents/slow_web_preference_cache.cc b/content/browser/web_contents/slow_web_preference_cache.cc
+--- a/content/browser/web_contents/slow_web_preference_cache.cc
++++ b/content/browser/web_contents/slow_web_preference_cache.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "content/browser/web_contents/slow_web_preference_cache.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/no_destructor.h"
+@@ -113,6 +114,23 @@
+ #endif
+ 
+ #undef SET_FROM_CACHE
++
++  // CAMOUWOLF: the pointer is the identity's devices, not the host's: a
++  // desktop's mouse, and a touchscreen beside it when it claims touch points,
++  // so a touch identity matches (any-pointer: coarse) and keeps (pointer: fine)
++  // and (hover: hover). It is stated whole, headless or not, because a
++  // command-line pointer (Playwright's headless --blink-settings) would answer
++  // for every browser context. It is applied here, not in the cache they all
++  // share, so a page takes the identity of the context it loads in.
++  if (const auto touch_points =
++          base::CamouwolfConfig::Get().GetInt("navigator.maxTouchPoints")) {
++    prefs->pointer_events_max_touch_points = *touch_points;
++    prefs->primary_pointer_type = blink::mojom::PointerType::kPointerFineType;
++    prefs->primary_hover_type = blink::mojom::HoverType::kHoverHoverType;
++    prefs->available_hover_types = ui::HOVER_TYPE_HOVER;
++    prefs->available_pointer_types =
++        ui::POINTER_TYPE_FINE | (*touch_points > 0 ? ui::POINTER_TYPE_COARSE : 0);
++  }
+ }
+ 
+ void SlowWebPreferenceCache::OnInputDeviceConfigurationChanged(uint8_t) {

@@ -1,0 +1,228 @@
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_adapter_info.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "third_party/blink/renderer/modules/webgpu/gpu_memory_heap_info.h"
+ #include "third_party/blink/renderer/modules/webgpu/gpu_subgroup_matrix_config.h"
+ 
+@@ -34,7 +35,39 @@
+       type_(type),
+       d3d_shader_model_(d3d_shader_model),
+       vk_driver_version_(vk_driver_version),
+-      power_preference_(power_preference) {}
++      power_preference_(power_preference) {
++  // CAMOUWOLF: WebGPU adapter identity.
++  //
++  // GPUAdapterInfo is the WebGPU twin of WEBGL_debug_renderer_info, and a
++  // detector that reads BOTH catches a browser that only patched WebGL: the two
++  // APIs would name different GPUs on the same machine. The launcher writes
++  // these from the same adapter record that produced webGl:vendor and
++  // webGl:renderer, so the two APIs cannot disagree.
++  //
++  // Overridden here rather than in the accessors because those return
++  // `const String&`: a getter cannot return a reference to a value it builds,
++  // and caching one in a function-local static would pin the FIRST adapter's
++  // value for the life of the process. Assigning the members costs nothing and
++  // has no lifetime question.
++  const base::CamouwolfConfig& kcfg = base::CamouwolfConfig::Get();
++  if (const auto v = kcfg.GetString("webGpu:vendor")) {
++    vendor_ = String::FromUtf8(*v);
++  }
++  if (const auto v = kcfg.GetString("webGpu:architecture")) {
++    architecture_ = String::FromUtf8(*v);
++  }
++  if (const auto v = kcfg.GetString("webGpu:device")) {
++    device_ = String::FromUtf8(*v);
++  }
++  // Subgroup sizes differ between GPU families, so a claimed vendor reporting
++  // the host's sizes would contradict itself.
++  if (const auto v = kcfg.GetUint32("webGpu:subgroupMinSize")) {
++    subgroup_min_size_ = *v;
++  }
++  if (const auto v = kcfg.GetUint32("webGpu:subgroupMaxSize")) {
++    subgroup_max_size_ = *v;
++  }
++}
+ 
+ void GPUAdapterInfo::AppendMemoryHeapInfo(GPUMemoryHeapInfo* info) {
+   memory_heaps_.push_back(info);
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+@@ -4,6 +4,10 @@
+ 
+ #include "third_party/blink/renderer/modules/webgpu/gpu_adapter.h"
+ 
++#include <string_view>  // CAMOUWOLF
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
++#include "base/values.h"  // CAMOUWOLF
+ #include "services/metrics/public/cpp/ukm_builders.h"
+ #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+ #include "third_party/blink/renderer/bindings/core/v8/v8_object_builder.h"
+@@ -40,9 +44,38 @@
+   // SAFETY: Required from caller
+   const auto features_span = UNSAFE_BUFFERS(base::span<const wgpu::FeatureName>(
+       supported_features.features, supported_features.featureCount));
++  // CAMOUWOLF: the claimed adapter's feature set.
++  //
++  // adapter.features is the optional-capability list of the GPU and driver:
++  // "texture-compression-bc" is desktop, "-etc2"/"-astc" are mobile and Apple,
++  // "timestamp-query" and "float32-filterable" vary by vendor. It names the
++  // hardware class as plainly as the adapter info 0008 already serves.
++  //
++  // Filtering here means requestDevice() agrees: it validates
++  // requiredFeatures against this same set, so a feature the list hides is
++  // refused exactly as an adapter without it refuses. Like the WebGL
++  // extension list, the key can hide a feature the host has and cannot add
++  // one it lacks — a device created with a feature the backend cannot provide
++  // would fail in Dawn, after the adapter said yes.
++  const base::ListValue* configured_features =
++      base::CamouwolfConfig::Get().GetList("webGpu:features");
+   for (const auto& f : features_span) {
+     auto feature_name_enum_optional =
+         GPUSupportedFeatures::ToV8FeatureNameEnum(f);
++    if (feature_name_enum_optional && configured_features) {
++      const std::string_view feature_name(
++          V8GPUFeatureName(feature_name_enum_optional.value()).AsCStr());
++      bool listed = false;
++      for (const base::Value& item : *configured_features) {
++        if (item.is_string() && item.GetString() == feature_name) {
++          listed = true;
++          break;
++        }
++      }
++      if (!listed) {
++        continue;
++      }
++    }
+     if (feature_name_enum_optional) {
+       features->AddFeatureName(
+           V8GPUFeatureName(feature_name_enum_optional.value()));
+@@ -118,6 +151,10 @@
+ 
+   GPUSupportedLimits::ComboLimits limits;
+   GetHandle().GetLimits(limits.GetLinked());
++  // CAMOUWOLF: adapter.limits, bounded by the claimed adapter's. Applied to
++  // the adapter's copy only — a device's limits are the ones it was created
++  // with, and those are validated against this object.
++  GPUSupportedLimits::CamouwolfApplyConfiguredLimits(&limits);
+   limits_ = MakeGarbageCollected<GPUSupportedLimits>(limits);
+ 
+   info_ = CreateAdapterInfoForAdapter();
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h b/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h
+--- a/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h
++++ b/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h
+@@ -40,6 +40,10 @@
+   };
+ 
+   explicit GPUSupportedLimits(const ComboLimits& limits);
++
++  // CAMOUWOLF: tightens `limits` to the `webGpu:limits` map, when the identity
++  // carries one. See the definition.
++  static void CamouwolfApplyConfiguredLimits(ComboLimits* limits);
+ 
+   // Returns true if populated, false if not and the ScriptPromiseResolverBase
+   // has been rejected.
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc b/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
+@@ -5,8 +5,13 @@
+ #include "third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h"
+ 
+ #include <algorithm>
++#include <optional>
++#include <string_view>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/numerics/checked_math.h"
++#include "base/numerics/safe_conversions.h"  // CAMOUWOLF
++#include "base/values.h"  // CAMOUWOLF
+ #include "third_party/blink/renderer/bindings/core/v8/v8_union_undefined_unsignedlonglongenforcerange.h"
+ #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_extent_3d_dict.h"
+ #include "third_party/blink/renderer/core/dom/dom_exception.h"
+@@ -72,6 +77,41 @@
+ 
+ GPUSupportedLimits::GPUSupportedLimits(const ComboLimits& limits) {
+   limits.UnlinkedCopyTo(&limits_);
++}
++
++// CAMOUWOLF: adapter.limits from the claimed adapter.
++//
++// `webGpu:limits` is a map of limit name (the IDL spelling, as in
++// SUPPORTED_LIMITS above) to number. The limits are tiered by hardware class
++// the same way WebGL's are — maxTextureDimension2D is 8192 on the software
++// adapter and on most mobile GPUs, 16384 on desktop ones — so an adapter info
++// naming a desktop GPU beside a software adapter's limits is the WebGPU form
++// of the mismatch 0007 closes for WebGL.
++//
++// Each value can only make the adapter look LESS capable than the host: a
++// "max" limit is the smaller of the two, a "min…Alignment" limit the larger.
++// requestDevice() passes requiredLimits to Dawn, which checks them against the
++// real adapter; advertising more than the host has would let a page ask for
++// what was advertised and be refused, which no real adapter does.
++// static
++void GPUSupportedLimits::CamouwolfApplyConfiguredLimits(ComboLimits* limits) {
++  const base::DictValue* configured =
++      base::CamouwolfConfig::Get().GetDict("webGpu:limits");
++  if (!configured) {
++    return;
++  }
++#define X(name)                                                       \
++  if (const base::Value* value = configured->Find(#name)) {           \
++    if (const std::optional<double> number = value->GetIfDouble()) {  \
++      using T = decltype(GPUSupportedLimits::ComboLimits::name);      \
++      const T claimed = base::saturated_cast<T>(*number);             \
++      limits->name = std::string_view(#name).starts_with("min")       \
++                         ? std::max<T>(limits->name, claimed)         \
++                         : std::min<T>(limits->name, claimed);        \
++    }                                                                 \
++  }
++  SUPPORTED_LIMITS(X)
++#undef X
+ }
+ 
+ // static
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu.cc b/third_party/blink/renderer/modules/webgpu/gpu.cc
+--- a/third_party/blink/renderer/modules/webgpu/gpu.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu.cc
+@@ -6,6 +6,7 @@
+ 
+ #include <utility>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/feature_list.h"
+ #include "base/metrics/histogram_macros.h"
+ #include "base/notreached.h"
+@@ -397,6 +398,27 @@
+ }
+ 
+ V8GPUTextureFormat GPU::getPreferredCanvasFormat() {
++  // CAMOUWOLF: the claimed platform's preferred canvas format.
++  //
++  // This is an OS tell, not a GPU one: GetPreferredCanvasFormat() below is
++  // "rgba8unorm" on Linux and Android and "bgra8unorm" on Windows and macOS,
++  // decided by #if. A Linux host claiming Windows therefore answers
++  // "rgba8unorm" from an API that takes no permission and no adapter.
++  //
++  // Only the value script reads is changed. The internal
++  // GetPreferredCanvasFormat() keeps the host's answer, because the swap chain
++  // really is better off in the host's format (that is what the #if is for);
++  // both formats are valid for a canvas context on every platform, so a page
++  // that configures with the claimed one still works.
++  if (const auto format =
++          base::CamouwolfConfig::Get().GetString("webGpu:preferredCanvasFormat")) {
++    if (*format == "bgra8unorm") {
++      return FromDawnEnum(wgpu::TextureFormat::BGRA8Unorm);
++    }
++    if (*format == "rgba8unorm") {
++      return FromDawnEnum(wgpu::TextureFormat::RGBA8Unorm);
++    }
++  }
+   return FromDawnEnum(GetPreferredCanvasFormat());
+ }
+ 

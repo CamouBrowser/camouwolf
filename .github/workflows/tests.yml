@@ -1,0 +1,551 @@
+name: Tests
+
+# The repository's test pipeline. Runs on every pull request, every push to dev
+# and main, on demand, and -- via workflow_call -- from release.yml, so a
+# contributor's pull request and a release are judged by exactly the same
+# checks. Every step that runs a suite calls `python -m ci.<stage>`, which is
+# what gets run locally; see ci/README.md.
+#
+# Ordering: cheapest first, and every tier gates the next.
+#
+#   0  static      settled decisions, patch guards, pipeline self-tests   seconds
+#   1  unit        the Python launcher, the TypeScript launcher           ~1 min
+#   2  browser     sync + patch, build, package (build-browser.yml)       about a day
+#   3a smoke       install, skiplist audit, build-tester, leaks/crashes   ~15 min
+#   3b full        the upstream Playwright suite (sharded), stealth       ~15 min
+#   4  gate        the single required status check
+#
+# Every tier runs on GitHub-hosted runners, for every pull request, forks
+# included (ci/tribal-rules.yml: hosted-runners-only). A hosted job stops at six
+# hours, so the browser is built by build-browser.yml as a chain of jobs that
+# hand out/ on; a new push to the same pull request cancels the run it replaces.
+#
+# Only linux x86_64 (ci.targets.TESTED) is built and tested here; release.yml
+# publishes this build and builds the other enabled targets itself.
+# `python -m ci.targets` lists the targets and the reason each disabled one is off.
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+    inputs:
+      playwright_tag:
+        description: "Pin the Playwright suite (default: resolved from browser/upstream.sh)"
+        required: false
+        type: string
+      shards:
+        description: "How many runs to split the upstream suite across"
+        required: false
+        default: "4"
+        type: string
+  workflow_call:
+    inputs:
+      playwright_tag:
+        required: false
+        type: string
+      shards:
+        required: false
+        default: "4"
+        type: string
+      ref:
+        description: "Commit to test; defaults to the calling workflow's commit"
+        required: false
+        type: string
+    secrets:
+      SUNDIAL_USERNAME:
+        required: false
+      SUNDIAL_AUTOMATION_KEY:
+        required: false
+    outputs:
+      verdict:
+        description: "pass or fail"
+        value: ${{ jobs.summary.outputs.verdict }}
+
+permissions: {}
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  CI_WORK_DIR: ${{ github.workspace }}/.ci-work
+  CI_RESULTS_DIR: ${{ github.workspace }}/.ci-work/results
+
+jobs:
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: Resolve versions
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      browser_version: ${{ steps.versions.outputs.browser_version }}
+      browser_release: ${{ steps.versions.outputs.browser_release }}
+      playwright_tag: ${{ steps.versions.outputs.playwright_tag }}
+      playwright_chromium: ${{ steps.versions.outputs.playwright_chromium }}
+      version_note: ${{ steps.versions.outputs.note }}
+      archive: ${{ steps.plan.outputs.archive }}
+      has_sundial: ${{ steps.sundial.outputs.enabled }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python3 -m pip install -q -r ci/requirements.txt
+
+      - name: Which browser, which suite
+        id: versions
+        env:
+          PLAYWRIGHT_TAG: ${{ inputs.playwright_tag }}
+        run: python3 -m ci.versions --json ${PLAYWRIGHT_TAG:+--playwright-tag "$PLAYWRIGHT_TAG"}
+
+      - name: Archive name and shard list
+        id: plan
+        env:
+          SHARDS: ${{ inputs.shards || '4' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          from ci.targets import TARGETS, archive_name
+          count = int(os.environ["SHARDS"])
+          from ci.targets import TESTED
+          print("archive=" + archive_name(TARGETS[TESTED]))
+          print("shards=" + json.dumps([f"{i}/{count}" for i in range(1, count + 1)]))
+          PY
+
+      - name: Is the stealth check enabled?
+        id: sundial
+        env:
+          HAS_KEY: ${{ secrets.SUNDIAL_AUTOMATION_KEY != '' }}
+        run: |
+          enabled=$(python3 -m ci.run_sundial status)
+          if [ "$HAS_KEY" != "true" ]; then enabled=false; fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  static:
+    name: Static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install the pipeline's dependencies
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q libcairo2 fontconfig
+          python3 -m pip install -q -r ci/requirements.txt
+          # The config-key guard reads the locale keys from the launcher's camoucore.
+          python3 -m pip install -q ./python
+
+      - name: Pipeline self-tests
+        run: python3 -m pytest ci/tests -q
+
+      - name: Settled decisions (ci/tribal-rules.yml)
+        run: python3 -m ci.run_native --subset rules
+
+      # Fetches the pinned tag's copy of the files the series touches (a few
+      # MB from googlesource) and proves every hunk applies to it.
+      - name: Patch guards
+        run: python3 -m ci.run_patch_guards
+
+      - name: The tree is releasable
+        run: python3 -m ci.release check
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-static
+          path: .ci-work/results/
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  pythonlib:
+    name: Python launcher
+    needs: static
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install the launcher and the pipeline
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb
+          python3 -m pip install -q -r ci/requirements.txt
+          python3 -m pip install -q ./python
+      - run: python3 -m ci.run_pythonlib
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-pythonlib
+          path: .ci-work/results/
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  typescript:
+    name: TypeScript launcher
+    needs: static
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: typescript/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+      # The golden tests record from the Python launcher, so it is installed too.
+      - name: Install the launchers' prerequisites and the pipeline
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb
+          python3 -m pip install -q -r ci/requirements.txt
+          python3 -m pip install -q ./python
+      - run: python3 -m ci.run_typescript
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-typescript
+          path: .ci-work/results/
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  # Tier 2. One job on the build machine: the checkout it syncs is persistent
+  # (CAMOUWOLF_BUILD_DIR on the runner), so an unchanged tree is an incremental
+  # no-op build rather than a cold one.
+  build:
+    name: Build (linux x86_64)
+    needs: [resolve, pythonlib, typescript]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-browser.yml
+    with:
+      target: linux
+      arch: x86_64
+      ref: ${{ inputs.ref || github.sha }}
+
+  # ---------------------------------------------------------------------------
+  # Tier 3a. Cheap checks of the packaged build; the suite waits on these so a
+  # browser that fails them does not also burn every Playwright shard.
+  smoke:
+    name: Install, audit, build-tester, leaks
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: CamouwolfBuilds-linux-x86_64
+          path: ${{ runner.temp }}/package
+      - name: Pipeline dependencies and the suite's interpreter
+        id: suite
+        env:
+          PLAYWRIGHT_TAG: ${{ needs.resolve.outputs.playwright_tag }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/python" -m pip install -q -r ci/requirements.txt
+          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ci-venv/bin/python" -m ci.suite --tag "$PLAYWRIGHT_TAG"
+
+      - name: Install the package and prove it starts
+        id: install
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          ARCHIVE: ${{ needs.resolve.outputs.archive }}
+        run: >-
+          "$CI_SUITE_PYTHON" -m ci.run_install
+          --package "$RUNNER_TEMP/package/$ARCHIVE"
+          --dest "$RUNNER_TEMP/install"
+
+      - name: Every skiplist entry still fails
+        if: always() && steps.install.outcome == 'success'
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          CAMOUWOLF_BINARY: ${{ steps.install.outputs.binary }}
+        run: python3 -m ci.run_skiplist_audit
+
+      - name: Build-tester
+        if: always() && steps.install.outcome == 'success'
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          CAMOUWOLF_BINARY: ${{ steps.install.outputs.binary }}
+        run: python3 -m ci.run_build_tester
+
+      - name: Leaks and crash recovery
+        if: always() && steps.install.outcome == 'success'
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          CAMOUWOLF_BINARY: ${{ steps.install.outputs.binary }}
+        run: python3 -m ci.run_native --subset browser
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-smoke
+          path: .ci-work/results/
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  # Tier 3b.
+  playwright:
+    name: Playwright (${{ matrix.shard }})
+    needs: [resolve, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.resolve.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: CamouwolfBuilds-linux-x86_64
+          path: ${{ runner.temp }}/package
+      - name: Pipeline dependencies and the suite's interpreter
+        id: suite
+        env:
+          PLAYWRIGHT_TAG: ${{ needs.resolve.outputs.playwright_tag }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/python" -m pip install -q -r ci/requirements.txt
+          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ci-venv/bin/python" -m ci.suite --tag "$PLAYWRIGHT_TAG"
+      - name: Install the package
+        id: install
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          ARCHIVE: ${{ needs.resolve.outputs.archive }}
+          # This job's own result file is the suite's; the install was judged in `smoke`.
+          CI_RESULTS_DIR: ${{ runner.temp }}/install-results
+        run: >-
+          "$CI_SUITE_PYTHON" -m ci.run_install
+          --package "$RUNNER_TEMP/package/$ARCHIVE"
+          --dest "$RUNNER_TEMP/install"
+      - name: Upstream suite, through the launcher
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          CAMOUWOLF_BINARY: ${{ steps.install.outputs.binary }}
+          PLAYWRIGHT_TAG: ${{ needs.resolve.outputs.playwright_tag }}
+          SHARD: ${{ matrix.shard }}
+        run: python3 -m ci.run_playwright --playwright-tag "$PLAYWRIGHT_TAG" --shard "$SHARD"
+      - name: Artifact name
+        id: name
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: echo "suffix=${SHARD/\//of}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-playwright-${{ steps.name.outputs.suffix }}
+          # The junit files hold each failure's message.
+          path: |
+            .ci-work/results/
+            .ci-work/junit-*.xml
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  # Scheduled only while ci/sundial.yml says `enabled: true` AND the credential
+  # is set. It depends on a service outside this repository, so an outage there
+  # records a skip with its reason (see --allow-skip in `summary`); a bad
+  # credential or a bad score still fails.
+  sundial:
+    name: Stealth check
+    needs: [resolve, smoke]
+    if: needs.resolve.outputs.has_sundial == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: CamouwolfBuilds-linux-x86_64
+          path: ${{ runner.temp }}/package
+      - name: Pipeline dependencies and the suite's interpreter
+        id: suite
+        env:
+          PLAYWRIGHT_TAG: ${{ needs.resolve.outputs.playwright_tag }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ci-venv"
+          "$RUNNER_TEMP/ci-venv/bin/python" -m pip install -q -r ci/requirements.txt
+          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ci-venv/bin/python" -m ci.suite --tag "$PLAYWRIGHT_TAG"
+      - name: Install the package
+        id: install
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          ARCHIVE: ${{ needs.resolve.outputs.archive }}
+          CI_RESULTS_DIR: ${{ runner.temp }}/install-results
+        run: >-
+          "$CI_SUITE_PYTHON" -m ci.run_install
+          --package "$RUNNER_TEMP/package/$ARCHIVE"
+          --dest "$RUNNER_TEMP/install"
+      - name: Scan, and bring back numbers only
+        env:
+          CI_SUITE_PYTHON: ${{ steps.suite.outputs.python }}
+          CAMOUWOLF_BINARY: ${{ steps.install.outputs.binary }}
+          SUNDIAL_USERNAME: ${{ secrets.SUNDIAL_USERNAME }}
+          SUNDIAL_AUTOMATION_KEY: ${{ secrets.SUNDIAL_AUTOMATION_KEY }}
+        run: '"$CI_SUITE_PYTHON" -m ci.run_sundial'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-sundial
+          path: .ci-work/results/
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  summary:
+    name: Summary
+    needs: [resolve, static, pythonlib, typescript, build, smoke, playwright, sundial]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      verdict: ${{ steps.summarize.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: python3 -m pip install -q -r ci/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: downloaded
+      - name: Collect every result file
+        run: |
+          mkdir -p .ci-work/results
+          # Each result has one owner; two copies means a job uploaded another's.
+          dupes=$(find downloaded -name '*.json' -printf '%f\n' | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "more than one artifact holds: $dupes" >&2
+            find downloaded -name '*.json' | sort >&2
+            exit 1
+          fi
+          find downloaded -name '*.json' -exec cp {} .ci-work/results/ \;
+          ls .ci-work/results
+
+      - name: Verdict
+        id: summarize
+        env:
+          HAS_SUNDIAL: ${{ needs.resolve.outputs.has_sundial }}
+          BROWSER_VERSION: ${{ needs.resolve.outputs.browser_version }}
+          BROWSER_RELEASE: ${{ needs.resolve.outputs.browser_release }}
+          PLAYWRIGHT_TAG: ${{ needs.resolve.outputs.playwright_tag }}
+          PLAYWRIGHT_CHROMIUM: ${{ needs.resolve.outputs.playwright_chromium }}
+          VERSION_NOTE: ${{ needs.resolve.outputs.version_note }}
+        run: |
+          # The build's own success is judged by `gate`: its stages hand out/ on, not result files.
+          required="native_rules patch_guards pythonlib typescript install skiplist_audit build_tester native_browser playwright"
+          if [ "$HAS_SUNDIAL" = "true" ]; then required="$required sundial"; fi
+          set +e
+          python3 -m ci.summarize \
+            --results-dir .ci-work/results \
+            --require $required \
+            --allow-skip sundial \
+            --markdown summary.md \
+            --out summary.json \
+            --browser-version "$BROWSER_VERSION" \
+            --browser-release "$BROWSER_RELEASE" \
+            --playwright-tag "$PLAYWRIGHT_TAG" \
+            --playwright-chromium "$PLAYWRIGHT_CHROMIUM" \
+            --version-note "$VERSION_NOTE"
+          code=$?
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          echo "verdict=$([ $code -eq 0 ] && echo pass || echo fail)" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-summary
+          path: |
+            summary.md
+            summary.json
+
+  # ---------------------------------------------------------------------------
+  gate:
+    name: All tests passed
+    # THE required status check (ci/branch-protection.json). Branch protection
+    # points at this one job rather than at a dozen, so the required-check list
+    # does not change when a suite is added, renamed, or sharded differently.
+    #
+    # Only the stealth check may be skipped, when it is disabled or has no
+    # credential (a fork's pull request has none).
+    # Anything else that is not `success`, including `skipped`, fails the gate:
+    # a suite that did not run has not passed.
+    needs: [resolve, static, pythonlib, typescript, build, smoke, playwright, sundial, summary]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Check every tier
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          HAS_SUNDIAL: ${{ needs.resolve.outputs.has_sundial }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          may_skip = set() if os.environ["HAS_SUNDIAL"] == "true" else {"sundial"}
+          bad = []
+          for name, job in sorted(needs.items()):
+              result = job["result"]
+              ok = result == "success" or (result == "skipped" and name in may_skip)
+              print(f"{name:12} {result}{'' if ok else '   <-- fails the gate'}")
+              if not ok:
+                  bad.append(name)
+          sys.exit(1 if bad else 0)
+          PY

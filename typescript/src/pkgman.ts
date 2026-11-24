@@ -1,0 +1,1289 @@
+/**
+ * Browser package management: version resolution, GitHub release discovery,
+ * download/extract, and path lookup.
+ *
+ * TypeScript twin of python/src/camouwolf/pkgman.py.
+ */
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import { createRequire } from "node:module";
+import * as os from "node:os";
+import * as path from "node:path";
+import type { Writable } from "node:stream";
+import {
+	githubHeaders,
+	raiseForStatus,
+	request,
+	webdl,
+} from "camoucore/download.js";
+import { CONSTRAINTS, LIBRARY_VERSION } from "./__version__.js";
+import {
+	effectivePin,
+	pinMatches,
+	pinSpec,
+	warnIfUnpaired,
+} from "./browser-pin.js";
+import {
+	CamouwolfNotInstalled,
+	FileNotFoundError,
+	MissingRelease,
+	ProfileDirectoryError,
+	UnsupportedArchitecture,
+	UnsupportedOS,
+	UnsupportedVersion,
+} from "./exceptions.js";
+// pkgman and multiversion are mutually dependent, exactly as the Python twin's
+// function-local imports are. Every use below sits inside a function body, so
+// the ESM cycle resolves before any binding is read.
+import {
+	COMPAT_FLAG,
+	findInstalledVersion,
+	getActivePath,
+	getDefaultChannel,
+	installVersioned,
+	loadConfig,
+	loadRepoCache,
+} from "./multiversion.js";
+import {
+	ARCH_MAP,
+	INSTALL_DIR,
+	LAUNCH_FILE,
+	loadDataFile,
+	OS_ARCH_MATRIX,
+	OS_MAP,
+	OS_NAME,
+	rprint,
+} from "./paths.js";
+import { comparePyStr, ValueError } from "./pycompat.js";
+import { warn } from "./warnings.js";
+
+/**
+ * Ensure Chromium's Linux configuration directory exists before startup.
+ *
+ * Chromium probes ~/.config/camouwolf even when Playwright supplies a temporary
+ * profile.
+ * On a read-only HOME -- the normal shape for a container that bakes the bundle
+ * in as root and runs as a non-root user -- a missing directory makes startup
+ * stall with no diagnostic, surfacing as a launch timeout rather than as a
+ * permissions error. An existing directory may itself still be read-only, which
+ * is fine: Chromium only needs it to be there.
+ */
+export function ensureBrowserProfileDir(
+	env?: Record<string, unknown>,
+): string | undefined {
+	if (OS_NAME !== "lin") return undefined;
+
+	const environment = env ?? process.env;
+	const configuredHome = environment.HOME;
+	const home = configuredHome
+		? expandUser(String(configuredHome))
+		: os.homedir();
+	const profileDir = path.join(home, ".config", "camouwolf");
+	if (fs.existsSync(profileDir) && fs.statSync(profileDir).isDirectory()) {
+		return profileDir;
+	}
+
+	try {
+		fs.mkdirSync(profileDir, { recursive: true, mode: 0o700 });
+	} catch (error) {
+		throw new ProfileDirectoryError(
+			`Camouwolf requires '${profileDir}' to exist before launch, but it could ` +
+				"not be created. For a read-only runtime, create this directory " +
+				"before making HOME read-only.",
+			{ cause: error },
+		);
+	}
+
+	if (!fs.statSync(profileDir).isDirectory()) {
+		throw new ProfileDirectoryError(
+			`Camouwolf requires '${profileDir}' to be a directory before launch.`,
+		);
+	}
+	return profileDir;
+}
+
+/** os.path.expanduser for the forms a HOME value can take. */
+function expandUser(p: string): string {
+	if (p === "~") return os.homedir();
+	if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+	return p;
+}
+
+/**
+ * Parse a semver string into a comparable tuple.
+ */
+export function parseSemver(version: string): number[] {
+	// A prerelease compares as its release: 0.5.8b1 (PEP 440) and 0.5.8-beta.1
+	// (semver) are both 0.5.8, exactly as in the Python twin.
+	const release = version
+		.replace(/^[\^~]+/, "")
+		.split(/(?<=\d)(?:[-+]|(?:a|b|rc|dev|\.dev|\.post)\d*)/)[0];
+	const parts = release.split(".");
+	// int() semantics: the whole part must be an integer ("1a" -> 0).
+	const out = parts.map((part) =>
+		/^\s*[+-]?\d+\s*$/.test(part) ? Number.parseInt(part, 10) : 0,
+	);
+	while (out.length < 3) out.push(0);
+	return out;
+}
+
+function compareTuples(a: number[], b: number[]): number {
+	const len = Math.max(a.length, b.length);
+	for (let i = 0; i < len; i++) {
+		const x = a[i] ?? 0;
+		const y = b[i] ?? 0;
+		if (x < y) return -1;
+		if (x > y) return 1;
+	}
+	return 0;
+}
+
+/**
+ * A comparable browser version string (up to 5 parts).
+ */
+export class Version {
+	readonly build: string;
+	readonly version?: string;
+	readonly sortedRel: number[];
+
+	constructor(build: string, version?: string) {
+		this.build = build;
+		this.version = version;
+		// Mirrors the Python twin: digits stay numeric, a leading letter becomes
+		// ord(c) - 1024 so "alpha" < "beta" < numeric builds sort sanely.
+		const parts = build
+			.split(".")
+			.map((x) => (/^\d+$/.test(x) ? Number(x) : x.charCodeAt(0) - 1024));
+		const padding = 5 - (build.split(".").length - 1);
+		for (let i = 0; i < padding; i++) parts.push(0);
+		this.sortedRel = parts;
+	}
+
+	get fullString(): string {
+		return `${this.version}-${this.build}`;
+	}
+
+	/** Whether the build channel is alpha (like "alpha.26"). */
+	get isAlpha(): boolean {
+		return this.build.split(".")[0].toLowerCase() === "alpha";
+	}
+
+	compare(other: Version): number {
+		return compareTuples(this.sortedRel, other.sortedRel);
+	}
+
+	equals(other: Version): boolean {
+		return this.compare(other) === 0;
+	}
+
+	lessThan(other: Version): boolean {
+		return this.compare(other) < 0;
+	}
+
+	greaterOrEqual(other: Version): boolean {
+		return this.compare(other) >= 0;
+	}
+
+	isSupported(): boolean {
+		return (
+			this.compare(effectiveVersionMin()) >= 0 && this.compare(VERSION_MAX) < 0
+		);
+	}
+
+	/**
+	 * Read the version from version.json at the given path.
+	 */
+	static fromPath(dir: string = INSTALL_DIR): Version {
+		const versionPath = path.join(dir, "version.json");
+		if (!fs.existsSync(versionPath)) {
+			throw new FileNotFoundError(
+				`Version information not found at ${versionPath}. ` +
+					"Please run `camouwolf fetch` to install.",
+			);
+		}
+		const data = JSON.parse(fs.readFileSync(versionPath, "utf-8"));
+		// "release" and then "tag" win over "build", as the Python twin's pops do.
+		const build =
+			"release" in data ? data.release : "tag" in data ? data.tag : data.build;
+		if (build === undefined) {
+			throw new Error(`KeyError: 'build' (in ${versionPath})`);
+		}
+		return new Version(build, data.version ?? undefined);
+	}
+
+	static buildMinMax(): [Version, Version] {
+		return [
+			new Version(CONSTRAINTS.MIN_VERSION),
+			new Version(CONSTRAINTS.MAX_VERSION),
+		];
+	}
+}
+
+export const [VERSION_MIN, VERSION_MAX] = Version.buildMinMax();
+
+/**
+ * Seams the Python tests reach with monkeypatch (VERSION_MIN,
+ * _resolved_playwright_version, CamouwolfFetcher). Production code never
+ * reassigns these.
+ */
+export const pkgmanDeps = {
+	versionMin: (): Version => VERSION_MIN,
+	resolvedPlaywrightVersion: (): number[] | null => resolvedPlaywrightVersion(),
+	/** The fetcher the auto-install path runs `install()` on. */
+	newFetcher: async (): Promise<{ install(): Promise<unknown> }> =>
+		new CamouwolfFetcher().init(),
+};
+
+/**
+ * The resolved playwright-core version string, or null when it cannot be read.
+ * The Python twin asks importlib.metadata for `playwright`; the npm package
+ * that plays that role here is playwright-core.
+ */
+export function resolvedPlaywrightVersionRaw(): string | null {
+	return installedPackageVersion("playwright-core");
+}
+
+/** An installed npm package's version, or null if it cannot be read. */
+export function installedPackageVersion(name: string): string | null {
+	try {
+		const require = createRequire(import.meta.url);
+		const pkg = JSON.parse(
+			fs.readFileSync(require.resolve(`${name}/package.json`), "utf-8"),
+		);
+		return typeof pkg.version === "string" ? pkg.version : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The installed Playwright version, or null if it cannot be determined. */
+export function resolvedPlaywrightVersion(): number[] | null {
+	const raw = resolvedPlaywrightVersionRaw();
+	return raw === null ? null : parseSemver(raw);
+}
+
+/** The installed Playwright version for messages ("the installed version"
+ *  when it cannot be read). */
+export function resolvedPlaywrightVersionStr(): string {
+	return resolvedPlaywrightVersionRaw() ?? "the installed version";
+}
+
+/**
+ * The lowest browser build this install can actually talk to.
+ *
+ * VERSION_MIN, raised by whatever the resolved Playwright requires. When the
+ * Playwright version cannot be read we fall back to VERSION_MIN rather than
+ * assuming the worst: a spurious forced re-download is worse than leaving a
+ * working install alone, and package.json caps Playwright anyway.
+ */
+export function effectiveVersionMin(): Version {
+	let floor = pkgmanDeps.versionMin();
+	const playwrightVersion = pkgmanDeps.resolvedPlaywrightVersion();
+	if (playwrightVersion === null) return floor;
+	for (const [
+		requiredPlaywright,
+		build,
+	] of CONSTRAINTS.PLAYWRIGHT_BROWSER_FLOORS) {
+		if (
+			compareTuples(playwrightVersion, [...requiredPlaywright]) >= 0 &&
+			floor.lessThan(new Version(build))
+		) {
+			floor = new Version(build);
+		}
+	}
+	return floor;
+}
+
+/** One `versions:` entry of a browser repo in repos.yml. */
+export interface BrowserVersionConstraint {
+	python_library?: { min?: string; max?: string };
+	/** Absent means "assume every build is supported". */
+	browser?: {
+		stable?: { min?: string; max?: string };
+		prerelease?: { min?: string; max?: string };
+		min?: string;
+		max?: string;
+	} | null;
+}
+
+/** One `browsers:` entry of repos.yml. */
+export interface BrowserRepoEntry {
+	/** Primary repo first, then fallbacks: a comma-separated string or a list. */
+	repo: string | string[];
+	name: string;
+	pattern?: string;
+	versions?: BrowserVersionConstraint[];
+}
+
+/**
+ * Find the browser build constraint for the current library version.
+ */
+function findVersionConstraints(
+	versions: BrowserVersionConstraint[],
+	libraryVersion: string,
+): BrowserVersionConstraint["browser"] | undefined {
+	const libParts = parseSemver(libraryVersion);
+	let newest: BrowserVersionConstraint["browser"] | undefined;
+	let newestMin: number[] | undefined;
+
+	for (const entry of versions) {
+		const pyLib = entry.python_library ?? {};
+		const libMin = parseSemver(pyLib.min ?? "0");
+		const libMax = parseSemver(pyLib.max ?? "999");
+		if (
+			compareTuples(libMin, libParts) <= 0 &&
+			compareTuples(libParts, libMax) < 0
+		) {
+			return entry.browser;
+		}
+		if (newestMin === undefined || compareTuples(libMin, newestMin) > 0) {
+			newestMin = libMin;
+			newest = entry.browser;
+		}
+	}
+	return newest;
+}
+
+/**
+ * Get the min and max build bounds for a channel.
+ */
+function channelBounds(
+	browser: BrowserVersionConstraint["browser"] | undefined,
+	channel: "stable" | "prerelease",
+): [string | undefined, string | undefined] {
+	if (!browser) return [undefined, undefined];
+	if ("stable" in browser || "prerelease" in browser) {
+		const section = browser[channel] ?? {};
+		return [section.min, section.max];
+	}
+	return [browser.min, browser.max];
+}
+
+/**
+ * Configuration for a Camouwolf repository.
+ */
+export class RepoConfig {
+	repos: string[];
+	name: string;
+	pattern: string;
+	stableMin?: string;
+	stableMax?: string;
+	prereleaseMin?: string;
+	prereleaseMax?: string;
+
+	constructor(init: {
+		repos: string[];
+		name: string;
+		pattern: string;
+		stableMin?: string;
+		stableMax?: string;
+		prereleaseMin?: string;
+		prereleaseMax?: string;
+	}) {
+		this.repos = init.repos;
+		this.name = init.name;
+		this.pattern = init.pattern;
+		this.stableMin = init.stableMin;
+		this.stableMax = init.stableMax;
+		this.prereleaseMin = init.prereleaseMin;
+		this.prereleaseMax = init.prereleaseMax;
+	}
+
+	/** Primary GitHub repo. */
+	get repo(): string {
+		return this.repos[0];
+	}
+
+	static loadRepos(spoofLibraryVersion?: string): RepoConfig[] {
+		const data = loadDataFile("repos.yml");
+		return ((data.browsers ?? []) as BrowserRepoEntry[]).map((r) =>
+			RepoConfig.fromEntry(r, spoofLibraryVersion),
+		);
+	}
+
+	static getDefaultName(): string {
+		return loadDataFile("repos.yml").default?.browser ?? "Official";
+	}
+
+	static fromEntry(
+		entry: BrowserRepoEntry,
+		spoofLibraryVersion?: string,
+	): RepoConfig {
+		if (!("pattern" in entry) || entry.pattern == null) {
+			throw new Error(
+				`Repo '${entry.name ?? "unknown"}' missing required pattern`,
+			);
+		}
+
+		let browser: BrowserVersionConstraint["browser"] | undefined;
+		if (entry.versions?.length) {
+			browser = findVersionConstraints(
+				entry.versions,
+				spoofLibraryVersion || LIBRARY_VERSION,
+			);
+		}
+		const [stableMin, stableMax] = channelBounds(browser, "stable");
+		const [prereleaseMin, prereleaseMax] = channelBounds(browser, "prerelease");
+
+		// Parse comma separated repos list (primary + fallbacks)
+		const repos =
+			typeof entry.repo === "string"
+				? entry.repo.split(",").map((r) => r.trim())
+				: entry.repo;
+
+		return new RepoConfig({
+			repos,
+			name: entry.name,
+			pattern: String(entry.pattern),
+			stableMin,
+			stableMax,
+			prereleaseMin,
+			prereleaseMax,
+		});
+	}
+
+	static getDefault(): RepoConfig {
+		const found = RepoConfig.findByName(RepoConfig.getDefaultName());
+		return found ?? RepoConfig.loadRepos()[0];
+	}
+
+	static findByName(name: string): RepoConfig | undefined {
+		const lower = name.toLowerCase();
+		return RepoConfig.loadRepos().find((r) => r.name.toLowerCase() === lower);
+	}
+
+	getOsName(spoofOs?: string): string {
+		if (spoofOs) return spoofOs;
+		const osName = OS_MAP[process.platform];
+		if (!osName) {
+			throw new UnsupportedOS(`OS ${process.platform} is not supported`);
+		}
+		return osName;
+	}
+
+	getArch(spoofArch?: string): string {
+		if (spoofArch) return spoofArch;
+		const platArch = os.arch().toLowerCase();
+		const arch = ARCH_MAP[platArch];
+		if (!arch) {
+			throw new UnsupportedArchitecture(
+				`Architecture ${platArch} is not supported`,
+			);
+		}
+		return arch;
+	}
+
+	/**
+	 * Build the asset regex from the config pattern string.
+	 */
+	buildPattern(spoofOs?: string, spoofArch?: string): RegExp {
+		const replacements: Record<string, string> = {
+			name: "(?<name>\\w+)",
+			version: "(?<version>[^-]+)",
+			build: "(?<build>[^-]+)",
+			os: escapeRegExp(this.getOsName(spoofOs)),
+			arch: escapeRegExp(this.getArch(spoofArch)),
+		};
+		const pattern = this.pattern.replace(/\./g, "\\.");
+		const regex = pattern.replace(
+			/\{(\w+)\}/g,
+			(match, key) => replacements[key] ?? match,
+		);
+		return new RegExp(`^${regex}`);
+	}
+
+	/**
+	 * Check if a build is within the supported range for its channel.
+	 */
+	isVersionSupported(version: Version, isPrerelease: boolean = false): boolean {
+		const buildMin = isPrerelease ? this.prereleaseMin : this.stableMin;
+		const buildMax = isPrerelease ? this.prereleaseMax : this.stableMax;
+		if (buildMin == null || buildMax == null) {
+			return true;
+		}
+		return (
+			new Version(buildMin).compare(version) <= 0 &&
+			version.compare(new Version(buildMax)) <= 0
+		);
+	}
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export interface GitHubAsset {
+	name: string;
+	browser_download_url: string;
+	id?: number;
+	size?: number;
+	updated_at?: string;
+	created_at?: string;
+	digest?: string;
+}
+
+export interface GitHubRelease {
+	prerelease?: boolean;
+	assets: GitHubAsset[];
+}
+
+/** Whether this library speaks a browser's declared interface. */
+export function interfaceSupported(iface: number): boolean {
+	return CONSTRAINTS.MIN_INTERFACE <= iface && iface <= CONSTRAINTS.INTERFACE;
+}
+
+const releaseInterfaces = new Map<string | number, number>();
+
+/**
+ * The browser interface a GitHub release declares in its manifest.json. A
+ * release without a manifest, or a manifest without the field, predates the
+ * field and is interface 1.
+ */
+export async function releaseInterface(
+	release: GitHubRelease,
+): Promise<number> {
+	const manifest = (release.assets ?? []).find(
+		(a) => a.name === "manifest.json",
+	);
+	if (!manifest) return 1;
+	const key = manifest.id ?? manifest.browser_download_url;
+	let iface = releaseInterfaces.get(key);
+	if (iface === undefined) {
+		const url = manifest.browser_download_url;
+		const response = await request(url, {
+			signal: AbortSignal.timeout(20_000),
+		});
+		raiseForStatus(response, url);
+		iface = Number(
+			((await response.json()) as { interface?: number }).interface ?? 1,
+		);
+		releaseInterfaces.set(key, iface);
+	}
+	return iface;
+}
+
+/** The interface recorded in an install's version.json at install time. */
+export function installedInterface(installPath: string): number {
+	const data = JSON.parse(
+		fs.readFileSync(path.join(installPath, "version.json"), "utf-8"),
+	) as { interface?: number };
+	return Number(data.interface ?? 1);
+}
+
+/** Why a browser needs a newer package, and the command that gets one. */
+export function upgradeMessage(version: Version, iface: number): string {
+	return (
+		`Camouwolf v${version.fullString} needs a newer camouwolf package: it uses browser interface ` +
+		`${iface}, and this package supports ${CONSTRAINTS.MIN_INTERFACE}-` +
+		`${CONSTRAINTS.INTERFACE}. Upgrade with \`npm install camouwolf@latest\`.`
+	);
+}
+
+export function incompatibleMessage(version: Version, iface: number): string {
+	return (
+		`${upgradeMessage(version, iface)} ` +
+		"Or run `camouwolf fetch` to install a browser this package supports."
+	);
+}
+
+/** A build the last `camouwolf sync` found that needs a newer package. */
+export interface IncompatibleBuild {
+	repo: string;
+	version: string;
+	build: string;
+	interface: number;
+}
+
+let outdatedWarned = false;
+
+/**
+ * Warn once when the last `camouwolf sync` found a browser release that needs
+ * a newer package. Reads the sync cache, so a launch makes no request.
+ */
+export function warnIfPackageOutdated(): void {
+	if (outdatedWarned) return;
+	const newer = (loadRepoCache().incompatible ?? []) as IncompatibleBuild[];
+	if (!newer.length) return;
+	outdatedWarned = true;
+	const versionOf = (v: IncompatibleBuild) => new Version(v.build, v.version);
+	const newest = newer.reduce((a, b) =>
+		versionOf(b).compare(versionOf(a)) > 0 ? b : a,
+	);
+	warn(upgradeMessage(versionOf(newest), newest.interface));
+}
+
+/** Test hook: forget that the warning was already issued. */
+export function resetOutdatedWarning(): void {
+	outdatedWarned = false;
+}
+
+/** A GitHub repo's releases, newest first. */
+async function githubReleases(repo: string): Promise<GitHubRelease[]> {
+	const apiUrl = `https://api.github.com/repos/${repo}/releases`;
+	const response = await request(apiUrl, {
+		headers: githubHeaders(apiUrl),
+		signal: AbortSignal.timeout(20_000),
+	});
+	raiseForStatus(response, apiUrl);
+	return (await response.json()) as GitHubRelease[];
+}
+
+/**
+ * Information about an available Camouwolf version on GitHub.
+ */
+export class AvailableVersion {
+	version: Version;
+	url: string;
+	isPrerelease: boolean;
+	assetId?: number;
+	assetSize?: number;
+	assetUpdatedAt?: string;
+	sha256?: string;
+	assetCreatedAt?: string;
+	interface = 1;
+
+	constructor(init: {
+		version: Version;
+		url: string;
+		isPrerelease: boolean;
+		assetId?: number;
+		assetSize?: number;
+		assetUpdatedAt?: string;
+		sha256?: string;
+		assetCreatedAt?: string;
+		interface?: number;
+	}) {
+		Object.assign(this, init);
+		this.version = init.version;
+		this.url = init.url;
+		this.isPrerelease = init.isPrerelease;
+	}
+
+	/** First 8 hex chars of the sha256, or empty when unknown. */
+	get sha8(): string {
+		return (this.sha256 ?? "").slice(0, 8);
+	}
+
+	get display(): string {
+		const pre = this.isPrerelease ? " (prerelease)" : "";
+		return `v${this.version.fullString}${pre}`;
+	}
+
+	toMetadata(): Record<string, any> {
+		return {
+			version: this.version.version ?? null,
+			build: this.version.build,
+			prerelease: this.isPrerelease,
+			asset_id: this.assetId ?? null,
+			asset_size: this.assetSize ?? null,
+			asset_updated_at: this.assetUpdatedAt ?? null,
+			sha256: this.sha256 ?? null,
+			created_at: this.assetCreatedAt ?? null,
+			interface: this.interface,
+		};
+	}
+}
+
+/**
+ * Handles fetching and installing Camouwolf.
+ */
+export class CamouwolfFetcher {
+	githubRepos: string[];
+	githubRepo: string;
+	isPrerelease = false;
+	repoConfig: RepoConfig;
+	arch: string;
+	pattern: RegExp;
+	installedSha256?: string;
+	installedCreatedAt?: string;
+	installedInterface = 1;
+	_versionObj?: Version;
+	_selectedVersion?: AvailableVersion;
+	_url?: string;
+
+	constructor(repoConfig?: RepoConfig, selectedVersion?: AvailableVersion) {
+		this.repoConfig = repoConfig ?? RepoConfig.getDefault();
+		this.githubRepos = this.repoConfig.repos;
+		this.githubRepo = this.githubRepos[0];
+		this.arch = this.getPlatformArch();
+		this.pattern = this.repoConfig.buildPattern();
+
+		if (selectedVersion) {
+			this._selectedVersion = selectedVersion;
+			this._versionObj = selectedVersion.version;
+			this._url = selectedVersion.url;
+			this.isPrerelease = selectedVersion.isPrerelease;
+			this.installedSha256 = selectedVersion.sha256;
+			this.installedCreatedAt = selectedVersion.assetCreatedAt;
+			this.installedInterface = selectedVersion.interface;
+		}
+	}
+
+	/**
+	 * The Python constructor calls fetch_latest() inline; downloads are async in
+	 * JS, so callers do `await new CamouwolfFetcher().init()` instead.
+	 */
+	async init(): Promise<this> {
+		if (!this._versionObj) {
+			await this.fetchLatest();
+		}
+		return this;
+	}
+
+	/** First 8 hex chars of the installed asset sha, or empty. */
+	get installedSha8(): string {
+		return (this.installedSha256 ?? "").slice(0, 8);
+	}
+
+	/**
+	 * Match a release asset against version constraints, OS, and arch.
+	 */
+	checkAsset(
+		asset: GitHubAsset,
+		release?: GitHubRelease,
+	): [Version, string] | null {
+		const match = this.pattern.exec(asset.name);
+		if (!match?.groups) return null;
+
+		const version = new Version(match.groups.build, match.groups.version);
+		// A released library installs exactly the browser it was released with
+		// (browser-pin.ts), unless the user explicitly chose something else.
+		const pin = effectivePin(loadConfig());
+		if (
+			pin &&
+			!pinMatches(
+				pin,
+				this.repoConfig.name,
+				match.groups.version,
+				match.groups.build,
+			)
+		) {
+			return null;
+		}
+		const isPrerelease = Boolean(release?.prerelease) || version.isAlpha;
+		if (!pin && !this.repoConfig.isVersionSupported(version, isPrerelease)) {
+			return null;
+		}
+
+		const digest = asset.digest ?? "";
+		if (digest.startsWith("sha256:")) {
+			this.installedSha256 = digest.slice("sha256:".length);
+		}
+		this.installedCreatedAt = asset.created_at;
+
+		return [version, asset.browser_download_url];
+	}
+
+	/**
+	 * Whether a release whose asset checkAsset() matched may be used. The
+	 * Python twin decides this inside check_asset(); reading a manifest is
+	 * async here, so it is a separate step.
+	 */
+	async acceptRelease(
+		release: GitHubRelease,
+		[version]: [Version, string],
+	): Promise<boolean> {
+		const iface = await releaseInterface(release);
+		if (!interfaceSupported(iface)) {
+			rprint(incompatibleMessage(version, iface), "yellow");
+			return false;
+		}
+		this.installedInterface = iface;
+		return true;
+	}
+
+	missingAssetError(): never {
+		throw new MissingRelease(
+			`No matching release found for ${OS_NAME} ${this.arch} in the ` +
+				"supported range. Please update the camouwolf package.",
+		);
+	}
+
+	protected getReleases(githubRepo: string): Promise<GitHubRelease[]> {
+		return githubReleases(githubRepo);
+	}
+
+	/**
+	 * Fetch the first matching release asset, trying fallback repos on failure.
+	 */
+	async getAsset(): Promise<[Version, string]> {
+		let lastError: unknown;
+		for (const repo of this.githubRepos) {
+			try {
+				const releases = await this.getReleases(repo);
+				for (const release of releases) {
+					for (const asset of release.assets ?? []) {
+						const data = this.checkAsset(asset, release);
+						if (data && (await this.acceptRelease(release, data))) {
+							this.githubRepo = repo;
+							this.isPrerelease = release.prerelease ?? false;
+							return data;
+						}
+					}
+				}
+			} catch (error) {
+				lastError = error;
+			}
+		}
+
+		if (lastError) throw lastError;
+		this.missingAssetError();
+	}
+
+	getPlatformArch(): string {
+		const arch = (this.repoConfig ?? RepoConfig.getDefault()).getArch();
+		if (!OS_ARCH_MATRIX[OS_NAME].includes(arch)) {
+			throw new UnsupportedArchitecture(
+				`Architecture ${arch} is not supported for ${OS_NAME}`,
+			);
+		}
+		return arch;
+	}
+
+	/**
+	 * Fetch the latest camouwolf release for the current platform.
+	 */
+	async fetchLatest(): Promise<void> {
+		const [versionObj, url] = await this.getAsset();
+		this._versionObj = versionObj;
+		this._url = url;
+	}
+
+	static async downloadFile(file: Writable, url: string): Promise<void> {
+		rprint(`Downloading package: ${url}`);
+		await webdl(url, undefined, true, file);
+	}
+
+	/**
+	 * Download and install camouwolf to a versioned subdirectory.
+	 */
+	async install(replace: boolean = false): Promise<boolean> {
+		const installed = await installVersioned(this, replace);
+		ensureBrowserProfileDir();
+		return installed;
+	}
+
+	get url(): string {
+		if (!this._url) {
+			throw new ValueError(
+				"Url is not available. Make sure to run init() first.",
+			);
+		}
+		return this._url;
+	}
+
+	get version(): string {
+		if (!this._versionObj?.version) {
+			throw new ValueError(
+				"Version is not available. Make sure to run init() first.",
+			);
+		}
+		return this._versionObj.version;
+	}
+
+	get build(): string {
+		if (!this._versionObj) {
+			throw new ValueError(
+				"Build information is not available. Make sure to run init() first.",
+			);
+		}
+		return this._versionObj.build;
+	}
+
+	get verstr(): string {
+		if (!this._versionObj) {
+			throw new ValueError(
+				"Version is not available. Make sure to run init() first.",
+			);
+		}
+		return this._versionObj.fullString;
+	}
+}
+
+/**
+ * Fetch all supported versions from GitHub for the current platform. With
+ * includeIncompatible, builds that need a newer package are returned too
+ * (check `interfaceSupported(v.interface)`) instead of being reported.
+ */
+export async function listAvailableVersions(
+	repoConfig?: RepoConfig,
+	includePrerelease: boolean = true,
+	spoofOs?: string,
+	spoofArch?: string,
+	includeIncompatible: boolean = false,
+): Promise<AvailableVersion[]> {
+	const config = repoConfig ?? RepoConfig.getDefault();
+	const pattern = config.buildPattern(spoofOs, spoofArch);
+
+	const osName = spoofOs ?? OS_NAME;
+	const arch = config.getArch(spoofArch);
+	if (!(OS_ARCH_MATRIX[osName] ?? []).includes(arch)) {
+		throw new UnsupportedArchitecture(
+			`Architecture ${arch} is not supported for ${osName}`,
+		);
+	}
+
+	let releases: GitHubRelease[] = [];
+	let lastError: unknown;
+	for (const repo of config.repos) {
+		try {
+			releases = await githubReleases(repo);
+			break;
+		} catch (error) {
+			lastError = error;
+		}
+	}
+	if (!releases.length && lastError) throw lastError;
+
+	const versions: AvailableVersion[] = [];
+	for (const release of releases) {
+		versions.push(
+			...(await releaseVersions(
+				release,
+				config,
+				pattern,
+				includePrerelease,
+				includeIncompatible,
+			)),
+		);
+	}
+
+	versions.sort((a, b) => {
+		const byVersion = b.version.compare(a.version);
+		if (byVersion !== 0) return byVersion;
+		return comparePyStr(b.assetCreatedAt ?? "", a.assetCreatedAt ?? "");
+	});
+	return versions;
+}
+
+/**
+ * The supported builds the release tagged `tag` holds for this platform, read
+ * with one API call per repo of the source. Empty when no repo has the tag.
+ */
+export async function taggedVersions(
+	repoConfig: RepoConfig,
+	tag: string,
+): Promise<AvailableVersion[]> {
+	for (const repo of repoConfig.repos) {
+		const apiUrl = `https://api.github.com/repos/${repo}/releases/tags/${tag}`;
+		const response = await request(apiUrl, {
+			headers: githubHeaders(apiUrl),
+			signal: AbortSignal.timeout(20_000),
+		});
+		if (response.status === 404) continue;
+		raiseForStatus(response, apiUrl);
+		return releaseVersions(
+			(await response.json()) as GitHubRelease,
+			repoConfig,
+			repoConfig.buildPattern(),
+		);
+	}
+	return [];
+}
+
+/**
+ * The release's assets that match `pattern` and the source's version range.
+ */
+async function releaseVersions(
+	release: GitHubRelease,
+	config: RepoConfig,
+	pattern: RegExp,
+	includePrerelease = true,
+	includeIncompatible = false,
+): Promise<AvailableVersion[]> {
+	const isPrerelease = release.prerelease ?? false;
+	if (isPrerelease && !includePrerelease) return [];
+
+	const versions: AvailableVersion[] = [];
+	for (const asset of release.assets ?? []) {
+		const match = pattern.exec(asset.name);
+		if (!match?.groups) continue;
+
+		const version = new Version(match.groups.build, match.groups.version);
+		const assetPrerelease = isPrerelease || version.isAlpha;
+		if (assetPrerelease && !includePrerelease) continue;
+		if (!config.isVersionSupported(version, assetPrerelease)) continue;
+		const iface = await releaseInterface(release);
+		if (!interfaceSupported(iface) && !includeIncompatible) {
+			rprint(incompatibleMessage(version, iface), "yellow");
+			continue;
+		}
+
+		const digest = asset.digest ?? "";
+		const sha256 = digest.startsWith("sha256:")
+			? digest.slice("sha256:".length)
+			: undefined;
+
+		versions.push(
+			new AvailableVersion({
+				version,
+				url: asset.browser_download_url,
+				isPrerelease: assetPrerelease,
+				assetId: asset.id,
+				assetSize: asset.size,
+				assetUpdatedAt: asset.updated_at,
+				sha256,
+				assetCreatedAt: asset.created_at,
+				interface: iface,
+			}),
+		);
+	}
+	return versions;
+}
+
+/**
+ * Get the full version string of the active install.
+ */
+export function installedVerStr(fromDir?: string): string {
+	// An explicit directory (the folder holding a sandbox/alt-version
+	// executable_path) reads that build's version.json instead of the active
+	// install's. Mac-bundle aware: an executable inside
+	// Camouwolf.app/Contents/MacOS/ belongs to an install whose version.json sits
+	// three levels up -- unless a deployment stamped one beside the binary.
+	if (fromDir) {
+		let dir = fromDir;
+		if (
+			path.basename(dir) === "MacOS" &&
+			!fs.existsSync(path.join(dir, "version.json"))
+		) {
+			dir = path.dirname(path.dirname(path.dirname(dir)));
+		}
+		return Version.fromPath(dir).fullString;
+	}
+
+	const active = getActivePath();
+	if (active === null) throw notInstalledError();
+	const version = Version.fromPath(active);
+	if (path.basename(path.dirname(path.dirname(active))) === "browsers") {
+		warnIfUnpaired(
+			path.basename(path.dirname(active)),
+			version.version ?? "",
+			version.build,
+		);
+	}
+	return version.fullString;
+}
+
+/**
+ * Whether INSTALL_DIR's root holds a supported build.
+ *
+ * Only the pre-multiversion flat layout wrote version.json at the root; the
+ * versioned layout keeps it under browsers/<repo>/<version>/. A missing root
+ * version.json means "no legacy install here", so the caller should fall
+ * through to a fetch rather than raise. The alpha.1 floor masked this: no
+ * install was ever unsupported, so this branch was never reached.
+ */
+export function rootInstallSupported(): boolean {
+	try {
+		return Version.fromPath().isSupported();
+	} catch (error) {
+		if (error instanceof FileNotFoundError) return false;
+		throw error;
+	}
+}
+
+/** What is missing -- the paired build, a pin, or a channel -- and how to get it. */
+function notInstalledError(): CamouwolfNotInstalled {
+	const config = loadConfig();
+	const pin = effectivePin(config);
+	const pinned = config.pinned;
+	const channel = config.channel || getDefaultChannel();
+	const missing = pin
+		? `${pin.repoName} ${pinSpec(pin)}, the browser this camouwolf release pairs with,`
+		: pinned
+			? `${channel}/${pinned}`
+			: channel;
+	return new CamouwolfNotInstalled(
+		`${missing} is not installed. Please run \`camouwolf fetch\` to install.`,
+	);
+}
+
+/**
+ * The part of the Python twin's camouwolf_path() that runs before it would
+ * download: returns the install to use, or null when a fetch is needed (only
+ * possible with `downloadIfMissing`; otherwise the Python errors are raised).
+ */
+function resolveInstalledPath(downloadIfMissing: boolean): string | null {
+	// Clean up incompatible old data directory
+	if (
+		fs.existsSync(INSTALL_DIR) &&
+		fs.readdirSync(INSTALL_DIR).length > 0 &&
+		!fs.existsSync(COMPAT_FLAG)
+	) {
+		rprint("Cleaning old data...", "yellow");
+		fs.rmSync(INSTALL_DIR, { recursive: true, force: true });
+	}
+
+	const active = getActivePath();
+	if (active) {
+		const installed = Version.fromPath(active);
+		const iface = installedInterface(active);
+		if (!interfaceSupported(iface)) {
+			throw new UnsupportedVersion(incompatibleMessage(installed, iface));
+		}
+		if (installed.isSupported()) return active;
+	}
+
+	if (!fs.existsSync(INSTALL_DIR) || fs.readdirSync(INSTALL_DIR).length === 0) {
+		if (!downloadIfMissing) throw notInstalledError();
+	} else if (rootInstallSupported()) {
+		return INSTALL_DIR;
+	} else if (!downloadIfMissing) {
+		// Other builds are installed, but not the one this release pairs with.
+		if (effectivePin(loadConfig())) throw notInstalledError();
+		throw new UnsupportedVersion("Camouwolf executable is outdated.");
+	}
+	return null;
+}
+
+/**
+ * Full path to the active camouwolf folder.
+ *
+ * This is the Python twin's camouwolf_path(download_if_missing=False): it is
+ * called from synchronous path helpers, and a download is asynchronous in JS.
+ * `ensureCamouwolfInstalled()` is the download_if_missing=True half;
+ * `launchOptions()` awaits it before any path lookup, so first-run
+ * auto-download behaviour is preserved.
+ */
+export function camouwolfPath(): string {
+	return resolveInstalledPath(false) as string;
+}
+
+/**
+ * Resolve the active browser, downloading it first when nothing usable is
+ * installed. The async counterpart to the Python twin's camouwolf_path().
+ */
+export async function ensureCamouwolfInstalled(): Promise<string> {
+	const found = resolveInstalledPath(true);
+	if (found !== null) return found;
+
+	const fetcher = await pkgmanDeps.newFetcher();
+	await fetcher.install();
+
+	// Re-check rather than recurse.
+	//
+	// If the newest published build is still below the floor -- a library
+	// published ahead of its browser release, or a repos source that does not
+	// carry it -- install() is a no-op ("already installed") and recursing here
+	// spun ~1000 fetch attempts into a stack overflow, having hammered the
+	// GitHub API into a rate limit on the way. Say what is actually wrong.
+	const active = getActivePath();
+	if (active && Version.fromPath(active).isSupported()) {
+		return active;
+	}
+	if (fs.existsSync(INSTALL_DIR) && rootInstallSupported()) {
+		return INSTALL_DIR;
+	}
+	throw new UnsupportedVersion(
+		"No available Camouwolf build satisfies this library's minimum " +
+			`(${CONSTRAINTS.MIN_VERSION}). The matching browser release may not be ` +
+			"published yet; wait for it, or install an older camouwolf release.",
+	);
+}
+
+/**
+ * A file the build ships, found from its executable: beside it, or in
+ * Contents/Resources when the executable is a macOS app bundle's Contents/MacOS/.
+ */
+export function buildFile(executablePath: string, name: string): string {
+	const directory = path.dirname(executablePath);
+	return path.basename(directory) === "MacOS"
+		? path.join(path.dirname(directory), "Resources", name)
+		: path.join(directory, name);
+}
+
+/** Get the path to a file in the camouwolf directory. */
+export function getPath(file: string): string {
+	if (OS_NAME === "mac") {
+		return path.resolve(
+			camouwolfPath(),
+			"Camouwolf.app",
+			"Contents",
+			"Resources",
+			file,
+		);
+	}
+	return path.join(camouwolfPath(), file);
+}
+
+/**
+ * Get the path to the camouwolf executable.
+ */
+export function launchPath(browserPath?: string): string {
+	let execPath: string;
+	if (browserPath) {
+		execPath =
+			OS_NAME === "mac"
+				? path.resolve(
+						browserPath,
+						"Camouwolf.app",
+						"Contents",
+						"Resources",
+						LAUNCH_FILE[OS_NAME],
+					)
+				: path.join(browserPath, LAUNCH_FILE[OS_NAME]);
+	} else {
+		execPath = getPath(LAUNCH_FILE[OS_NAME]);
+	}
+
+	if (!fs.existsSync(execPath)) {
+		throw new CamouwolfNotInstalled(
+			`Camouwolf is not installed at ${browserPath ?? camouwolfPath()}. ` +
+				"Please run `camouwolf fetch` to install.",
+		);
+	}
+	return execPath;
+}
+
+/**
+ * The executable of the installed build `specifier` names (the `browser`
+ * launch option). Like `camouwolf set`, it overrides the pairing: it never
+ * downloads, and it warns when the build is not the paired one.
+ */
+export function selectedLaunchPath(specifier: string): string {
+	const installPath = findInstalledVersion(specifier);
+	if (installPath === null) {
+		throw new ValueError(
+			`Browser version '${specifier}' not found. Run \`camouwolf list\` to see installed versions.`,
+		);
+	}
+	const version = Version.fromPath(installPath);
+	const iface = installedInterface(installPath);
+	if (!interfaceSupported(iface)) {
+		throw new UnsupportedVersion(incompatibleMessage(version, iface));
+	}
+	warnIfUnpaired(
+		path.basename(path.dirname(installPath)),
+		version.version ?? "",
+		version.build,
+	);
+	return launchPath(installPath);
+}
+
+/**
+ * chmod -R 755 on POSIX so the freshly-extracted binaries are executable.
+ * (The zip does not carry usable permission bits on every platform.)
+ */
+export function makeExecutable(dir: string): void {
+	if (OS_NAME === "win") return;
+	try {
+		execFileSync("chmod", ["-R", "755", dir]);
+	} catch (error) {
+		rprint(`Warning: could not chmod ${dir}: ${error}`, "yellow");
+	}
+}
+
+/**
+ * Format an asset timestamp as "Mon D", or "Mon D, YYYY" when the year differs.
+ */
+export function formatAssetDate(iso?: string, now?: Date): string {
+	if (!iso) return "";
+	const dt = new Date(iso);
+	if (Number.isNaN(dt.getTime())) return "";
+	const currentYear = (now ?? new Date()).getFullYear();
+	const month = dt.toLocaleString("en-US", { month: "short" });
+	if (dt.getFullYear() === currentYear) {
+		return `${month} ${dt.getDate()}`;
+	}
+	return `${month} ${dt.getDate()}, ${dt.getFullYear()}`;
+}

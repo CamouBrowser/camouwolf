@@ -1,0 +1,76 @@
+diff --git a/third_party/blink/renderer/core/exported/web_view_impl.cc b/third_party/blink/renderer/core/exported/web_view_impl.cc
+--- a/third_party/blink/renderer/core/exported/web_view_impl.cc
++++ b/third_party/blink/renderer/core/exported/web_view_impl.cc
+@@ -31,9 +31,11 @@
+ 
+ #include <algorithm>
+ #include <memory>
++#include <optional>
+ #include <utility>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/debug/crash_logging.h"
+ #include "base/memory/scoped_refptr.h"
+@@ -471,6 +473,22 @@
+ }
+ #endif
+ 
++// CAMOUWOLF: the editing conventions of the OS navigator.platform claims.
++// Blink picks them at compile time, and a page can measure them: on Windows
++// Ctrl+Right stops after the space, a double-click takes the trailing space,
++// and a middle click autoscrolls rather than pasting the X11 selection.
++std::optional<mojom::EditingBehavior> CamouwolfEditingBehavior() {
++  const auto platform =
++      base::CamouwolfConfig::Get().GetString("navigator.platform");
++  if (platform == "Win32") {
++    return mojom::EditingBehavior::kEditingWindowsBehavior;
++  }
++  if (platform == "MacIntel") {
++    return mojom::EditingBehavior::kEditingMacBehavior;
++  }
++  return std::nullopt;
++}
++
+ }  // namespace
+ 
+ // WebView ----------------------------------------------------------------
+@@ -1746,7 +1764,13 @@
+       prefs.output_device_update_ability_type);
+   settings->SetBarrelButtonForDragEnabled(prefs.barrel_button_for_drag_enabled);
+ 
+-  settings->SetEditingBehavior(prefs.editing_behavior);
++  const auto camouwolf_editing = CamouwolfEditingBehavior();  // CAMOUWOLF
++  settings->SetEditingBehavior(
++      camouwolf_editing.value_or(prefs.editing_behavior));
++  if (camouwolf_editing) {
++    settings->SetSelectTrailingWhitespaceEnabled(
++        *camouwolf_editing == mojom::EditingBehavior::kEditingWindowsBehavior);
++  }
+ 
+   settings->SetSupportsMultipleWindows(prefs.supports_multiple_windows);
+ 
+@@ -1755,7 +1779,10 @@
+   RuntimeEnabledFeatures::SetStylusHandwritingEnabled(
+       prefs.stylus_handwriting_enabled);
+ 
+-  settings->SetSmartInsertDeleteEnabled(prefs.smart_insert_delete_enabled);
++  settings->SetSmartInsertDeleteEnabled(
++      camouwolf_editing
++          ? *camouwolf_editing == mojom::EditingBehavior::kEditingMacBehavior
++          : prefs.smart_insert_delete_enabled);
+ 
+   settings->SetSpatialNavigationEnabled(prefs.spatial_navigation_enabled);
+ 
+@@ -1947,6 +1974,10 @@
+ 
+ #if BUILDFLAG(IS_WIN)
+   RuntimeEnabledFeatures::SetMiddleClickAutoscrollEnabled(true);
++#else
++  if (camouwolf_editing == mojom::EditingBehavior::kEditingWindowsBehavior) {
++    RuntimeEnabledFeatures::SetMiddleClickAutoscrollEnabled(true);
++  }
+ #endif
+ 
+   RuntimeEnabledFeatures::SetTranslateServiceEnabled(

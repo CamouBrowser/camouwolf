@@ -1,0 +1,83 @@
+diff --git a/third_party/blink/renderer/modules/webaudio/audio_context.cc b/third_party/blink/renderer/modules/webaudio/audio_context.cc
+--- a/third_party/blink/renderer/modules/webaudio/audio_context.cc
++++ b/third_party/blink/renderer/modules/webaudio/audio_context.cc
+@@ -7,6 +7,7 @@
+ #include <algorithm>
+ #include <atomic>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/functional/callback_helpers.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+@@ -461,6 +462,28 @@
+   if (context_options->hasSampleRate()) {
+     sample_rate = context_options->sampleRate();
+   }
++  // CAMOUWOLF: the claimed output device's sample rate.
++  //
++  // `new AudioContext().sampleRate` with no options is the hardware rate —
++  // 48000 on most Windows and Linux machines, 44100 on many Macs and some
++  // sound cards — and the host's is whatever the server's (often absent)
++  // device happens to report. It is supplied here as though the page had asked
++  // for it, rather than by overriding the getter, because the rate is not just
++  // a number a page reads: it sets how many frames a second of audio is, and
++  // the DynamicsCompressor/oscillator output the classic audio fingerprint
++  // hashes depends on it. Taking upstream's own explicit-rate path means the
++  // graph really renders at the claimed rate and is resampled to the device.
++  // A rate the page asks for itself still wins; one outside WebAudio's range
++  // is ignored rather than turned into an exception no real device raises.
++  if (!sample_rate.has_value()) {
++    if (const auto configured =
++            base::CamouwolfConfig::Get().GetUint32("AudioContext:sampleRate")) {
++      const float configured_rate = static_cast<float>(*configured);
++      if (audio_utilities::IsValidAudioBufferSampleRate(configured_rate)) {
++        sample_rate = configured_rate;
++      }
++    }
++  }
+ 
+   std::optional<uint32_t> render_quantum_frames = 128;
+   if (RuntimeEnabledFeatures::WebAudioConfigurableRenderQuantumEnabled(
+@@ -1317,6 +1340,14 @@
+   DeferredTaskHandler::GraphAutoLocker locker(GetDeferredTaskHandler());
+ 
+   double factor = GetOutputLatencyQuantizingFactor();
++  // CAMOUWOLF: the claimed device's output latency, in seconds, put through the
++  // same quantization as the real one so the value sits on the grid Chrome
++  // reports on. The host's is a property of its audio stack (a null sink
++  // reports 0 forever), not of the identity.
++  if (const auto configured =
++          base::CamouwolfConfig::Get().GetDouble("AudioContext:outputLatency")) {
++    return std::round(*configured / factor) * factor;
++  }
+   return std::round(output_position_.hardware_output_latency / factor) * factor;
+ }
+ 
+diff --git a/third_party/blink/renderer/modules/webaudio/realtime_audio_destination_handler.cc b/third_party/blink/renderer/modules/webaudio/realtime_audio_destination_handler.cc
+--- a/third_party/blink/renderer/modules/webaudio/realtime_audio_destination_handler.cc
++++ b/third_party/blink/renderer/modules/webaudio/realtime_audio_destination_handler.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/modules/webaudio/realtime_audio_destination_handler.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/feature_list.h"
+ #include "base/metrics/histogram_macros.h"
+ #include "media/base/output_device_info.h"
+@@ -211,6 +212,16 @@
+ }
+ 
+ uint32_t RealtimeAudioDestinationHandler::MaxChannelCount() const {
++  // CAMOUWOLF: destination.maxChannelCount is the output device's channel
++  // count — 2 for stereo, 6 or 8 for a surround interface, 0 on a host with
++  // no device at all, which is what a server reports. Realtime contexts only:
++  // an OfflineAudioContext has no device and its destination takes the
++  // channel count it was constructed with (OfflineAudioDestinationHandler).
++  // The same answer bounds destination.channelCount, as the real one does.
++  if (const auto configured =
++          base::CamouwolfConfig::Get().GetUint32("AudioContext:maxChannelCount")) {
++    return *configured;
++  }
+   return platform_destination_->MaxChannelCount();
+ }
+ 

@@ -1,0 +1,189 @@
+# Every upstream Chromium file the Camouwolf patch series touches, one per line.
+# Consumed by fetch-sources.sh (patch authoring) and check-dead-patches.py
+# (post-bump reconciliation). Keep in sync with browser/patches/series.
+
+# --- config plumbing ---------------------------------------------------------
+base/BUILD.gn
+
+# --- navigator identity ------------------------------------------------------
+third_party/blink/renderer/core/frame/navigator.cc
+third_party/blink/renderer/core/execution_context/navigator_base.cc
+third_party/blink/renderer/core/frame/navigator_id.cc
+third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+third_party/blink/renderer/core/frame/navigator_device_memory.cc
+third_party/blink/renderer/core/frame/navigator_language.cc
+components/embedder_support/user_agent_utils.cc
+
+# --- display / locale --------------------------------------------------------
+third_party/blink/renderer/core/frame/screen.cc
+third_party/blink/renderer/core/css/media_values.cc
+third_party/blink/renderer/core/timezone/timezone_controller.cc
+base/i18n/icu_util.cc
+
+# --- graphics ----------------------------------------------------------------
+third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h
+third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
+third_party/blink/renderer/modules/webgpu/gpu_adapter_info.cc
+third_party/blink/renderer/modules/webgpu/gpu.cc
+third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h
+third_party/blink/renderer/modules/webgpu/gpu_supported_limits.cc
+third_party/blink/renderer/platform/graphics/image_data_buffer.cc
+third_party/blink/renderer/core/html/canvas/text_metrics.cc
+
+# --- audio -------------------------------------------------------------------
+third_party/blink/renderer/modules/webaudio/audio_buffer.cc
+third_party/blink/renderer/modules/webaudio/audio_buffer.h
+third_party/blink/renderer/modules/webaudio/realtime_analyser.cc
+third_party/blink/renderer/modules/webaudio/audio_context.cc
+third_party/blink/renderer/modules/webaudio/realtime_audio_destination_handler.cc
+
+# --- devices -----------------------------------------------------------------
+third_party/blink/renderer/modules/mediastream/media_devices.cc
+third_party/blink/renderer/modules/speech/speech_synthesis.cc
+third_party/blink/renderer/modules/keyboard/keyboard_layout.cc
+third_party/blink/renderer/modules/netinfo/network_information.cc
+
+# --- automation invisibility -------------------------------------------------
+third_party/blink/renderer/platform/runtime_enabled_features.json5
+
+# --- platform-conditional web platform features ------------------------------
+content/child/runtime_features.cc
+
+# --- canvas 2D readback ---
+third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc
+
+# --- ucrt math (Windows libm parity) -----------------------------------------
+# Every call site that reaches the HOST libm and hands the result to content.
+# On Windows these resolve to ucrtbase; on Linux to glibc, which disagrees by
+# 1 ULP often enough to read as "not really Windows".
+ui/gfx/geometry/sin_cos_degrees.h
+third_party/blink/renderer/core/geometry/dom_matrix.cc
+third_party/blink/renderer/platform/transforms/affine_transform.cc
+
+# --- system colors (headless palette leak) -----------------------------------
+third_party/blink/renderer/core/layout/layout_theme.cc
+
+# --- font availability (reported == renderable) -------------------------------
+third_party/blink/renderer/core/css/css_font_selector_base.h
+third_party/blink/renderer/core/css/css_font_selector_base.cc
+third_party/blink/renderer/core/css/css_font_selector.cc
+third_party/blink/renderer/core/css/offscreen_font_selector.cc
+
+# --- the platform UI font (system-ui + the CSS2 keywords) --------------------
+third_party/blink/renderer/platform/fonts/font_cache.cc
+third_party/blink/renderer/core/layout/layout_theme_font_provider_default.cc
+
+# --- the product name --------------------------------------------------------
+chrome/app/theme/chromium/BRANDING
+chrome/app/chromium_strings.grd
+
+# --- touch points ------------------------------------------------------------
+third_party/blink/renderer/core/events/navigator_events.cc
+content/browser/web_contents/slow_web_preference_cache.cc
+
+# --- device scale factor (window.devicePixelRatio) ---------------------------
+ui/display/display.cc
+
+# --- ICU default locale (Intl, toLocaleString) -------------------------------
+base/i18n/icubridge/default_icu_locale.cc
+
+# --- IPv4-only network -------------------------------------------------------
+net/base/ip_address.h
+net/base/ip_address.cc
+net/dns/host_resolver_manager.cc
+net/socket/tcp_client_socket.cc
+net/socket/udp_socket_posix.cc
+third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
+
+# --- platform editing behaviour ----------------------------------------------
+third_party/blink/renderer/core/exported/web_view_impl.cc
+
+# --- platform key bindings -------------------------------------------------
+third_party/blink/renderer/core/editing/editing_behavior.cc
+
+# --- WebRTC IP handling policy ---------------------------------------------
+chrome/browser/renderer_preferences_util.cc
+
+# --- WebRTC behind a proxy -------------------------------------------------
+services/network/BUILD.gn
+services/network/mdns_responder.h
+services/network/mdns_responder.cc
+services/network/p2p/socket_manager.h
+services/network/p2p/socket_manager.cc
+services/network/p2p/socket_tcp.h
+services/network/p2p/socket_tcp.cc
+
+# --- per-context identity --------------------------------------------------
+third_party/blink/public/devtools_protocol/domains/Target.pdl
+chrome/browser/devtools/inspector_protocol_config.json
+chrome/browser/devtools/protocol/target_handler.h
+chrome/browser/devtools/protocol/target_handler.cc
+content/browser/devtools/protocol/target_handler.h
+content/browser/devtools/protocol/target_handler.cc
+content/browser/browser_context.cc
+content/browser/renderer_host/render_process_host_impl.cc
+content/renderer/renderer_main.cc
+content/browser/renderer_host/navigation_request.cc
+content/browser/worker_host/shared_worker_host.cc
+content/browser/service_worker/service_worker_version.cc
+content/browser/preloading/prefetch/prefetch_service.cc
+content/browser/web_contents/web_contents_impl.cc
+components/client_hints/browser/client_hints.cc
+chrome/browser/net/profile_network_context_service.cc
+content/browser/speech/tts_controller_impl.cc
+chrome/browser/predictors/perform_network_context_prefetch.cc
+net/url_request/static_http_user_agent_settings.h
+services/network/public/mojom/network_context.mojom
+services/network/network_context.h
+services/network/network_context.cc
+services/network/test/test_network_context.h
+content/browser/renderer_host/p2p/socket_dispatcher_host.cc
+components/language/core/browser/language_prefs.cc
+
+# --- media codecs of the identity's platform -------------------------------
+media/base/supported_types.cc
+media/mojo/clients/mojo_audio_encoder.cc
+third_party/blink/renderer/modules/webcodecs/video_decoder.cc
+third_party/blink/renderer/modules/webcodecs/video_decoder_broker.cc
+third_party/blink/renderer/modules/webcodecs/video_encoder.cc
+third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
+third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc
+
+# --- battery status ---------------------------------------------------------
+third_party/blink/renderer/modules/battery/battery_dispatcher.cc
+
+# --- speech synthesis engine -----------------------------------------------
+content/browser/speech/tts_linux.cc
+
+# --- protocol input (wheel ticks, drag buttons) ------------------------------
+content/browser/devtools/protocol/input_handler.cc
+
+# --- trusted events from the automation world --------------------------------
+third_party/blink/renderer/core/dom/events/event_target.cc
+
+# --- SOCKS5 username/password -------------------------------------------------
+net/socket/socks5_client_socket.h
+net/socket/socks5_client_socket.cc
+net/socket/socks_connect_job.cc
+
+# --- closed shadow roots for automation ---------------------------------------
+third_party/blink/renderer/core/dom/element.idl
+third_party/blink/renderer/core/dom/element.h
+third_party/blink/renderer/core/dom/element.cc
+
+# --- instant animations -------------------------------------------------------
+third_party/blink/renderer/core/animation/animation_effect.cc
+
+# --- extension tabs -----------------------------------------------------------
+chrome/browser/extensions/api/tabs/tabs_api.cc
+chrome/browser/extensions/api/tabs/windows_api.cc
+extensions/browser/api/runtime/runtime_api.cc
+
+# --- CA certificates ----------------------------------------------------------
+chrome/browser/net/profile_network_context_service.cc
+
+# --- show cursor --------------------------------------------------------------
+third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc

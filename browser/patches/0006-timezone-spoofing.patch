@@ -1,0 +1,150 @@
+diff --git a/base/i18n/icu_util.cc b/base/i18n/icu_util.cc
+--- a/base/i18n/icu_util.cc
++++ b/base/i18n/icu_util.cc
+@@ -15,8 +15,10 @@
+ #include <string.h>
+ 
+ #include <memory>
++#include <optional>
+ #include <string>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/compiler_specific.h"
+ #include "base/containers/span.h"
+ #include "base/debug/alias.h"
+@@ -42,6 +44,10 @@
+ #include "third_party/icu/source/common/unicode/uclean.h"
+ #include "third_party/icu/source/common/unicode/udata.h"
+ #include "third_party/icu/source/common/unicode/utrace.h"
++// CAMOUWOLF: both are included below only on the platforms upstream needs them
++// for; the configured zone is adopted on every platform.
++#include "third_party/icu/source/common/unicode/unistr.h"
++#include "third_party/icu/source/i18n/unicode/timezone.h"
+ 
+ #if BUILDFLAG(IS_ANDROID)
+ #include "base/android/apk_assets.h"
+@@ -324,6 +330,32 @@
+ // On some platforms, the time zone must be explicitly initialized zone rather
+ // than relying on ICU's internal initialization.
+ void InitializeIcuTimeZone() {
++  // CAMOUWOLF: the configured zone is ICU's default from the moment ICU exists.
++  //
++  // Every process — browser, zygote, renderer, GPU, utility — runs this once,
++  // right after ICU's data is loaded and before the sandbox, before V8 and
++  // before any mojo traffic. Adopting the zone here means there is no window
++  // in which the process holds the host zone, and nothing downstream has a
++  // stale answer to invalidate: V8 reads ICU's default the first time script
++  // asks for a date, in the main isolate and in every worker isolate alike.
++  //
++  // It also settles what the browser tells renderers. device::TimeZoneMonitor
++  // captures createDefault() when it is built and pushes that id to each
++  // renderer as it subscribes; with the zone adopted here, the id it pushes is
++  // the configured one. (Before this hook existed the configured zone was
++  // adopted only in the renderer, and that push replaced it with the host's a
++  // moment later.)
++  //
++  // An id ICU does not know falls through to the host zone, as upstream.
++  if (const std::optional<std::string> zone_id =
++          CamouwolfConfig::Get().GetString("timezone")) {
++    std::unique_ptr<icu::TimeZone> configured(icu::TimeZone::createTimeZone(
++        icu::UnicodeString::fromUTF8(*zone_id)));
++    if (configured && !(*configured == icu::TimeZone::getUnknown())) {
++      icu::TimeZone::adoptDefault(configured.release());
++      return;
++    }
++  }
+ #if BUILDFLAG(IS_FUCHSIA)
+   // The platform-specific mechanisms used by ICU's detectHostTimeZone() to
+   // determine the default time zone will not work on Fuchsia. Therefore,
+diff --git a/third_party/blink/renderer/core/timezone/timezone_controller.cc b/third_party/blink/renderer/core/timezone/timezone_controller.cc
+--- a/third_party/blink/renderer/core/timezone/timezone_controller.cc
++++ b/third_party/blink/renderer/core/timezone/timezone_controller.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "third_party/blink/renderer/core/timezone/timezone_controller.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+ #include "mojo/public/cpp/bindings/pending_remote.h"
+@@ -63,6 +64,24 @@
+ }
+ 
+ String GetCurrentTimezoneId() {
++  // CAMOUWOLF: the configured zone becomes the process's idea of the HOST zone.
++  //
++  // Installing it here rather than through CDP's Emulation.setTimezoneOverride
++  // matters for two reasons. First, an override is a distinct state upstream:
++  // HasTimeZoneOverride() is true, SetTimeZoneOverride() refuses a second
++  // caller with kAlreadyOverridden, and a page that triggers that path learns it
++  // is being emulated. Second, an override is per-renderer and installed after
++  // startup, so early script — and anything on a worker that ran before the
++  // override landed — can observe the host zone first. Making it the host answer
++  // means Date, Intl, and every worker agree from the first line of script, and
++  // CDP's override machinery is left untouched and unused.
++  //
++  // The launcher pairs this with a matching Accept-Language, geolocation, and
++  // (when a proxy is set) the exit node's real zone — a timezone that disagrees
++  // with the exit IP is one of the cheapest checks a detector runs.
++  if (const auto tz = base::CamouwolfConfig::Get().GetString("timezone")) {
++    return String::FromUtf8(*tz);
++  }
+   std::unique_ptr<icu::TimeZone> timezone(icu::TimeZone::createDefault());
+   CHECK(timezone);
+   return GetTimezoneId(*timezone.get());
+@@ -96,6 +115,30 @@
+ 
+ TimeZoneController::TimeZoneController() {
+   DCHECK(IsMainThread());
++  // CAMOUWOLF: adopt the configured zone as ICU's default, so V8's Date and
++  // Intl see it before any script runs. base/i18n/icu_util.cc has normally
++  // done this already, at ICU start-up in every process; repeating it here
++  // costs nothing and keeps the renderer right on an embedder path that
++  // initializes ICU some other way. Date.getTimezoneOffset() and
++  // Intl.resolvedOptions().timeZone must never disagree — that is a one-line
++  // detection.
++  //
++  // Deliberately NOT via SetIcuTimeZoneAndNotifyV8(): that notifies every
++  // isolate, walks Page::OrdinaryPages(), and calls
++  // WorkerThread::CallOnAllWorkerThreads(). This constructor runs from a
++  // thread-safe static local during Blink startup, when the main-thread
++  // scheduler may not be up and no isolate, page or worker exists yet — so the
++  // notification is at best a no-op and at worst a startup crash. There is
++  // nothing to notify at construction time; adopting the zone is the whole job.
++  if (base::CamouwolfConfig::Get().Has("timezone")) {
++    host_timezone_id_ = GetCurrentTimezoneId();
++    std::unique_ptr<icu::TimeZone> configured(icu::TimeZone::createTimeZone(
++        icu::UnicodeString(host_timezone_id_.Ascii().data(), -1, US_INV)));
++    if (configured && !(*configured == icu::TimeZone::getUnknown())) {
++      icu::TimeZone::adoptDefault(configured.release());
++    }
++    return;
++  }
+   if (!base::FeatureList::IsEnabled(kLazyBlinkTimezoneInit)) {
+     host_timezone_id_ = GetCurrentTimezoneId();
+   }
+@@ -251,6 +294,24 @@
+ void TimeZoneController::OnTimeZoneChange(const String& timezone_id) {
+   DCHECK(IsMainThread());
+ 
++  // CAMOUWOLF: the host's zone is not this process's zone.
++  //
++  // This is called for two things. The browser's TimeZoneMonitor calls it once
++  // per renderer as soon as Init() subscribes (AddClient() answers with the
++  // current zone immediately), and again whenever the host's zone changes —
++  // which on Windows includes every WM_TIMECHANGE, so a clock sync is enough.
++  // Upstream's body then adopts whatever id arrived and tells V8. That first
++  // call is what undid this patch when it lived in the constructor alone: the
++  // constructor adopted the configured zone, and the subscription reply
++  // replaced it with the host's before the first script ran.
++  //
++  // With a configured zone there is nothing to react to: the zone was adopted
++  // before V8 existed and does not follow the host. CDP's override
++  // (SetTimeZoneOverride) is a separate path and still works on top.
++  if (base::CamouwolfConfig::Get().Has("timezone")) {
++    return;
++  }
++
+   base::AutoLock locker(instance().lock_);
+ 
+   // Remember requested timezone id so we can set it when timezone

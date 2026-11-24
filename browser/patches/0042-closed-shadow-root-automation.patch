@@ -1,0 +1,46 @@
+diff --git a/third_party/blink/renderer/core/dom/element.idl b/third_party/blink/renderer/core/dom/element.idl
+--- a/third_party/blink/renderer/core/dom/element.idl
++++ b/third_party/blink/renderer/core/dom/element.idl
+@@ -80,7 +80,7 @@
+     [RaisesException, CEReactions] Attr removeAttributeNode(Attr attr);
+ 
+     [RaisesException, MeasureAs=ElementAttachShadow] ShadowRoot attachShadow(ShadowRootInit shadowRootInitDict);
+-    [PerWorldBindings, ImplementedAs=OpenShadowRoot] readonly attribute ShadowRoot? shadowRoot;
++    [PerWorldBindings, CallWith=ScriptState, ImplementedAs=ShadowRootForBindings] readonly attribute ShadowRoot? shadowRoot;
+ 
+     [RaisesException] Element? closest(DOMString selectors);
+     [RaisesException] boolean matches(DOMString selectors);
+diff --git a/third_party/blink/renderer/core/dom/element.h b/third_party/blink/renderer/core/dom/element.h
+--- a/third_party/blink/renderer/core/dom/element.h
++++ b/third_party/blink/renderer/core/dom/element.h
+@@ -1137,6 +1137,9 @@
+     return HasShadowRoot() ? GetShadowRootInternal() : nullptr;
+   }
+   ShadowRoot* OpenShadowRoot() const;
++  // CAMOUWOLF: Element.shadowRoot, which also returns a closed root to
++  // automation's isolated world.
++  ShadowRoot* ShadowRootForBindings(ScriptState* script_state) const;
+   ShadowRoot* ClosedShadowRoot() const;
+   ShadowRoot* AuthorShadowRoot() const;
+   ShadowRoot* UserAgentShadowRoot() const;
+diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
+--- a/third_party/blink/renderer/core/dom/element.cc
++++ b/third_party/blink/renderer/core/dom/element.cc
+@@ -8194,6 +8194,17 @@
+   return root && root->GetMode() == ShadowRootMode::kOpen ? root : nullptr;
+ }
+ 
++ShadowRoot* Element::ShadowRootForBindings(ScriptState* script_state) const {
++  // CAMOUWOLF: Playwright's selectors run in a DevTools isolated world and
++  // read Element.shadowRoot, so this lets them reach into a closed root as a
++  // user can. A page cannot run in that world; it still gets null.
++  if (script_state->World().GetWorldType() ==
++      DOMWrapperWorld::WorldType::kInspectorIsolated) {
++    return AuthorShadowRoot();
++  }
++  return OpenShadowRoot();
++}
++
+ ShadowRoot* Element::ClosedShadowRoot() const {
+   ShadowRoot* root = GetShadowRoot();
+   if (!root) {

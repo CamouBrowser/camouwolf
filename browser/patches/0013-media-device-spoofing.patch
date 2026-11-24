@@ -1,0 +1,93 @@
+diff --git a/third_party/blink/renderer/modules/mediastream/media_devices.cc b/third_party/blink/renderer/modules/mediastream/media_devices.cc
+--- a/third_party/blink/renderer/modules/mediastream/media_devices.cc
++++ b/third_party/blink/renderer/modules/mediastream/media_devices.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/renderer/modules/mediastream/media_devices.h"
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ 
+ #include <algorithm>
+ #include <utility>
+@@ -1434,6 +1436,80 @@
+                 mojom::blink::MediaDeviceType::kNumMediaDeviceTypes),
+             enumeration.size());
+ 
++  // CAMOUWOLF: replace the host's device list with the identity's.
++  //
++  // enumerateDevices() is available WITHOUT a permission prompt (labels are
++  // hidden until permission is granted, but the count and the deviceId/groupId
++  // structure are not), which makes it one of the cheapest high-signal probes a
++  // detector has. A headless container reports ZERO devices — no camera, no
++  // mic, no speaker — and a real consumer desktop essentially never does. That
++  // empty array alone is enough to fail a check.
++  //
++  // The launcher writes a device set that matches the persona's platform.
++  // MEASURED against real Chrome 151 on Windows 11 and stock Chrome on Linux
++  // (tests/compare/captures/{windows-real,linux-stock}.json, `media.devices`):
++  // Windows reports THREE devices — audioinput, videoinput, audiooutput — and
++  // this Linux box reports TWO, with no videoinput. That count is the signal.
++  //
++  // Every field except `kind` is EMPTY before permission is granted, on both
++  // operating systems: idLen 0, groupLen 0, hasLabel false. Writing a synthetic
++  // deviceId here would therefore be a tell rather than a defence — a page that
++  // calls enumerateDevices() without a permission grant and gets back populated
++  // ids has learned something no real Chrome would have told it.
++  if (base::CamouwolfConfig::Get().Has("mediaDevices:enumerated")) {
++    // MediaDeviceInfoVector is what DevicesEnumerated() resolves with below;
++    // using the same type keeps the two paths interchangeable.
++    MediaDeviceInfoVector spoofed_devices;
++    for (const std::string& packed :
++         base::CamouwolfConfig::Get().GetStringList("mediaDevices:enumerated")) {
++      // "kind|deviceId|label|groupId", parsed field by field on std::string.
++      //
++      // Deliberately NOT String::Split(): its empty-entry behaviour is the
++      // thing this record depends on most and the least obvious thing about it,
++      // and the un-permissioned shape above is three empty fields out of four.
++      // A split that drops empties turns "audioinput|||" into a single token,
++      // fails the arity check, and silently yields an EMPTY device list — which
++      // is the zero-device headless signature this patch exists to remove. An
++      // explicit parse cannot get that wrong, and it matches how 0014 reads its
++      // own packed entries.
++      // Four named locals rather than an indexed array: this file is compiled
++      // under -DUNSAFE_BUFFERS_BUILD with -Werror, and subscripting a C array
++      // with a runtime index trips -Wunsafe-buffer-usage. Naming the fields
++      // sidesteps that and reads better besides.
++      const size_t sep1 = packed.find('|');
++      if (sep1 == std::string::npos) {
++        continue;
++      }
++      const size_t sep2 = packed.find('|', sep1 + 1);
++      if (sep2 == std::string::npos) {
++        continue;
++      }
++      const size_t sep3 = packed.find('|', sep2 + 1);
++      if (sep3 == std::string::npos) {
++        continue;
++      }
++      const std::string kind_field = packed.substr(0, sep1);
++      const std::string device_id = packed.substr(sep1 + 1, sep2 - sep1 - 1);
++      const std::string label = packed.substr(sep2 + 1, sep3 - sep2 - 1);
++      const std::string group_id = packed.substr(sep3 + 1);
++      if (kind_field.empty()) {
++        continue;
++      }
++      mojom::blink::MediaDeviceType kind =
++          mojom::blink::MediaDeviceType::kMediaAudioInput;
++      if (kind_field == "videoinput") {
++        kind = mojom::blink::MediaDeviceType::kMediaVideoInput;
++      } else if (kind_field == "audiooutput") {
++        kind = mojom::blink::MediaDeviceType::kMediaAudioOutput;
++      }
++      spoofed_devices.push_back(MakeGarbageCollected<MediaDeviceInfo>(
++          String::FromUtf8(device_id), String::FromUtf8(label),
++          String::FromUtf8(group_id), kind));
++    }
++    result_tracker->Resolve(spoofed_devices);
++    return;
++  }
++
+   if (!video_input_capabilities.empty()) {
+     DCHECK_EQ(enumeration[static_cast<wtf_size_t>(
+                               mojom::blink::MediaDeviceType::kMediaVideoInput)]

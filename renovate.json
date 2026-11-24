@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommitTypeAll(chore)"],
+  "description": "Weekly, grouped dependency updates for the npm launcher (typescript/). The Python launcher's ranges, GitHub Actions pins and the Chromium pin in browser/upstream.sh are changed by hand: each of them moves what the test pipeline runs against.",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "rebaseWhen": "conflicted",
+  "enabledManagers": ["npm"],
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on monday"] },
+  "packageRules": [
+    {
+      "description": "Non-major npm updates: one pull request a week.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["typescript/**"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "typescript launcher deps (non-major)"
+    },
+    {
+      "description": "Playwright decides which upstream suite the pipeline runs; it is bumped by hand, with ci/versions.py and python/pyproject.toml.",
+      "matchPackageNames": ["playwright", "playwright-core", "@playwright/test"],
+      "enabled": false
+    }
+  ],
+  "vulnerabilityAlerts": { "labels": ["security"], "schedule": ["at any time"] }
+}

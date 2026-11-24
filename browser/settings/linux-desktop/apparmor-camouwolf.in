@@ -1,0 +1,35 @@
+# AppArmor profile for a Camouwolf bundle. Installed by install-desktop.sh, which
+# substitutes @EXEC@ with the unzipped binary's absolute path.
+#
+# WHY THIS EXISTS
+#   Ubuntu 23.10+ sets kernel.apparmor_restrict_unprivileged_userns=1, which
+#   stops an unconfined binary from creating the unprivileged user namespace
+#   Chromium's sandbox is built on. Chromium then aborts at startup:
+#
+#     FATAL:zygote_host_impl_linux.cc] No usable sandbox!
+#
+#   Real Chrome does not hit this because its .deb ships /etc/apparmor.d/chrome,
+#   which this mirrors one-for-one. Chromium, Brave, Firefox and Opera all ship
+#   the same shape.
+#
+#   The alternative fixes are both worse. --no-sandbox turns off the sandbox for
+#   real, and "runs Chrome with the sandbox disabled" is a bot signature in its
+#   own right — no ordinary user launches a browser that way. The older SUID
+#   chrome-sandbox helper needs a root-owned setuid binary inside the bundle,
+#   which is a larger privilege footprint than a profile that grants exactly one
+#   capability.
+#
+#   flags=(unconfined) means this grants no confinement of its own; it exists
+#   only to attach a name to the binary so the `userns` permission can be given
+#   to it. That is precisely what the shipped chrome profile does.
+
+abi <abi/5.0>,
+include <tunables/global>
+
+profile camouwolf @EXEC@ flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/camouwolf>
+}

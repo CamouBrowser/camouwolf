@@ -1,0 +1,45 @@
+# --- build outputs ---------------------------------------------------------
+/dist/
+/node_modules/
+**/node_modules/
+/browser/dist/
+/browser-cache/
+
+# --- Chromium checkout + patch-authoring scratch ---------------------------
+# The checkout is ~100GB and fully regenerable: build.sh fetches a pristine tag
+# and applies browser/patches/. The .pristine mirror and .work tree are
+# likewise regenerable (fetch-sources.sh).
+/.camouwolf-build/
+/browser/.pristine/
+/browser/.work/
+/browser/**/.camouwolf-patched
+
+# --- out-of-git build inputs ----------------------------------------------
+# Bundled fonts are camoufox's release asset, unpacked on demand by
+# browser/scripts/fetch-fonts.py. See browser/bundle/FONTS-README.txt.
+/browser/bundle/fonts/
+
+# --- test artifacts --------------------------------------------------------
+/tests/**/__pycache__/
+*.pyc
+/tmp/
+*.log
+
+# --- editor / OS -----------------------------------------------------------
+.DS_Store
+*.swp
+.idea/
+.vscode/
+!/.vscode/extensions.json
+
+# --- secrets ---------------------------------------------------------------
+.npmrc
+.env
+.env.*
+
+# --- python ----------------------------------------------------------------
+__pycache__/
+*.egg-info/
+.pytest_cache/
+/typescript/dist/
+*.tgz

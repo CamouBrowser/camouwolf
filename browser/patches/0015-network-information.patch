@@ -1,0 +1,38 @@
+diff --git a/third_party/blink/renderer/modules/netinfo/network_information.cc b/third_party/blink/renderer/modules/netinfo/network_information.cc
+--- a/third_party/blink/renderer/modules/netinfo/network_information.cc
++++ b/third_party/blink/renderer/modules/netinfo/network_information.cc
+@@ -3,6 +3,8 @@
+ // found in the LICENSE file.
+ 
+ #include "third_party/blink/renderer/modules/netinfo/network_information.h"
++
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ 
+ #include <algorithm>
+ 
+@@ -132,6 +134,12 @@
+ }
+ 
+ uint32_t NetworkInformation::rtt() {
++  // CAMOUWOLF: connection.rtt is the network's round trip, and goes through
++  // Chrome's per-host noise and 50ms rounding as a measured one does: a raw
++  // value would read the same on every origin, which no real browser does.
++  if (const auto v = base::CamouwolfConfig::Get().GetUint32("connection.rtt")) {
++    return GetNetworkStateNotifier().RoundRtt(Host(), base::Milliseconds(*v));
++  }
+   MaybeShowWebHoldbackConsoleMsg();
+   std::optional<base::TimeDelta> override_rtt =
+       GetNetworkStateNotifier().GetWebHoldbackHttpRtt();
+@@ -148,6 +156,12 @@
+ }
+ 
+ double NetworkInformation::downlink() {
++  // CAMOUWOLF: as rtt() above, through Chrome's per-host noise and 50kbps
++  // rounding.
++  if (const auto v =
++          base::CamouwolfConfig::Get().GetDouble("connection.downlink")) {
++    return GetNetworkStateNotifier().RoundMbps(Host(), *v);
++  }
+   MaybeShowWebHoldbackConsoleMsg();
+   std::optional<double> override_downlink_mbps =
+       GetNetworkStateNotifier().GetWebHoldbackDownlinkThroughputMbps();

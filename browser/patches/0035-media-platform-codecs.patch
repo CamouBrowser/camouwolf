@@ -1,0 +1,317 @@
+diff --git a/media/base/supported_types.cc b/media/base/supported_types.cc
+--- a/media/base/supported_types.cc
++++ b/media/base/supported_types.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "media/base/supported_types.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/command_line.h"
+ #include "base/feature_list.h"
+ #include "base/logging.h"
+@@ -231,6 +232,14 @@
+ bool IsDecoderHevcProfileSupported(const VideoType& type) {
+   if (!IsColorSpaceSupported(type.color_space)) {
+     return false;
++  }
++
++  // CAMOUWOLF: Chrome decodes HEVC only on the platform's decoder, so the
++  // answer is the identity's OS and GPU, not this host's.
++  if (auto claimed = base::CamouwolfConfig::Get().ListContains(
++          "media:platformDecoders", "hevc")) {
++    return *claimed && (type.profile == HEVCPROFILE_MAIN ||
++                        type.profile == HEVCPROFILE_MAIN10);
+   }
+ 
+ #if BUILDFLAG(ENABLE_PLATFORM_HEVC)
+@@ -523,6 +532,15 @@
+     return true;
+   }
+ 
++  // CAMOUWOLF: HEVC encode is a platform encoder, which Linux builds never
++  // query; the identity's OS and GPU decide it.
++  if (type.codec == VideoCodec::kHEVC) {
++    if (auto claimed = base::CamouwolfConfig::Get().ListContains(
++            "media:platformEncoders", "hevc")) {
++      return *claimed;
++    }
++  }
++
+   if (IsEncoderOptionalVideoType(type)) {
+     return GetSupplementalEncoderVideoProfileCache()->IsProfileSupported(
+         type.profile);
+diff --git a/media/mojo/clients/mojo_audio_encoder.cc b/media/mojo/clients/mojo_audio_encoder.cc
+--- a/media/mojo/clients/mojo_audio_encoder.cc
++++ b/media/mojo/clients/mojo_audio_encoder.cc
+@@ -4,10 +4,12 @@
+ 
+ #include "media/mojo/clients/mojo_audio_encoder.h"
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/functional/bind.h"
+ #include "base/task/sequenced_task_runner.h"
+ #include "build/build_config.h"
+ #include "media/base/audio_buffer.h"
++#include "media/base/audio_codecs.h"
+ #include "media/base/media_switches.h"
+ #include "media/mojo/common/media_type_converters.h"
+ 
+@@ -23,6 +25,12 @@
+ 
+ // static
+ bool MojoAudioEncoder::IsSupported(AudioCodec codec) {
++  // CAMOUWOLF: the AAC encoder is the OS's (Media Foundation, AudioToolbox),
++  // so the identity's OS answers for it.
++  if (auto claimed = base::CamouwolfConfig::Get().ListContains(
++          "media:platformEncoders", GetCodecName(codec))) {
++    return *claimed;
++  }
+   switch (codec) {
+     case AudioCodec::kAAC:
+ #if BUILDFLAG(IS_ANDROID)
+diff --git a/third_party/blink/renderer/modules/webcodecs/video_decoder.cc b/third_party/blink/renderer/modules/webcodecs/video_decoder.cc
+--- a/third_party/blink/renderer/modules/webcodecs/video_decoder.cc
++++ b/third_party/blink/renderer/modules/webcodecs/video_decoder.cc
+@@ -8,6 +8,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/containers/span.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/time/time.h"
+@@ -80,6 +81,14 @@
+     std::unique_ptr<VideoDecoder::MediaConfigType> media_config,
+     ScriptPromiseResolver<VideoDecoderSupport>* resolver,
+     media::GpuVideoAcceleratorFactories* gpu_factories) {
++  // CAMOUWOLF: a hardware decoder is the identity's GPU, not this host's.
++  if (auto claimed = base::CamouwolfConfig::Get().ListContains(
++          "media:platformDecoders",
++          media::GetCodecName(media_config->codec()))) {
++    support->setSupported(*claimed);
++    resolver->Resolve(support);
++    return;
++  }
+   if (!gpu_factories) {
+     support->setSupported(false);
+     resolver->Resolve(support);
+diff --git a/third_party/blink/renderer/modules/webcodecs/video_decoder_broker.cc b/third_party/blink/renderer/modules/webcodecs/video_decoder_broker.cc
+--- a/third_party/blink/renderer/modules/webcodecs/video_decoder_broker.cc
++++ b/third_party/blink/renderer/modules/webcodecs/video_decoder_broker.cc
+@@ -8,6 +8,7 @@
+ #include <memory>
+ #include <string>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/task/sequenced_task_runner.h"
+@@ -208,7 +209,10 @@
+ #endif
+     }
+ 
+-    if (hardware_preference_ == HardwarePreference::kPreferHardware) {
++    // CAMOUWOLF: the claimed hardware decoder is not on this host; keep the
++    // software decoders so a "prefer-hardware" stream still decodes.
++    if (hardware_preference_ == HardwarePreference::kPreferHardware &&
++        !base::CamouwolfConfig::Get().Has("media:platformDecoders")) {
+       decoder_factory_ = std::move(external_decoder_factory);
+       return;
+     }
+diff --git a/third_party/blink/renderer/modules/webcodecs/video_encoder.cc b/third_party/blink/renderer/modules/webcodecs/video_encoder.cc
+--- a/third_party/blink/renderer/modules/webcodecs/video_encoder.cc
++++ b/third_party/blink/renderer/modules/webcodecs/video_encoder.cc
+@@ -7,6 +7,7 @@
+ #include <algorithm>
+ #include <string>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/format_macros.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
+@@ -1855,6 +1856,13 @@
+     VideoEncoderSupport* support,
+     VideoEncoderTraits::ParsedConfig* config,
+     media::GpuVideoAcceleratorFactories* gpu_factories) {
++  // CAMOUWOLF: a hardware encoder is the identity's GPU, not this host's.
++  if (auto claimed = base::CamouwolfConfig::Get().ListContains(
++          "media:platformEncoders", media::GetCodecName(config->codec))) {
++    support->setSupported(*claimed);
++    std::move(callback).Run(support);
++    return;
++  }
+   auto required_encoder_type =
+       GetRequiredEncoderType(config->profile, config->hw_pref);
+   bool supported =
+diff --git a/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc b/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
+--- a/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
++++ b/third_party/blink/renderer/modules/media_capabilities/media_capabilities.cc
+@@ -9,6 +9,7 @@
+ #include <sstream>
+ #include <utility>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/feature_list.h"
+ #include "base/metrics/field_trial_params.h"
+ #include "base/metrics/histogram_functions.h"
+@@ -1479,6 +1480,13 @@
+         media::IsDecoderBuiltInVideoCodec(video_codec);
+   }
+ 
++  // CAMOUWOLF: power efficiency is the identity GPU's hardware decoder.
++  if (auto claimed = base::CamouwolfConfig::Get().ListContains(
++          "media:platformDecoders", media::GetCodecName(video_codec))) {
++    OnGpuFactoriesSupport(callback_id, *claimed, video_codec);
++    return;
++  }
++
+   ExecutionContext* execution_context =
+       pending_cb->resolver->GetExecutionContext();
+ 
+diff --git a/third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc b/third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc
+--- a/third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc
++++ b/third_party/blink/renderer/platform/peerconnection/video_codec_factory.cc
+@@ -10,11 +10,14 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "base/camouwolf_config.h"  // CAMOUWOLF
+ #include "base/functional/callback_helpers.h"
+ #include "base/logging.h"
+ #include "base/memory/scoped_refptr.h"
++#include "base/strings/string_split.h"
+ #include "base/strings/string_util.h"
+ #include "build/build_config.h"
++#include "media/base/video_codecs.h"
+ #include "media/mojo/clients/mojo_video_encoder_metrics_provider.h"
+ #include "media/video/gpu_video_accelerator_factories.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -65,6 +68,56 @@
+   return formats1;
+ }
+ 
++// CAMOUWOLF: the identity's hardware codec formats, as "name|fmtp" entries;
++// nullopt when the launcher claimed none, leaving the host's GPU to answer.
++std::optional<std::vector<webrtc::SdpVideoFormat>> ClaimedFormats(
++    const base::ListValue* entries) {
++  if (!entries) {
++    return std::nullopt;
++  }
++  std::vector<webrtc::SdpVideoFormat> formats;
++  for (const base::Value& entry : *entries) {
++    if (!entry.is_string()) {
++      continue;
++    }
++    auto [name, fmtp] = base::SplitStringOnce(entry.GetString(), '|')
++                            .value_or(std::make_pair(
++                                std::string_view(entry.GetString()),
++                                std::string_view()));
++    webrtc::CodecParameterMap parameters;
++    base::StringPairs pairs;
++    base::SplitStringIntoKeyValuePairs(fmtp, '=', ';', &pairs);
++    for (auto& [parameter, value] : pairs) {
++      parameters[parameter] = value;
++    }
++    formats.emplace_back(std::string(name), parameters);
++  }
++  return formats;
++}
++
++// The codec a format names, as media::GetCodecName spells it.
++std::string FormatCodecName(const webrtc::SdpVideoFormat& format) {
++  std::optional<media::VideoCodecProfile> profile =
++      WebRTCFormatToCodecProfile(format);
++  return profile ? media::GetCodecName(
++                       media::VideoCodecProfileToVideoCodec(*profile))
++                 : std::string();
++}
++
++// CAMOUWOLF: support as the identity's GPU reports it: a claimed format is
++// supported, and a supported format of a hardware codec is power efficient.
++template <typename Support>
++Support ClaimedSupport(Support support,
++                       const std::vector<webrtc::SdpVideoFormat>& claimed,
++                       std::optional<bool> hardware,
++                       const webrtc::SdpVideoFormat& format) {
++  if (format.IsCodecInList(claimed)) {
++    support.is_supported = true;
++  }
++  support.is_power_efficient = support.is_supported && hardware.value_or(false);
++  return support;
++}
++
+ std::unique_ptr<webrtc::VideoDecoder> CreateDecoder(
+     webrtc::VideoDecoderFactory* factory,
+     const webrtc::Environment& env,
+@@ -158,6 +211,9 @@
+   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override {
+     std::vector<webrtc::SdpVideoFormat> software_formats =
+         software_encoder_factory_.GetSupportedFormats();
++    if (claimed_formats_) {
++      return MergeFormats(software_formats, *claimed_formats_);
++    }
+     return hardware_encoder_factory_
+                ? MergeFormats(software_formats,
+                               hardware_encoder_factory_->GetSupportedFormats())
+@@ -168,6 +224,15 @@
+       const webrtc::SdpVideoFormat& format,
+       std::optional<std::string> scalability_mode,
+       std::optional<webrtc::Resolution> resolution) const override {
++    if (claimed_formats_) {
++      return ClaimedSupport(
++          software_encoder_factory_.QueryCodecSupport(format, scalability_mode,
++                                                      resolution),
++          *claimed_formats_,
++          base::CamouwolfConfig::Get().ListContains("media:platformEncoders",
++                                                    FormatCodecName(format)),
++          format);
++    }
+     webrtc::VideoEncoderFactory::CodecSupport codec_support =
+         hardware_encoder_factory_
+             ? hardware_encoder_factory_->QueryCodecSupport(
+@@ -183,6 +248,9 @@
+  private:
+   webrtc::InternalEncoderFactory software_encoder_factory_;
+   const std::unique_ptr<RTCVideoEncoderFactory> hardware_encoder_factory_;
++  const std::optional<std::vector<webrtc::SdpVideoFormat>> claimed_formats_ =
++      ClaimedFormats(
++          base::CamouwolfConfig::Get().GetList("media:rtcEncodeFormats"));
+   StatsCollector::StoreProcessingStatsCB stats_callback_;
+ };
+ 
+@@ -217,6 +285,9 @@
+   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override {
+     std::vector<webrtc::SdpVideoFormat> software_formats =
+         software_decoder_factory_.GetSupportedFormats();
++    if (claimed_formats_) {
++      return MergeFormats(software_formats, *claimed_formats_);
++    }
+     return hardware_decoder_factory_
+                ? MergeFormats(software_formats,
+                               hardware_decoder_factory_->GetSupportedFormats())
+@@ -227,6 +298,15 @@
+       const webrtc::SdpVideoFormat& format,
+       bool reference_scaling,
+       std::optional<webrtc::Resolution> resolution) const override {
++    if (claimed_formats_) {
++      return ClaimedSupport(
++          software_decoder_factory_.QueryCodecSupport(format, reference_scaling,
++                                                      resolution),
++          *claimed_formats_,
++          base::CamouwolfConfig::Get().ListContains("media:platformDecoders",
++                                                    FormatCodecName(format)),
++          format);
++    }
+     webrtc::VideoDecoderFactory::CodecSupport codec_support =
+         hardware_decoder_factory_
+             ? hardware_decoder_factory_->QueryCodecSupport(
+@@ -242,6 +322,9 @@
+  private:
+   webrtc::InternalDecoderFactory software_decoder_factory_;
+   const std::unique_ptr<webrtc::VideoDecoderFactory> hardware_decoder_factory_;
++  const std::optional<std::vector<webrtc::SdpVideoFormat>> claimed_formats_ =
++      ClaimedFormats(
++          base::CamouwolfConfig::Get().GetList("media:rtcDecodeFormats"));
+   StatsCollector::StoreProcessingStatsCB stats_callback_;
+ };
+ 

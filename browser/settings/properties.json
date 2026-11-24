@@ -1,0 +1,321 @@
+[
+  {
+    "property": "navigator.userAgent",
+    "type": "str"
+  },
+  {
+    "property": "navigator.platform",
+    "type": "str"
+  },
+  {
+    "property": "navigator.vendor",
+    "type": "str"
+  },
+  {
+    "property": "navigator.hardwareConcurrency",
+    "type": "uint"
+  },
+  {
+    "property": "navigator.deviceMemory",
+    "type": "double"
+  },
+  {
+    "property": "navigator.maxTouchPoints",
+    "type": "int"
+  },
+  {
+    "property": "navigator.languages",
+    "type": "array"
+  },
+  {
+    "property": "locale:intl",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.platform",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.platformVersion",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.architecture",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.bitness",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.model",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.uaFullVersion",
+    "type": "str"
+  },
+  {
+    "property": "userAgentData.mobile",
+    "type": "bool"
+  },
+  {
+    "property": "userAgentData.wow64",
+    "type": "bool"
+  },
+  {
+    "property": "screen.width",
+    "type": "int"
+  },
+  {
+    "property": "screen.height",
+    "type": "int"
+  },
+  {
+    "property": "screen.availWidth",
+    "type": "int"
+  },
+  {
+    "property": "screen.availHeight",
+    "type": "int"
+  },
+  {
+    "property": "screen.availLeft",
+    "type": "int"
+  },
+  {
+    "property": "screen.availTop",
+    "type": "int"
+  },
+  {
+    "property": "screen.colorDepth",
+    "type": "uint"
+  },
+  {
+    "property": "screen.pixelDepth",
+    "type": "uint"
+  },
+  {
+    "property": "screen.isExtended",
+    "type": "bool"
+  },
+  {
+    "property": "webGl:vendor",
+    "type": "str"
+  },
+  {
+    "property": "webGl:renderer",
+    "type": "str"
+  },
+  {
+    "property": "webGl:parameters",
+    "type": "dict"
+  },
+  {
+    "property": "webGl2:parameters",
+    "type": "dict"
+  },
+  {
+    "property": "webGl:supportedExtensions",
+    "type": "array"
+  },
+  {
+    "property": "webGl2:supportedExtensions",
+    "type": "array"
+  },
+  {
+    "property": "webGl:shaderPrecisionFormats",
+    "type": "dict"
+  },
+  {
+    "property": "webGl2:shaderPrecisionFormats",
+    "type": "dict"
+  },
+  {
+    "property": "webGpu:vendor",
+    "type": "str"
+  },
+  {
+    "property": "webGpu:architecture",
+    "type": "str"
+  },
+  {
+    "property": "webGpu:device",
+    "type": "str"
+  },
+  {
+    "property": "webGpu:subgroupMinSize",
+    "type": "uint"
+  },
+  {
+    "property": "webGpu:subgroupMaxSize",
+    "type": "uint"
+  },
+  {
+    "property": "webGpu:features",
+    "type": "array"
+  },
+  {
+    "property": "webGpu:limits",
+    "type": "dict"
+  },
+  {
+    "property": "webGpu:preferredCanvasFormat",
+    "type": "str"
+  },
+  {
+    "property": "canvas:seed",
+    "type": "uint"
+  },
+  {
+    "property": "canvas:randomizeReadback",
+    "type": "bool"
+  },
+  {
+    "property": "canvas:quantizeTextMetrics",
+    "type": "bool"
+  },
+  {
+    "property": "AudioContext:randomizeSamples",
+    "type": "bool"
+  },
+  {
+    "property": "AudioContext:sampleRate",
+    "type": "uint"
+  },
+  {
+    "property": "AudioContext:outputLatency",
+    "type": "double"
+  },
+  {
+    "property": "AudioContext:maxChannelCount",
+    "type": "uint"
+  },
+  {
+    "property": "connection.rtt",
+    "type": "uint"
+  },
+  {
+    "property": "connection.downlink",
+    "type": "double"
+  },
+  {
+    "property": "network:ipv4Only",
+    "type": "bool"
+  },
+  {
+    "property": "webrtc:ipv4",
+    "type": "str"
+  },
+  {
+    "property": "webrtc:ipv6",
+    "type": "str"
+  },
+  {
+    "property": "media:platformDecoders",
+    "type": "array"
+  },
+  {
+    "property": "media:platformEncoders",
+    "type": "array"
+  },
+  {
+    "property": "media:rtcEncodeFormats",
+    "type": "array"
+  },
+  {
+    "property": "media:rtcDecodeFormats",
+    "type": "array"
+  },
+  {
+    "property": "battery:charging",
+    "type": "bool"
+  },
+  {
+    "property": "battery:level",
+    "type": "double"
+  },
+  {
+    "property": "keyboard.layoutMap",
+    "type": "array"
+  },
+  {
+    "property": "mediaDevices:enumerated",
+    "type": "array"
+  },
+  {
+    "property": "voices",
+    "type": "array"
+  },
+  {
+    "property": "fonts",
+    "type": "array"
+  },
+  {
+    "property": "timezone",
+    "type": "str"
+  },
+  {
+    "property": "systemColors",
+    "type": "dict"
+  },
+  {
+    "property": "window.outerWidth",
+    "type": "int",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "window.outerHeight",
+    "type": "int",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "window.devicePixelRatio",
+    "type": "double"
+  },
+  {
+    "property": "window.screenX",
+    "type": "int",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "window.screenY",
+    "type": "int",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "geolocation:latitude",
+    "type": "double",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "geolocation:longitude",
+    "type": "double",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "geolocation:accuracy",
+    "type": "double",
+    "carriedBy": "launcher"
+  },
+  {
+    "property": "proxy:socks5Credentials",
+    "type": "dict"
+  },
+  {
+    "property": "certificates",
+    "type": "array"
+  },
+  {
+    "property": "instantAnimations",
+    "type": "bool"
+  },
+  {
+    "property": "allowAddonNewtab",
+    "type": "bool"
+  },
+  {
+    "property": "showcursor",
+    "type": "bool"
+  }
+]

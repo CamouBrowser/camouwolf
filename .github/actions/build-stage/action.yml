@@ -1,0 +1,142 @@
+name: Build stage
+description: >-
+  One job of a chained release build (build-browser.yml). A hosted job stops at
+  six hours and a Chromium build takes several times that, so each job syncs
+  and patches the source, restores the out/ directory the previous job left,
+  compiles until its time is nearly up, and hands out/ on as an artifact.
+
+inputs:
+  target:
+    description: linux, windows or macos
+    required: true
+  arch:
+    description: x86_64 or arm64
+    required: true
+  first:
+    description: "true for the first job, which has no out/ to restore"
+    required: true
+  finished:
+    description: the previous job's `finished` output
+    required: true
+  toolchain-key:
+    description: CAMOUWOLF_TOOLCHAIN_KEY, for windows and macos
+    required: false
+  python-version:
+    required: false
+    default: "3.12"
+
+outputs:
+  finished:
+    description: "true once out/ holds a complete build"
+    value: ${{ steps.build.outputs.finished || inputs.finished }}
+
+runs:
+  using: composite
+  steps:
+    - name: Start the clock
+      if: inputs.finished != 'true'
+      shell: bash
+      run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
+
+    - uses: ./.github/actions/build-host
+      if: inputs.finished != 'true'
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Fetch the toolchain
+      if: inputs.finished != 'true' && inputs.target != 'linux'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: toolchain-${{ inputs.target }}-${{ inputs.arch }}
+        path: /mnt/camouwolf/toolchain-enc
+
+    - name: Keep the toolchain for the next job
+      # An artifact lives one day (build-browser.yml says why), and the chain
+      # runs for several, so every job uploads it again.
+      if: inputs.finished != 'true' && inputs.target != 'linux'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: toolchain-${{ inputs.target }}-${{ inputs.arch }}
+        path: /mnt/camouwolf/toolchain-enc/
+        retention-days: 1
+        compression-level: 0
+        overwrite: true
+
+    - name: Unpack the toolchain
+      if: inputs.finished != 'true' && inputs.target != 'linux'
+      shell: bash
+      env:
+        KEY: ${{ inputs.toolchain-key }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        [ -n "$KEY" ] || { echo "::error::the CAMOUWOLF_TOOLCHAIN_KEY secret is not set"; exit 1; }
+        enc="$(ls /mnt/camouwolf/toolchain-enc/*.enc)"
+        plain="/mnt/camouwolf/$(basename "$enc" .enc)"
+        openssl enc -d -aes-256-cbc -pbkdf2 -pass env:KEY -in "$enc" -out "$plain"
+        if [ "$TARGET" = windows ]; then
+          echo "CAMOUWOLF_WIN_TOOLCHAIN_ZIP=$plain" >> "$GITHUB_ENV"
+        else
+          mkdir -p /mnt/camouwolf/macsdk && tar -C /mnt/camouwolf/macsdk -xzf "$plain" && rm "$plain"
+          echo "CAMOUWOLF_MAC_SDK_DIR=/mnt/camouwolf/macsdk" >> "$GITHUB_ENV"
+        fi
+
+    - name: Sync Chromium and apply the series
+      if: inputs.finished != 'true'
+      shell: bash
+      run: python3 -m ci.run_prepare --target "${{ inputs.target }}" --arch "${{ inputs.arch }}"
+
+    - name: Restore the previous job's out/
+      if: inputs.finished != 'true' && inputs.first != 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: out-${{ inputs.target }}-${{ inputs.arch }}
+        path: /mnt/camouwolf/out
+
+    - name: Line up the timestamps
+      # ninja rebuilds whatever is older than its inputs, and a fresh sync makes
+      # every source file new. Every job gives the source and the toolchain the
+      # same old time, and tar keeps out/'s own, so a job compiles only what the
+      # previous one did not.
+      if: inputs.finished != 'true'
+      shell: bash
+      run: |
+        src="$CAMOUWOLF_BUILD_DIR/chromium/src"
+        find "$src" -path "$src/out" -prune -o -print0 | xargs -0 touch -h -d '2000-01-01T00:00:00Z'
+        [ -z "${CAMOUWOLF_MAC_SDK_DIR:-}" ] || find "$CAMOUWOLF_MAC_SDK_DIR" -print0 | xargs -0 touch -h -d '2000-01-01T00:00:00Z'
+        if [ -f /mnt/camouwolf/out/out.tar.zst ]; then
+          mkdir -p "$src/out"
+          tar -C "$src/out" --zstd -xf /mnt/camouwolf/out/out.tar.zst
+          rm /mnt/camouwolf/out/out.tar.zst
+        fi
+
+    - name: Build until the job's time is nearly up
+      id: build
+      if: inputs.finished != 'true'
+      shell: bash
+      # The job has six hours; an hour is kept for packing and uploading out/.
+      run: |
+        export CAMOUWOLF_BUILD_SECONDS=$(( 5 * 3600 - ($(date +%s) - STAGE_START) ))
+        python3 -m ci.run_build --target "${{ inputs.target }}" --arch "${{ inputs.arch }}" \
+          --stages build --no-package
+        if [ -e "$CAMOUWOLF_BUILD_DIR/chromium/src/out/Camouwolf/.camouwolf-unfinished" ]; then
+          echo "finished=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "finished=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Pack out/
+      if: inputs.finished != 'true'
+      shell: bash
+      run: |
+        mkdir -p /mnt/camouwolf/out
+        tar -C "$CAMOUWOLF_BUILD_DIR/chromium/src/out" --zstd -cf /mnt/camouwolf/out/out.tar.zst .
+
+    - name: Hand out/ to the next job
+      if: inputs.finished != 'true'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: out-${{ inputs.target }}-${{ inputs.arch }}
+        path: /mnt/camouwolf/out/out.tar.zst
+        retention-days: 1
+        compression-level: 0
+        overwrite: true

@@ -1,0 +1,88 @@
+# Upstream Playwright tests Camouwolf does not pass, each with the reason.
+#
+# This is not a list of things that are broken. The bar for an entry:
+#
+#   A test fails because Camouwolf, or its launcher, does something differently
+#   ON PURPOSE, and a fix would mean giving up the thing the fork exists to do.
+#
+# "It was failing when I got here" is not a reason. `ci/summarize.py` rejects an
+# entry with an empty reason, and a reason is still not evidence: so
+# `ci/run_skiplist_audit.py` runs every entry with the skiplist disabled and
+# FAILS THE BUILD if a skipped test passes. Add an entry only after watching the
+# test fail, and delete it when the audit says it passes.
+#
+# Entries are matched against pytest node ids. `module` skips a whole file,
+# `test` one node id (parametrized ids included by prefix), `pattern` is a
+# substring match, used sparingly.
+#
+# Where these entries were observed: against the Chromium 152 build the patch
+# series was ported from, through this tree's launcher. The audit has to be
+# re-run on the first 158 build; an entry that passes there goes.
+
+schema: 1
+
+skip:
+  # --- the inspector ---------------------------------------------------------
+  #
+  # page.pause() under test opens Playwright's inspector by launching the
+  # browser under test a second time, as an app window, from inside the driver:
+  # that launch does not go through the launcher, so it has no identity config
+  # and none of the launcher's switches. It never comes up, and the paused test
+  # waits for it until the per-test timeout. Stock Chromium passes these.
+  # Hosting Playwright's debugging UI is not something the launcher sets a
+  # build up for.
+  - test: tests/async/test_page.py::test_page_pause_should_reset_default_timeouts
+    reason: >-
+      page.pause() launches the inspector in a second, launcher-less instance of
+      the binary under test, which never comes up; the test then waits forever.
+  - test: tests/async/test_page.py::test_page_pause_should_reset_custom_timeouts
+    reason: >-
+      page.pause() launches the inspector in a second, launcher-less instance of
+      the binary under test, which never comes up; the test then waits forever.
+  - test: tests/sync/test_page.py::test_page_pause_should_reset_default_timeouts
+    reason: >-
+      page.pause() launches the inspector in a second, launcher-less instance of
+      the binary under test, which never comes up; the test then waits forever.
+  - test: tests/sync/test_page.py::test_page_pause_should_reset_custom_timeouts
+    reason: >-
+      page.pause() launches the inspector in a second, launcher-less instance of
+      the binary under test, which never comes up; the test then waits forever.
+
+  # --- the identity is the browser's, not emulated ---------------------------
+  #
+  # The user agent is part of the identity the launcher draws and the browser
+  # reads at startup (navigator.userAgent, the User-Agent header and the client
+  # hints all come from that one config). A context-level `user_agent`, or a
+  # device descriptor that carries one, does not override it: a per-context
+  # override is applied by the driver over CDP, which is exactly the seam that
+  # lets a page see a user agent its client hints and workers disagree with.
+  - test: tests/async/test_browsercontext.py::test_user_agent_should_emulate_device_user_agent
+    reason: >-
+      Asks a context for an iPhone user agent; the identity's user agent is
+      fixed for the browser process and a context cannot replace it.
+  - test: tests/async/test_defaultbrowsercontext.py::test_should_support_user_agent_option
+    reason: >-
+      Asks a persistent context for the user agent "foobar"; the identity's
+      user agent is fixed for the browser process.
+  - test: tests/async/test_device_descriptors.py::test_should_work
+    reason: >-
+      Applies the Pixel 2 device descriptor and expects its user agent; the
+      identity's user agent is fixed for the browser process.
+  - test: tests/async/test_popup.py::test_link_navigation_inherit_user_agent_from_browser_context
+    reason: >-
+      Sets a context user agent of "hey" and expects a popup to inherit it; the
+      context override is not applied, so there is nothing to inherit.
+  - test: tests/async/test_popup.py::test_window_open_inherit_user_agent_from_browser_context
+    reason: >-
+      Sets a context user agent of "hey" and expects a popup to inherit it; the
+      context override is not applied, so there is nothing to inherit.
+
+  # --- the popup blocker -------------------------------------------------------
+  #
+  # Playwright launches Chromium with --disable-popup-blocking. The launcher
+  # removes that switch: a browser that opens any window.open() without a user
+  # gesture is not behaving like a user's browser, and a page can test for it.
+  - test: tests/async/test_browsercontext.py::test_page_event_should_have_an_opener
+    reason: >-
+      Loads a page that calls window.open() on load, with no user gesture; the
+      popup blocker is on, so no popup arrives.

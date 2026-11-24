@@ -1,0 +1,39 @@
+diff --git a/chrome/browser/renderer_preferences_util.cc b/chrome/browser/renderer_preferences_util.cc
+--- a/chrome/browser/renderer_preferences_util.cc
++++ b/chrome/browser/renderer_preferences_util.cc
+@@ -9,6 +9,7 @@
+ #include <string>
+ #include <vector>
+ 
++#include "base/command_line.h"  // CAMOUWOLF
+ #include "base/logging.h"
+ #include "base/strings/string_number_conversions.h"
+ #include "base/strings/string_util.h"
+@@ -29,6 +30,7 @@
+ #include "components/universal_optout/features.h"
+ #include "components/universal_optout/prefs.h"
+ #include "content/public/browser/renderer_preferences_util.h"
++#include "content/public/common/content_switches.h"  // CAMOUWOLF
+ #include "media/media_buildflags.h"
+ #include "third_party/blink/public/common/peerconnection/webrtc_ip_handling_policy.h"
+ #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
+@@ -196,6 +198,19 @@
+     prefs->webrtc_ip_handling_urls.push_back(
+         {pattern, blink::ToWebRTCIPHandlingPolicy(*handling)});
+   }
++  // CAMOUWOLF: --force-webrtc-ip-handling-policy is read only by content_shell
++  // and the old headless shell; the full browser reads the pref alone, so the
++  // launcher's switch was a no-op and a proxied launch still sent STUN from
++  // this host and showed its address as the srflx candidate. The switch wins
++  // over the pref and over any per-URL entry, as it does in content_shell.
++  if (const base::CommandLine* command_line =
++          base::CommandLine::ForCurrentProcess();
++      command_line->HasSwitch(switches::kForceWebRtcIPHandlingPolicy)) {
++    prefs->webrtc_ip_handling_policy =
++        blink::ToWebRTCIPHandlingPolicy(command_line->GetSwitchValueASCII(
++            switches::kForceWebRtcIPHandlingPolicy));
++    prefs->webrtc_ip_handling_urls.clear();
++  }
+   if (pref_service->IsManagedPreference(
+           prefs::kWebRTCPostQuantumKeyAgreement)) {
+     prefs->webrtc_post_quantum_key_agreement =

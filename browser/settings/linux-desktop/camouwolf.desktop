@@ -1,0 +1,35 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Camouwolf
+GenericName=Web Browser
+Comment=Browse the web with Camouwolf
+# Exec/Icon are rewritten by install-desktop.sh at install time so the entry
+# points at wherever this bundle was unzipped.
+#
+# CHROME_DESKTOP is not decoration. Chromium derives its X11 WM_CLASS (and its
+# Wayland app_id) from the desktop file name it is told to use, falling back to
+# "chromium-browser" -- see shell_integration_linux.cc, GetProgramClassClass().
+# Without this the running window announces itself as Chromium-browser, the
+# shell fails to match it to this launcher, and you get a second, generic icon
+# in the dock next to the Camouwolf one instead of the window grouping under it.
+Exec=env CHROME_DESKTOP=camouwolf.desktop @EXEC@ %U
+Icon=@ICON@
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+# Matches the res_class half of WM_CLASS, which is the desktop base name with
+# its first letter capitalised. Deliberately NOT the res_name half ("camouwolf"):
+# that one becomes "camouwolf (/path/to/profile)" whenever --user-data-dir is
+# passed, which is most launches, and would then match nothing.
+StartupWMClass=Camouwolf
+StartupNotify=true
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=env CHROME_DESKTOP=camouwolf.desktop @EXEC@
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=env CHROME_DESKTOP=camouwolf.desktop @EXEC@ --incognito

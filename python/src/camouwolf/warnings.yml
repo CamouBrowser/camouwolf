@@ -1,0 +1,96 @@
+navigator: >-
+    Manually setting navigator properties is not recommended.
+    Device information is automatically generated within Camouwolf
+    based on the provided `os`.
+
+locale: >-
+    Use the `locale` parameter in Camouwolf instead of setting the config manually.
+
+geolocation: >-
+    Please use the `geoip` parameter in Camouwolf instead of setting your geolocation manually.
+    This can lead to detection if your target geolocation does not match your IP.
+    Pass `geoip=True` or a target IP (ex: geoip='123.45.67.89') to let Camouwolf populate this data for you.
+
+viewport: >-
+    Manually setting screen & window properties is not recommended.
+    Screen dimensions are randomly generated within Camouwolf
+    based on the provided screen constraints.
+
+custom_fingerprint: >-
+    Passing your own fingerprint is not recommended.
+    Fingerprints are automatically generated within Camouwolf
+    based on the provided `os` and `screen` constraints.
+
+ipv6_elsewhere: >-
+    This machine's IPv6 address geolocates somewhere other than the IPv4 address the identity was drawn from,
+    so the browser behaves as on an IPv4-only network and sites that only have an IPv6 address will not load.
+    A VPN that tunnels only IPv4 is the usual cause. Use a proxy, or route IPv6 through the VPN as well.
+
+proxy_without_geoip: >-
+    When using a proxy, it is heavily recommended that you pass `geoip=True`.
+
+
+block_webgl: >-
+    Disabling WebGL is not recommended. Many WAFs will check if WebGL is enabled.
+
+gpu_software_rendering: >-
+    The browser on the headless="virtual-gpu" display never rendered on the GPU, so it
+    renders canvas and WebGL in software, which a page can tell from the GPU the
+    identity claims. Pass `require_gpu=True` (the default) to fail the launch instead.
+
+block_images: >-
+    Blocking image requests has been reported to cause detection issues on major WAFs.
+
+custom_fonts_only: >-
+    Disabling OS-specific fonts while spoofing your OS will make your browser fingerprint inconsistent.
+    WAFs can detect this mismatch between your claimed OS and available system fonts.
+
+fallback: |-
+    {what} failed, so this identity uses {instead} instead.
+    A substitute is not drawn to match the rest of the identity, and a page may be able to tell.
+    Please report this at https://github.com/CamouBrowser/camouwolf/issues/new and include:
+
+    {report}
+
+humanize_remote: >-
+    humanize runs on a remote browser. Each event myuri plays is a round trip over the network,
+    so network jitter lands between the events. Run the driver next to the browser to avoid it.
+
+caller_value_incoherent: >-
+    LEAK: config sets {keys}, which no real machine presents together with the rest of this identity
+    ({detail}). Camouwolf launches with the value you passed, but a page that checks these values against each other
+    can tell this browser is not the machine it claims to be. Leave {keys} out of config to have a coherent value drawn.
+    i_know_what_im_doing does not silence this warning.
+
+chrome_version: >-
+    Claiming another Chromium milestone than the browser's own will likely lead to detection:
+    the user agent and client hints then name a version whose features the binary does not have.
+    Install the Camouwolf release built from that milestone instead.
+
+canvas_noise: >-
+    canvas_noise perturbs canvas readback with a per-identity seed. Stock Chrome returns the
+    pixels it drew, so a page that draws the same canvas twice, or compares it with a known
+    rendering, can tell. It is off by default.
+
+per_context_identity: >-
+    LEAK: {problem}. The browser has one identity per process: workers, request headers and the
+    GPU process still answer as the launch identity, so a page can compare the two.
+    Launch another browser for another identity.
+
+addon_not_installed: >-
+    The default addon {addon} is not installed at {path}, so the browser launches without it.
+    Run `camouwolf fetch` to install it, or list it in exclude_addons to leave it out on purpose.
+
+addons_need_persistent_context: >-
+    Addons are loaded, but only run in the browser's own profile. Playwright's new_context() and
+    new_page() on a non-persistent launch open separate incognito-like contexts, where Chromium runs
+    no extension, so pages there are not affected by them (uBlock Origin Lite included).
+    Pass persistent_context=True with a user_data_dir to have them run, or exclude_addons to drop the default one.
+
+disable_coop: >-
+    disable_coop makes Chrome ignore Cross-Origin-Opener-Policy headers. A page that sends
+    COOP and COEP is then not crossOriginIsolated, which it can read, and its popups keep their opener.
+
+instant_animations: >-
+    instant_animations finishes every finite animation at once. A page that reads an animation's
+    timing back sees a duration of zero, which stock Chrome never reports.

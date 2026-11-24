@@ -1,0 +1,158 @@
+# Decisions this repository has settled, each checked by
+# tests/native/test_tribal_rules.py (python -m ci.run_native --subset rules).
+#
+# A rule is here because breaking it produced, or would produce, a failure
+# nothing else catches. Each has an id, the decision, why, and one check:
+#
+#   forbidden   no file under `paths` (globs from the repository root, minus
+#               `except`) matches `pattern`
+#   required    every file under `paths` matches `pattern`
+#   identical   the files in `files` are byte-identical
+#
+# Add a rule when a review comment would otherwise have to be made twice.
+
+schema: 1
+
+rules:
+  - id: properties-one-schema
+    decision: browser/settings/properties.json and the launcher's copy are one file.
+    why: >-
+      The launcher validates a config against its copy and the build ships the
+      other; a key in one and not the other is sent and ignored, silently.
+    identical:
+      files:
+        - browser/settings/properties.json
+        - python/src/camouwolf/data/properties.json
+
+  - id: binary-is-named-by-the-caller
+    decision: No stage or test has a default browser path.
+    why: >-
+      A default path tests whatever build happens to be at it. Every browser
+      stage takes --binary or $CAMOUWOLF_BINARY and fails without one.
+    forbidden:
+      paths: ["ci/*.py", "tests/**/*.py", ".github/workflows/*.yml"]
+      except: ["ci/tests/*"]
+      pattern: 'browser-cache/|/home/[a-z]|\.camouwolf-build/chromium/src/out'
+
+  - id: no-window-on-a-desktop
+    decision: Every stage that launches a browser does it inside ci.browser.private_display().
+    why: >-
+      A CI stage run by hand on a workstation must not open a window on, or take
+      input focus from, the desktop of whoever is sitting at it.
+    required:
+      paths:
+        - ci/run_playwright.py
+        - ci/run_skiplist_audit.py
+        - ci/run_build_tester.py
+        - ci/run_sundial.py
+        - ci/run_install.py
+        - ci/run_native.py
+      pattern: 'private_display\('
+
+  - id: launches-go-through-the-launcher
+    decision: Tests launch with ci.browser.launcher_options(), never with a hand-written switch list.
+    why: >-
+      What is tested must be the pair a user runs: this tree's launcher and the
+      binary. A raw launch passes while the launcher's own switches are broken.
+    forbidden:
+      paths: ["ci/run_*.py", "tests/native/*.py", "tests/build-tester/*.py"]
+      pattern: 'chromium\.launch\((?!\*\*)'
+
+  - id: workflows-call-ci-stages
+    decision: A workflow step that runs a suite calls `python -m ci.<stage>`, not the suite.
+    why: >-
+      A suite run one way in CI and another way locally is two suites; the
+      stage is the single definition, and it is what gets tested locally.
+    forbidden:
+      paths: [".github/workflows/*.yml"]
+      pattern: '(^|\s)(pytest|vitest|pnpm (test|exec vitest))\b(?! ci/tests)'
+
+  - id: no-long-lived-publish-tokens
+    decision: Packages are published by OIDC trusted publishing; no workflow reads a registry token.
+    why: >-
+      A token in a repository secret is valid until someone remembers to rotate
+      it and can be read by any workflow run on the default branch.
+    forbidden:
+      paths: [".github/workflows/*.yml"]
+      pattern: 'NPM_TOKEN|NODE_AUTH_TOKEN|PYPI_TOKEN|PYPI_API_TOKEN|TWINE_PASSWORD'
+
+  - id: sundial-stays-opt-in
+    decision: ci/sundial.yml carries an explicit `enabled:` key.
+    why: >-
+      The stealth check talks to a private suite. A config without the key must
+      not start running it, and ci/run_sundial.py treats absence as off.
+    required:
+      paths: [ci/sundial.yml]
+      pattern: '(?m)^enabled: (true|false)$'
+
+  - id: context-identity-is-the-browsers
+    decision: >-
+      A context gets its identity from Target.setBrowserContextIdentity (0034)
+      before its first renderer, never from Playwright's emulation overrides.
+    why: >-
+      Emulation answers in a page and nowhere else: the context's workers,
+      request headers, client hints, WebRTC and GPU process still answer as
+      the launch, and a page that compares its window with a worker reads two
+      machines. Only an identity the browser holds for the context reaches them
+      all.
+    forbidden:
+      paths: ["python/src/**/*.py", "typescript/src/**/*.ts"]
+      pattern: 'Emulation\.set(UserAgentOverride|TimezoneOverride|LocaleOverride)'
+
+  - id: storage-quota-is-stock
+    decision: Nothing patches or configures navigator.storage.estimate().quota.
+    why: >-
+      Chrome's static storage quota already reports usage + 10 GiB on any disk
+      of 10 GiB or more, so the host's disk does not show. A configured quota
+      is a fixed number that does not grow with usage the way Chrome's does.
+    forbidden:
+      paths: ["browser/patches/*.patch", "browser/settings/properties.json", "python/src/**/*.py", "typescript/src/**/*.ts"]
+      pattern: 'storage\.quota'
+
+  - id: platform-codec-claims-fail-at-use
+    decision: >-
+      A claimed platform codec the host cannot run is still claimed; it fails at
+      use, and prefer-hardware WebCodecs decode falls back to software.
+    why: >-
+      Real Chrome's platform codecs also fail at use (a busy or missing driver),
+      so a failure there is ordinary. Answering a capability query with the
+      host's hardware instead would put a Linux host's codecs under a Windows
+      GPU. The formats were never negotiable before, so nothing that worked
+      breaks.
+    required:
+      paths: [browser/patches/0035-media-platform-codecs.patch]
+      pattern: '!base::CamouwolfConfig::Get\(\)\.Has\("media:platformDecoders"\)'
+
+  - id: public-build-claims-chromium
+    decision: >-
+      The public build is Chromium and says so: no "Google Chrome" brand, no
+      configured brand list, no Google network speech voices. Chrome emulation
+      is a Pro feature.
+    why: >-
+      Chromium builds its own brand list (Chromium and one GREASE entry) with
+      the right permutation for its version, so leaving it alone cannot be
+      wrong; a Chrome claim needs the rest of Chrome (network voices, Widevine)
+      to be coherent, and that is what Pro adds.
+    forbidden:
+      paths: ["browser/patches/*.patch", "browser/settings/properties.json", "python/src/**/*.py", "typescript/src/**/*.ts"]
+      pattern: 'Google Chrome|["'']userAgentData\.(brands|fullVersionList)'
+
+  - id: hosted-runners-only
+    decision: >-
+      Every workflow job, tests and releases alike, runs on a GitHub-hosted
+      runner; there is no self-hosted runner. Builds are cross-compiled from
+      Linux.
+    why: >-
+      A self-hosted runner executes whatever commit it is handed and keeps state
+      between runs: a fork's pull request could run code on it, a test could
+      judge a file left by an earlier run, and a release built on one is only as
+      trustworthy as that machine, which its provenance attestation says nothing
+      about. A hosted runner starts clean and is free for a public repository;
+      the price is a build chained across six-hour jobs (build-browser.yml), and
+      every OS builds the same way, from Linux, with the toolchains packed inside
+      the run (docs/CROSS-COMPILING.md).
+    forbidden:
+      paths:
+        - .github/workflows/*.yml
+        - .github/actions/*/action.yml
+      pattern: 'self-hosted'

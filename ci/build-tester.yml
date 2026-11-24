@@ -1,0 +1,39 @@
+# Policy for ci/run_build_tester.py. The checks themselves live in
+# tests/build-tester/ (run_tests.py and page/checks.js).
+schema: 1
+
+# Identities launched per OS. Index 0 is the launcher's default draw; the
+# others add a locale and a timezone (VARIANTS in run_tests.py).
+profile_count: 4
+
+# The OS identities a Linux build is asked to carry.
+os: [linux, windows]
+
+# A failed check in one of these fails the gate.
+required_categories:
+  - Launch
+  - Automation Detection
+  - Lie Detection
+  - JS Engine
+  - Navigator
+  - Client Hints
+  - Worker
+  - Timezone & Locale
+  - WebGL
+  - Editing
+  - Platform APIs
+  - Screen & Window
+  - Fonts
+  - Voices
+  - Other Surfaces
+  - Media Codecs
+  - Battery
+
+# Reported in the result, never gating, each with the reason.
+reported_categories:
+  Headless Detection: >-
+    What a headless or GPU-less run looks like from a page (software renderer,
+    no speech backend). True of the runner, not of the build.
+  WebGPU: >-
+    navigator.gpu.requestAdapter() needs a GPU. A runner without one
+    returns null whatever the config says.

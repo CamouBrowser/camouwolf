@@ -1,0 +1,49 @@
+# Camouwolf — GN build args shared by every target. browser/scripts/gn-args.sh
+# appends the target's OS and CPU fragments from browser/args/.
+#
+# Every flag here is either "make this an official Chrome-shaped binary" or
+# "remove a headless/Chromium tell". Nothing is here for build speed.
+
+# ---------------------------------------------------------------- official build
+# A component/dev build is detectable in several ways at once: the binary loads
+# ~300 shared libraries (visible to any local check), DCHECKs change timing, and
+# the unoptimized paths shift the numeric fingerprint of Math-heavy JS. Stock
+# Chrome is a single stripped official binary; so is this.
+is_official_build = true
+is_component_build = false
+is_debug = false
+dcheck_always_on = false
+symbol_level = 0
+blink_symbol_level = 0
+
+# ------------------------------------------------------------- media / codecs
+# Stock Chromium ships without proprietary codecs, so
+# `video.canPlayType('video/mp4; codecs="avc1.42E01E"')` returns "" where real
+# Chrome returns "probably". That single empty string separates Chromium from
+# Chrome and is checked by CreepJS and by several commercial detectors. Building
+# with the Chrome ffmpeg branding restores the real answer — and with it the
+# whole MediaCapabilities / canPlayType matrix, which is far more surface than
+# the one call.
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+
+# ------------------------------------------------------------------- branding
+# Build as Chromium, NOT as Google Chrome.
+#
+# is_chrome_branded = true requires Google's internal src-internal checkout,
+# which we do not have and cannot lawfully vendor. The public build claims
+# Chromium (ci/tribal-rules.yml, public-build-claims-chromium): Chromium's own
+# brand list, with its GREASE entry, is left as it is.
+is_chrome_branded = false
+
+# No PGO profile: Google's profile data ships with src-internal. Building
+# without it costs some speed and, more relevantly, produces slightly different
+# codegen than stock Chrome — a residual difference this project accepts and
+# the numeric-parity gate measures.
+chrome_pgo_phase = 0
+
+# --------------------------------------------------------------- attack surface
+# `enable_nacl` is deliberately absent: NaCl was removed from Chromium, and gn
+# warns "Build argument has no effect" for args with no declare_args() block.
+# A dead arg is not harmless — it reads as a setting that is doing something.
+enable_widevine = false
