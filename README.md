@@ -14,6 +14,14 @@ C++, so a page sees one consistent machine and no injected script.
 and neither `camouwolf` package is on PyPI or npm. Only Linux x86_64 is built;
 `python3 -m ci.targets` lists the other targets and why each is off.
 
+**Under active development.** Camouwolf is working to reach the standard
+Camoufox holds; expect gaps and breaking changes until it does.
+
+**It claims Chromium, not Chrome.** The browser sends Chromium's own brand list
+(`Chromium` and one GREASE entry) and offers only local speech voices. Emulating
+Google Chrome itself (the `"Google Chrome"` brand, Google's network voices) is
+part of Camouwolf Pro.
+
 ## Layout
 
 | Path | What it is |
