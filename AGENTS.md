@@ -131,7 +131,7 @@ Actions. Branch protection requires one check, **`All tests passed`**.
 | You changed | Run |
 |---|---|
 | A patch, `browser/additions/`, `properties.json` | `python3 -m ci.run_patch_guards`, then against a build: `python3 -m ci.run_build_tester --binary <camouwolf>` |
-| Automation behaviour | `python3 -m ci.run_playwright --binary <camouwolf> -k <test>` |
+| Automation behaviour | `python3 -m ci.run_playwright --binary <camouwolf> --only <path or node id>` |
 | `python/` | `python3 -m ci.run_pythonlib` |
 | `typescript/` | `python3 -m ci.run_typescript` (Node 22.15 or newer) |
 | `ci/` itself, a workflow | `python3 -m pytest ci/tests -q` and `python3 -m ci.run_native --subset rules` |

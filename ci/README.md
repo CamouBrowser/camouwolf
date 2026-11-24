@@ -45,8 +45,8 @@ the launcher and is never set in a workflow.
 | `ci.run_install` | `install` | yes | Unpacks the archive (or takes `--binary`), checks the layout and `version.json`, runs `--version`, launches once. Prints and outputs `binary` |
 | `ci.run_skiplist_audit` | `skiplist_audit` | yes | Runs every `ci/skiplist.yml` entry with the skiplist empty; an entry that passes is stale and fails the audit |
 | `ci.run_build_tester` | `build_tester` | yes | `tests/build-tester`: what a page reads against what the launcher claimed, over several drawn identities and locales (`ci/build-tester.yml`) |
-| `ci.run_native --subset browser` | `native_browser` | yes | `tests/native`: no process or profile directory outlives a launch; a killed browser is survivable; a canvas reads back the same pixels from its first read on; a SOCKS5 proxy carries page and WebRTC traffic, with a password too; each behaviour launch option does what it says |
-| `ci.run_playwright` | `playwright` (`playwright-NofM` per shard) | yes | The upstream playwright-python suite, launched through the launcher by `ci/pw_camouwolf_plugin.py`. `--shard 2/4`, `-k`, `--playwright-tag` |
+| `ci.run_native --subset browser` | `native_browser` | yes | `tests/native`: no process or profile directory outlives a launch; a killed browser is survivable; a canvas reads back the same pixels from its first read on; WebRTC keeps off UDP when the launcher blocks it; a SOCKS5 proxy carries page and WebRTC traffic, with a password too; each behaviour launch option does what it says |
+| `ci.run_playwright` | `playwright` (`playwright-NofM` per shard) | yes | The upstream playwright-python suite, launched through the launcher by `ci/pw_camouwolf_plugin.py`. `--shard 2/4`, `--only <path or node id>`, `--playwright-tag` |
 | `ci.run_sundial` | `sundial` | yes | The stealth scan. Off until `ci/sundial.yml` says `enabled: true`; see below |
 
 Supporting modules: `ci.versions` (which suite goes with which Chromium),
@@ -70,7 +70,7 @@ export CAMOUWOLF_BINARY=/path/to/camouwolf
 python -m ci.run_install --binary "$CAMOUWOLF_BINARY"
 python -m ci.run_build_tester
 python -m ci.run_native --subset browser
-python -m ci.run_playwright -k test_click   # or the whole suite, ~10 min
+python -m ci.run_playwright --only tests/async/test_click.py   # or the whole suite, ~10 min
 python -m ci.run_skiplist_audit
 ```
 
