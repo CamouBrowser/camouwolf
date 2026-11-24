@@ -377,6 +377,16 @@ never on desktop Linux, so a UA claiming Windows with no `navigator.share` is a
 one-line detection. Keyed on `navigator.platform` rather than a dedicated key,
 so it cannot drift out of step with the identity the rest of the series serves.
 
+Web Bluetooth is the other one: `navigator.bluetooth` and the eight `Bluetooth*`
+interfaces are stable on Windows and macOS and experimental on Linux, and they
+were the only names a secure page on a real macOS Chrome had that a Windows
+identity here lacked, apart from version differences. The browser side is
+compiled in on Linux. Without a BlueZ adapter it answers like a machine with no
+Bluetooth adapter: `getAvailability()` resolves `false` and `requestDevice()`
+rejects with `NotFoundError: Bluetooth adapter not available.` (a real Chrome
+with an adapter shows its chooser and waits instead). `EyeDropper` needs
+nothing: it is already exposed on every identity, as on Linux Chrome.
+
 ### 0020 — system colors
 
 `layout_theme.cc`, the one shared resolver every web-exposed system color passes
@@ -580,6 +590,39 @@ See 0007. Camoufox removed both; nothing to port.
 
 See 0008. Follows the build, not the identity.
 
+### macOS key bindings
+
+On a real Mac most editing keys never reach Blink's table: Cocoa's
+`interpretKeyEvents:` turns them into edit commands in the browser (Cmd+A is
+`selectAll:`, Ctrl+A is `moveToBeginningOfParagraph:`, Home scrolls instead of
+moving the caret), and Playwright only sends those commands when it runs on
+macOS. Porting Blink's compiled macOS table alone would make a `MacIntel`
+identity's keys neither Linux's nor macOS's, so it waits for the Cocoa table to
+come with it. The launcher refuses macOS identities on a Linux host unless
+`allow_os_mismatch` is set.
+
+### `BarcodeDetector` on macOS
+
+Real macOS Chrome exposes `BarcodeDetector` (it is backed by the Vision
+framework); Windows and Linux Chrome do not. Exposing it on a `MacIntel`
+identity needs a detector service behind it, or `getSupportedFormats()` answers
+an empty list that no Mac gives.
+
+### Window frame geometry
+
+The launcher sets the outer size and position from the identity, and the
+browser lays out its own toolbar in it, so `outerWidth − innerWidth` is 0 and
+`outerHeight − innerHeight` is 87, headless, on a virtual display and headed
+alike. In the recorded Windows and macOS devices the most common frame is a
+maximized window with exactly that: width delta 0 and height delta 87 (or 121
+with the bookmarks bar). Nothing to patch.
+
+### `history.length`
+
+2 after `new_page()` and `goto()`, as in stock Chrome: the tab's `about:blank`
+is the first entry. Real Chrome's value depends on how the tab was opened, so
+there is no single constant to serve.
+
 ### 0029 — platform editing behaviour
 
 `web_view_impl.cc`. Blink picks its editing conventions at compile time, and a
@@ -588,9 +631,7 @@ identity gets Windows' editing behaviour: Ctrl+Right stops after the space, a
 double-click selects the trailing space, and a middle click autoscrolls rather
 than pasting the X11 primary selection. A `MacIntel` identity gets macOS's
 editing behaviour and smart insert and delete. A Linux identity, and a launch
-with no config, keep the build's own. The key bindings themselves stay the
-host's: Blink compiles them per platform, and Playwright sends the keys a test
-names.
+with no config, keep the build's own. The key bindings follow it in 0033.
 
 ### 0030 — WebRTC IP handling switch
 
@@ -652,3 +693,41 @@ The launcher writes the exit IP from `geoip` to `webrtc:ipv4` or `webrtc:ipv6`
 for a proxied launch. A proxied context without either key has no network and
 gathers no host candidate. `block_webrtc=True` still passes the 0030 switch,
 which leaves a page no UDP at all.
+
+### 0032 — speech synthesis engine
+
+`content/browser/speech/tts_linux.cc`. 0012 gives the page the identity's voices,
+but on a host without speech-dispatcher every `speak()` fired only `error`
+(`synthesis-failed`) within a few milliseconds, where a real machine starts,
+reports boundaries and ends. With a `voices` key the Linux TTS platform speaks
+those voices itself, silently, with the events of the claimed OS's engine:
+
+- a local voice fires `start`, a `word` boundary per whitespace-separated word
+  (macOS and Windows), a `sentence` boundary at each sentence (Windows' SAPI
+  sends both), and `end`. A Linux identity's voices fire `start` and `end`
+  only, as speech-dispatcher does.
+- a network voice (`Google …`) fires `start` and `end`, no boundaries.
+
+The pace is measured on macOS Chrome 153 with a 56-character sentence: a local
+voice starts after about 4 ms and ends after about 3.3 s (57 ms a character
+after a 110 ms lead); a network voice starts after about 409 ms and ends after
+about 5 s. Everything after `start` scales with `1 / rate`, as it did there.
+`pause()`, `resume()` and `cancel()` behave as on a real engine. With no
+`voices` key nothing changes.
+
+### 0033 — platform key bindings
+
+`editing_behavior.cc`. Blink compiles its key bindings per platform. Linux and
+Windows Chrome agree on almost all of them (Ctrl+Backspace, Ctrl+Delete,
+Home/End, Ctrl+Home/End, Ctrl+Z/Y, Ctrl+A), and differ in three:
+
+- Ctrl+Shift+Backspace deletes to the start of the line on Linux and does
+  nothing on Windows;
+- Alt+Backspace undoes and Alt+Shift+Backspace redoes on Windows, and do nothing
+  on Linux;
+- Linux never inserts a character typed with Ctrl held; Windows does (AltGr is
+  Ctrl+Alt there).
+
+Those three follow the editing behaviour 0029 picks, so a `Win32` identity gets
+Windows' and every other launch keeps Linux's. macOS's bindings are not ported;
+see "Not yet patched".

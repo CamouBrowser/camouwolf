@@ -9,7 +9,7 @@ diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.
  #include "base/command_line.h"
  #include "base/feature_list.h"
  #include "base/logging.h"
-@@ -605,6 +606,25 @@
+@@ -605,6 +606,30 @@
      WebRuntimeFeatures::EnableXSLT(value == "true");
    }
  
@@ -29,6 +29,11 @@ diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.
 +          base::CamouwolfConfig::Get().GetString("navigator.platform")) {
 +    if (*platform == "Win32" || *platform == "MacIntel") {
 +      WebRuntimeFeatures::EnableWebShare(true);
++      // Web Bluetooth (navigator.bluetooth and the Bluetooth* interfaces) is
++      // stable on Windows/macOS and experimental on Linux. With no BlueZ
++      // adapter the browser answers as a machine without a Bluetooth adapter:
++      // getAvailability() is false and requestDevice() rejects NotFoundError.
++      WebRuntimeFeatures::EnableWebBluetooth(true);
 +    }
 +  }
 +

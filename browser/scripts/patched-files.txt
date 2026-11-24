@@ -100,6 +100,9 @@ third_party/blink/renderer/platform/p2p/ipc_network_manager.cc
 # --- platform editing behaviour ----------------------------------------------
 third_party/blink/renderer/core/exported/web_view_impl.cc
 
+# --- platform key bindings -------------------------------------------------
+third_party/blink/renderer/core/editing/editing_behavior.cc
+
 # --- WebRTC IP handling policy ---------------------------------------------
 chrome/browser/renderer_preferences_util.cc
 
@@ -111,3 +114,6 @@ services/network/p2p/socket_manager.h
 services/network/p2p/socket_manager.cc
 services/network/p2p/socket_tcp.h
 services/network/p2p/socket_tcp.cc
+
+# --- speech synthesis engine -----------------------------------------------
+content/browser/speech/tts_linux.cc

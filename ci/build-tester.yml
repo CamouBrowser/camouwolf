@@ -21,6 +21,7 @@ required_categories:
   - Timezone & Locale
   - WebGL
   - Editing
+  - Platform APIs
   - Screen & Window
   - Fonts
   - Voices
