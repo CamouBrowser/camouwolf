@@ -299,7 +299,7 @@ def gather(binary: Path, urls: Any, capture: bool, **kwargs: Any) -> Dict[str, A
         try:
             argv = [arg for proc in browser_processes() for arg in proc.cmdline()]
             try:
-                visited = browser.new_page().goto(PROXIED_PAGE).body()
+                visited = browser.new_page().goto(PROXIED_PAGE).body().decode()
             except PlaywrightError as exc:
                 visited = exc.message
             context = browser.new_context(permissions=["microphone"] if capture else [])
@@ -310,6 +310,11 @@ def gather(binary: Path, urls: Any, capture: bool, **kwargs: Any) -> Dict[str, A
             return {**page.evaluate(GATHER, [urls, capture]), "argv": argv, "visited": visited}
         finally:
             browser.close()
+
+
+def readable(got: Dict[str, Any]) -> str:
+    """Everything the page read, as one string to search for addresses."""
+    return json.dumps({key: got[key] for key in ("candidates", "sdp", "stats")})
 
 
 def srflx(got: Dict[str, Any]) -> Dict[str, Set[str]]:
@@ -342,7 +347,7 @@ def test_behind_socks5_a_capturing_page_finds_no_host_address(
     leak, leak_url = local_stun
     got = gather(binary, [f"stun:{STUN_ADDR[0]}:{STUN_ADDR[1]}", leak_url], capture=True,
                  proxy={"server": proxy_url})
-    seen = json.dumps(got)
+    seen = readable(got)
     assert any(f" {EXIT} " in c and " typ host " in c for c in got["candidates"]), got
     assert [ip for ip in host_addresses() if ip in seen] == [], seen
     assert stun.requests and leak.requests == [], (stun.requests, leak.requests)
@@ -353,7 +358,7 @@ def test_behind_an_http_proxy_nothing_is_sent(binary: Path, local_stun: Tuple[Lo
     got = gather(binary, leak_url, capture=True, proxy={"server": "http://127.0.0.1:1"})
     assert leak.requests == [], leak.requests
     assert all(found == set() for found in srflx(got).values()), got
-    seen = json.dumps(got)
+    seen = readable(got)
     assert [ip for ip in host_addresses() if ip in seen] == [], seen
 
 
@@ -362,7 +367,7 @@ def test_an_unproxied_launch_is_unchanged(binary: Path, local_stun: Tuple[LocalS
     stun, url = local_stun
     got = gather(binary, url, capture=True)
     assert stun.requests and all(found == stun.answered for found in srflx(got).values()), (srflx(got), stun.answered)
-    assert own_address() in json.dumps(got) and EXIT not in json.dumps(got), got
+    assert own_address() in readable(got) and EXIT not in readable(got), got
 
 
 def test_behind_a_socks5_proxy_with_a_password_both_paths_log_in(binary: Path, password_internet: Any) -> None:
@@ -372,7 +377,7 @@ def test_behind_a_socks5_proxy_with_a_password_both_paths_log_in(binary: Path, p
     username, password = (part.decode() for part in CREDENTIALS)
     got = gather(binary, f"stun:{STUN_ADDR[0]}:{STUN_ADDR[1]}", capture=False,
                  proxy={"server": proxy_url, "username": username, "password": password})
-    assert got["visited"] == PROXIED_BODY, got["visited"]
+    assert got["visited"] == PROXIED_BODY.decode(), got["visited"]
     assert {ip for ip, _ in stun.requests} == {EXIT}, (stun.requests, got)
     assert set(proxy.commands) == {1, 3} and set(proxy.logins) == {CREDENTIALS}, (proxy.commands, proxy.logins)
     assert got["argv"] and not [arg for arg in got["argv"] if password in arg], got["argv"]
@@ -382,5 +387,5 @@ def test_a_refused_password_reaches_nothing(binary: Path, password_internet: Any
     _, stun, proxy_url, proxy = password_internet
     got = gather(binary, f"stun:{STUN_ADDR[0]}:{STUN_ADDR[1]}", capture=False,
                  proxy={"server": proxy_url, "username": "user", "password": "wrong"})
-    assert got["visited"] != PROXIED_BODY and stun.requests == [], (got["visited"], stun.requests)
+    assert got["visited"] != PROXIED_BODY.decode() and stun.requests == [], (got["visited"], stun.requests)
     assert proxy.logins and set(proxy.logins) == {(b"user", b"wrong")} and proxy.commands == [], proxy.commands
