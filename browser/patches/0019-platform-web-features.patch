@@ -30,8 +30,8 @@ diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.
 +    if (*platform == "Win32" || *platform == "MacIntel") {
 +      WebRuntimeFeatures::EnableWebShare(true);
 +      // Web Bluetooth (navigator.bluetooth and the Bluetooth* interfaces) is
-+      // stable on Windows/macOS and experimental on Linux. With no BlueZ
-+      // adapter the browser answers as a machine without a Bluetooth adapter:
++      // stable on Windows/macOS and experimental on Linux. The browser side
++      // answers as a machine without a Bluetooth adapter on every host:
 +      // getAvailability() is false and requestDevice() rejects NotFoundError.
 +      WebRuntimeFeatures::EnableWebBluetooth(true);
 +    }
@@ -40,3 +40,36 @@ diff --git a/content/child/runtime_features.cc b/content/child/runtime_features.
    ResolveInvalidConfigurations();
  }
  
+diff --git a/content/browser/bluetooth/bluetooth_adapter_factory_wrapper.cc b/content/browser/bluetooth/bluetooth_adapter_factory_wrapper.cc
+--- a/content/browser/bluetooth/bluetooth_adapter_factory_wrapper.cc
++++ b/content/browser/bluetooth/bluetooth_adapter_factory_wrapper.cc
+@@ -14,6 +14,8 @@
+ #include "base/task/single_thread_task_runner.h"
+ #include "content/browser/bluetooth/web_bluetooth_service_impl.h"
+ #include "device/bluetooth/bluetooth_adapter_factory.h"
++#include "device/bluetooth/emulation/fake_central.h"
++#include "mojo/public/cpp/bindings/pending_receiver.h"
+ 
+ namespace content {
+ 
+@@ -75,11 +77,16 @@
+     return;
+   }
+ 
+-  CHECK(BluetoothAdapterFactory::Get()->IsLowEnergySupported(),
+-        base::NotFatalUntil::M160);
+-  BluetoothAdapterFactory::Get()->GetAdapter(
++  // Web Bluetooth answers as a machine without a Bluetooth adapter on every
++  // host, so a page never reaches the host's radio or the devices around it.
++  // The absent central is the one DevTools' BluetoothEmulation installs.
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE,
+       base::BindOnce(&BluetoothAdapterFactoryWrapper::OnGetAdapter,
+-                     weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
++                     weak_ptr_factory_.GetWeakPtr(), std::move(callback),
++                     base::MakeRefCounted<bluetooth::FakeCentral>(
++                         bluetooth::mojom::CentralState::ABSENT,
++                         mojo::NullReceiver())));
+ }
+ 
+ void BluetoothAdapterFactoryWrapper::ReleaseAdapter(
