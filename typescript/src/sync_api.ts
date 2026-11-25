@@ -32,6 +32,7 @@ import {
 	type GpuDisplayOptions,
 	type Headless,
 	type LaunchOptions,
+	launchDefaults,
 	launchOptions,
 	launchOptionsOf,
 	launchOs,
@@ -40,6 +41,7 @@ import {
 	pinnedCoreCount,
 	refuseContextOptions,
 	setContextIdentityParams,
+	startTelemetry,
 	startVirtualDisplay,
 	warnAddonsWithoutProfile,
 } from "./utils.js";
@@ -96,14 +98,12 @@ export async function NewBrowser(
 ): Promise<Browser>;
 export async function NewBrowser(
 	playwright: BrowserType | { chromium: BrowserType },
-	{
-		headless,
-		from_options,
-		persistent_context,
-		debug,
-		...kwargs
-	}: NewBrowserOptions = {},
+	options: NewBrowserOptions = {},
 ): Promise<Browser | BrowserContext> {
+	// The defaults file fills what the caller left unset; options read here
+	// (headless, humanize, telemetry) need it before launchOptions runs.
+	const { headless, from_options, persistent_context, debug, ...kwargs } =
+		launchDefaults(options);
 	const browserType: BrowserType =
 		"chromium" in playwright ? playwright.chromium : playwright;
 	// humanize runs in this process: checked before the launch, attached to
@@ -144,6 +144,7 @@ export async function NewBrowser(
 				options,
 				Boolean(persistent_context),
 				virtualDisplay,
+				kwargs.telemetry,
 			);
 		let browser: Browser | BrowserContext;
 		if (!pinTo) {
@@ -178,6 +179,7 @@ async function launchWith(
 	fromOptions: Record<string, any>,
 	persistentContext: boolean,
 	virtualDisplay: VirtualDisplay | null,
+	telemetry: boolean | undefined,
 ): Promise<Browser | BrowserContext> {
 	const userDataDir = fromOptions.user_data_dir ?? fromOptions.userDataDir;
 	if (persistentContext) {
@@ -191,6 +193,7 @@ async function launchWith(
 			options,
 		);
 		attachDriverDefaults(context);
+		startTelemetry(context, fromOptions, telemetry, true);
 		return attachVirtualDisplay(context, virtualDisplay);
 	}
 	if (userDataDir !== undefined) {
@@ -204,6 +207,7 @@ async function launchWith(
 	warnAddonsWithoutProfile(fromOptions);
 	const browser = await browserType.launch(fromOptions);
 	attachContextDefaults(browser, fromOptions);
+	startTelemetry(browser, fromOptions, telemetry, false);
 	return attachVirtualDisplay(browser, virtualDisplay);
 }
 

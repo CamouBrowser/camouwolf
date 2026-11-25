@@ -38,6 +38,11 @@ def isolated_environment(monkeypatch, tmp_path):
     directory is a temporary one."""
     for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'CAMOUWOLF_EXECUTABLE_PATH', 'CAMOUWOLF_GPU'):
         monkeypatch.delenv(name, raising=False)
+    # No test sends telemetry (one with a fake sender turns it back on), and
+    # none reads the user's own defaults file.
+    monkeypatch.setenv('CAMOUWOLF_TELEMETRY', '0')
+    monkeypatch.delenv('DO_NOT_TRACK', raising=False)
+    monkeypatch.setenv('CAMOUWOLF_DEFAULTS', str(tmp_path / 'user-defaults.json'))
     from camouwolf import addons, utils
 
     monkeypatch.setattr(utils, 'INSTALL_DIR', tmp_path / 'cache')

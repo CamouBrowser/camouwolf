@@ -20,8 +20,12 @@ import {
 	validIPv4,
 } from "camoucore/ip.js";
 import { handleLocales } from "camoucore/locales.js";
+import { checkPassthrough, warnPassthrough } from "camoucore/passthrough.js";
+import { applyDefaults, loadDefaults } from "camoucore/settings.js";
+import { Telemetry, telemetryEnabled } from "camoucore/telemetry.js";
 import { VirtualDisplay } from "camoucore/virtdisplay.js";
 import { ensureModel } from "fpgen-js";
+import { LIBRARY_VERSION } from "./__version__.js";
 import { addDefaultAddons, confirmPaths, type DefaultAddon } from "./addons.js";
 import * as clienthints from "./clienthints.js";
 import * as coherence from "./coherence.js";
@@ -59,7 +63,7 @@ import {
 } from "./fingerprints.js";
 import { GPU_SWITCHES, GpuDisplay, proveGpu, selectGpu } from "./gpudisplay.js";
 import { type HumanizeSetting, normalize } from "./humanize.js";
-import { INSTALL_DIR, loadDataFile, OS_NAME } from "./paths.js";
+import { DEFAULTS_FILE, INSTALL_DIR, loadDataFile, OS_NAME } from "./paths.js";
 import {
 	buildFile,
 	ensureBrowserProfileDir,
@@ -871,6 +875,14 @@ export interface GeolocationOption {
 }
 
 /**
+ * Whether these launch options are a passthrough launch's: every drawn
+ * identity claims a user agent, and a passthrough launch draws none.
+ */
+export function launchIsPassthrough(fromOptions: Config): boolean {
+	return !("navigator.userAgent" in launchConfig(fromOptions));
+}
+
+/**
  * The position these launch options place the browser at, as Playwright's
  * `geolocation` option, or null.
  */
@@ -1007,16 +1019,19 @@ export function refusePerContextIdentity(options: Config): void {
  * - the launch's geolocation (geoip, or geolocation:* in config), granted, as
  *   a browser whose user chose "Always allow" has it.
  * - a LeakWarning for an option its pages would answer with against the
- *   context's identity (NewContext refuses those outright).
+ *   context's identity (NewContext refuses those outright), unless the
+ *   launch is passthrough.
  *
  * Returns the adjusted copy of the options.
  */
 export function contextDefaults(
 	geolocation: GeolocationOption | null | undefined,
+	passthrough = false,
 ): (options?: Config) => Config {
 	return (options?: Config): Config => {
 		const out: Config = { ...options };
-		for (const problem of perContextIdentityProblems(out)) {
+		// A passthrough browser has no identity to contradict.
+		for (const problem of passthrough ? [] : perContextIdentityProblems(out)) {
 			warn(
 				loadWarnings().per_context_identity.replaceAll(
 					"{problem}",
@@ -1195,6 +1210,12 @@ export async function contextIdentity(
 			"NewContext needs a browser launched by Camouwolf: a context identity is drawn to fit it",
 		);
 	}
+	if (launchIsPassthrough(fromOptions)) {
+		throw new ValueError(
+			"NewContext draws a context its own identity, and a passthrough browser injects none. " +
+				"Use browser.newContext(), whose pages are this machine as the rest of the browser is.",
+		);
+	}
 	const targetOs = launchOs(fromOptions);
 	if (os !== undefined && os !== null && os !== targetOs) {
 		throw new ValueError(
@@ -1322,7 +1343,10 @@ export function createdContextId(before: Config, after: Config): string {
  * context, so the defaults newContext() would get go into the options.
  */
 export function persistentContextOptions(fromOptions: Config): Config {
-	return contextDefaults(launchGeolocation(fromOptions))(fromOptions);
+	return contextDefaults(
+		launchGeolocation(fromOptions),
+		launchIsPassthrough(fromOptions),
+	)(fromOptions);
 }
 
 /**
@@ -1344,7 +1368,10 @@ const LAUNCH_OPTIONS = Symbol("camouwolfLaunchOptions");
  */
 export function attachContextDefaults<T>(browser: T, fromOptions: Config): T {
 	(browser as any)[LAUNCH_OPTIONS] = fromOptions;
-	const adjust = contextDefaults(launchGeolocation(fromOptions));
+	const adjust = contextDefaults(
+		launchGeolocation(fromOptions),
+		launchIsPassthrough(fromOptions),
+	);
 	for (const name of ["newPage", "newContext"] as const) {
 		const original = (browser as any)[name];
 		if (typeof original !== "function") continue;
@@ -1353,6 +1380,71 @@ export function attachContextDefaults<T>(browser: T, fromOptions: Config): T {
 	}
 	attachDriverDefaults(browser);
 	return browser;
+}
+
+/*
+ * Defaults and telemetry
+ */
+
+/**
+ * `options` with each one the caller left unset taken from the defaults file,
+ * overlaid with the user's own.
+ */
+export function launchDefaults<T extends Record<string, unknown>>(
+	options: T,
+): T {
+	return applyDefaults(loadDefaults(PRODUCT, DEFAULTS_FILE), options);
+}
+
+/**
+ * Count anti-bot outcomes on every context of `target` (a Browser, or a
+ * persistent BrowserContext) when telemetry is on; see camoucore's telemetry
+ * for what is sent. Telemetry never fails a launch.
+ */
+export function startTelemetry(
+	target: any,
+	fromOptions: Config,
+	setting: boolean | null | undefined,
+	persistent: boolean,
+): void {
+	try {
+		if (!telemetryEnabled(PRODUCT, setting)) return;
+		const passthrough = launchIsPassthrough(fromOptions);
+		const telemetry = new Telemetry(PRODUCT, {
+			version: LIBRARY_VERSION,
+			browserVersion: resolveVersion(fromOptions.executablePath),
+			// Camouwolf has no Pro build.
+			pro: false,
+			crossOs:
+				!passthrough && launchOs(fromOptions) !== OS_NAMES[utilsDeps.osName()],
+			passthrough,
+			proxy: fromOptions.proxy ?? null,
+		});
+		const watch = (context: any) => {
+			try {
+				telemetry.watch(context);
+			} catch {
+				// Telemetry never affects a launch.
+			}
+		};
+		if (persistent) {
+			watch(target);
+			target.on("close", () => void telemetry.close());
+			return;
+		}
+		for (const name of ["newPage", "newContext"] as const) {
+			const original = target[name];
+			if (typeof original !== "function") continue;
+			target[name] = async (...args: any[]) => {
+				const made = await original.apply(target, args);
+				watch(name === "newPage" ? made.context() : made);
+				return made;
+			};
+		}
+		telemetry.watchBrowser(target);
+	} catch {
+		// Telemetry never affects a launch.
+	}
 }
 
 /** The launch options a Camouwolf browser was launched with. */
@@ -1944,6 +2036,15 @@ export interface LaunchOptions {
 	canvas_noise?: boolean | null;
 	/** Allow an identity on an OS this host cannot pass for. */
 	allow_os_mismatch?: boolean;
+	/** Launch with this machine's own fingerprint: no identity is drawn and no
+	 * identity config, font set, timezone, window size or language is sent.
+	 * Behaviour options still apply. An identity option (os, locale, geoip,
+	 * config, ...) alongside it throws. */
+	passthrough?: boolean;
+	/** Report anonymous anti-bot outcome counts per proxy provider (see the
+	 * README). Applied by Camouwolf()/NewBrowser(); CAMOUWOLF_TELEMETRY=0 or
+	 * DO_NOT_TRACK=1 turns it off too. */
+	telemetry?: boolean;
 	/** Additional Playwright Chromium launch options. */
 	[key: string]: any;
 }
@@ -2289,9 +2390,17 @@ export async function drawIdentity(
 
 /**
  * Builds the Playwright launch options for a Camouwolf browser. Accepts all
- * Playwright Chromium launch options, along with those of LaunchOptions.
+ * Playwright Chromium launch options, along with those of LaunchOptions. An
+ * option left unset takes its value from camouwolf.defaults.json and the
+ * user's own defaults file (`camouwolf defaults`).
  */
-export async function launchOptions({
+export async function launchOptions(
+	options: LaunchOptions = {},
+): Promise<Record<string, any>> {
+	return buildLaunchOptions(launchDefaults(options));
+}
+
+async function buildLaunchOptions({
 	config,
 	os,
 	block_images,
@@ -2334,8 +2443,32 @@ export async function launchOptions({
 	pin_cpu_cores,
 	canvas_noise,
 	allow_os_mismatch,
-	...passthrough
-}: LaunchOptions = {}): Promise<Record<string, any>> {
+	passthrough,
+	telemetry: _telemetry,
+	...playwrightOptions
+}: LaunchOptions): Promise<Record<string, any>> {
+	if (passthrough) {
+		checkPassthrough(PRODUCT, {
+			config,
+			os,
+			fingerprint,
+			fingerprint_preset,
+			webgl_config,
+			cpu,
+			screen,
+			window,
+			fonts,
+			custom_fonts_only,
+			locale,
+			geoip,
+			canvas_noise,
+			pin_cpu_cores,
+			allow_os_mismatch,
+			ff_version,
+			chrome_version,
+		});
+	}
+
 	// ---- options with no Chromium equivalent ------------------------------
 	if (pyTruthy(firefox_user_prefs)) {
 		throw new NotImplementedError(
@@ -2423,98 +2556,106 @@ export async function launchOptions({
 	}
 
 	// ---- the identity ------------------------------------------------------
-	if (!i_know_what_im_doing) warnManualConfig(config);
+	let languages: string[] | null | undefined;
+	let targetOs: TargetOS;
+	if (passthrough) {
+		// The host's own device: no identity, so nothing to place, size or name.
+		warnPassthrough(PRODUCT, proxy, i_know_what_im_doing);
+		targetOs = utilsDeps.osName();
+	} else {
+		if (!i_know_what_im_doing) warnManualConfig(config);
 
-	let osOption: ListOrString | null | undefined = os;
-	if (preset) {
-		if (
-			pyTruthy(os) ||
-			pyTruthy(webgl_config) ||
-			(fingerprint !== undefined && fingerprint !== null)
-		) {
-			throw new ValueError(
-				"fingerprint_preset names the OS and GPU; it cannot be combined with os, " +
-					"webgl_config or fingerprint",
+		let osOption: ListOrString | null | undefined = os;
+		if (preset) {
+			if (
+				pyTruthy(os) ||
+				pyTruthy(webgl_config) ||
+				(fingerprint !== undefined && fingerprint !== null)
+			) {
+				throw new ValueError(
+					"fingerprint_preset names the OS and GPU; it cannot be combined with os, " +
+						"webgl_config or fingerprint",
+				);
+			}
+			osOption = preset.os;
+			webgl_config = preset.webglConfig;
+		}
+		if (cpu !== undefined && cpu !== null) {
+			osOption = osesForCpu(
+				cpu,
+				pyTruthy(osOption)
+					? (osOption as ListOrString)
+					: [...ALLOWED_OS_TARGETS[utilsDeps.osName()]],
 			);
 		}
-		osOption = preset.os;
-		webgl_config = preset.webglConfig;
-	}
-	if (cpu !== undefined && cpu !== null) {
-		osOption = osesForCpu(
-			cpu,
-			pyTruthy(osOption)
-				? (osOption as ListOrString)
-				: [...ALLOWED_OS_TARGETS[utilsDeps.osName()]],
-		);
-	}
-	if (pyTruthy(osOption)) {
-		checkValidOs(osOption as ListOrString);
-		checkOsPolicy(
-			typeof osOption === "string" ? [osOption] : [...(osOption as string[])],
-			allow_os_mismatch,
-		);
-	} else if (pyTruthy(webgl_config)) {
-		throw new ValueError("OS must be set when using webgl_config");
-	} else if (!allow_os_mismatch) {
-		osOption = [...ALLOWED_OS_TARGETS[utilsDeps.osName()]];
-	}
+		if (pyTruthy(osOption)) {
+			checkValidOs(osOption as ListOrString);
+			checkOsPolicy(
+				typeof osOption === "string" ? [osOption] : [...(osOption as string[])],
+				allow_os_mismatch,
+			);
+		} else if (pyTruthy(webgl_config)) {
+			throw new ValueError("OS must be set when using webgl_config");
+		} else if (!allow_os_mismatch) {
+			osOption = [...ALLOWED_OS_TARGETS[utilsDeps.osName()]];
+		}
 
-	// The identity has to match the Chromium that actually runs.
-	let fullVersion = resolveVersion(browserBinary);
-	const ownMilestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
-	if (
-		chrome_version !== undefined &&
-		chrome_version !== null &&
-		Math.trunc(Number(chrome_version)) !== ownMilestone
-	) {
-		LeakWarning.warn(loadWarnings().chrome_version, i_know_what_im_doing);
-		fullVersion = `${Math.trunc(Number(chrome_version))}.0.0.0`;
-	}
+		// The identity has to match the Chromium that actually runs.
+		let fullVersion = resolveVersion(browserBinary);
+		const ownMilestone = Number.parseInt(fullVersion.split(".", 1)[0], 10);
+		if (
+			chrome_version !== undefined &&
+			chrome_version !== null &&
+			Math.trunc(Number(chrome_version)) !== ownMilestone
+		) {
+			LeakWarning.warn(loadWarnings().chrome_version, i_know_what_im_doing);
+			fullVersion = `${Math.trunc(Number(chrome_version))}.0.0.0`;
+		}
 
-	// A real display bounds the screen the identity may claim; so does a
-	// virtual one of fixed size, which the real window has to fit on. One the
-	// launcher sizes is fitted to the identity instead.
-	let displayBound: Screen | null = null;
-	if (headless !== true) {
-		if (pyTruthy(displaySize)) {
-			const [width, height] = displaySize as [number, number];
-			displayBound = new Screen({ maxWidth: width, maxHeight: height });
-		} else if (!virtual_display && utilsDeps.hasDisplay(env)) {
-			const display = utilsDeps.largestDisplay();
-			if (display) {
-				displayBound = new Screen({
-					maxWidth: display.width,
-					maxHeight: display.height,
-				});
+		// A real display bounds the screen the identity may claim; so does a
+		// virtual one of fixed size, which the real window has to fit on. One the
+		// launcher sizes is fitted to the identity instead.
+		let displayBound: Screen | null = null;
+		if (headless !== true) {
+			if (pyTruthy(displaySize)) {
+				const [width, height] = displaySize as [number, number];
+				displayBound = new Screen({ maxWidth: width, maxHeight: height });
+			} else if (!virtual_display && utilsDeps.hasDisplay(env)) {
+				const display = utilsDeps.largestDisplay();
+				if (display) {
+					displayBound = new Screen({
+						maxWidth: display.width,
+						maxHeight: display.height,
+					});
+				}
 			}
 		}
-	}
 
-	const { languages, targetOs } = await drawIdentity(config, {
-		os: osOption,
-		webgl_config,
-		geoip,
-		geoip_db,
-		proxy,
-		block_webrtc,
-		locale,
-		fingerprint,
-		screen: screen ? toScreen(screen) : null,
-		window,
-		fonts,
-		custom_fonts_only,
-		canvas_noise,
-		pin_cpu_cores,
-		fullVersion,
-		allow_os_mismatch,
-		i_know_what_im_doing,
-		browserBinary,
-		displayBound,
-		virtualDisplay: Boolean(virtual_display),
-		cpu,
-		recorded: preset?.config,
-	});
+		({ languages, targetOs } = await drawIdentity(config, {
+			os: osOption,
+			webgl_config,
+			geoip,
+			geoip_db,
+			proxy,
+			block_webrtc,
+			locale,
+			fingerprint,
+			screen: screen ? toScreen(screen) : null,
+			window,
+			fonts,
+			custom_fonts_only,
+			canvas_noise,
+			pin_cpu_cores,
+			fullVersion,
+			allow_os_mismatch,
+			i_know_what_im_doing,
+			browserBinary,
+			displayBound,
+			virtualDisplay: Boolean(virtual_display),
+			cpu,
+			recorded: preset?.config,
+		}));
+	}
 
 	// ---- browser behaviour ------------------------------------------------
 	setDefault(config, "allowAddonNewtab", Boolean(allow_addon_new_tab));
@@ -2616,7 +2757,8 @@ export async function launchOptions({
 
 	// ---- chromium_prefs ----------------------------------------------------
 	if (pyTruthy(chromium_prefs)) {
-		const userDataDir = passthrough.user_data_dir ?? passthrough.userDataDir;
+		const userDataDir =
+			playwrightOptions.user_data_dir ?? playwrightOptions.userDataDir;
 		if (!userDataDir) {
 			throw new ValueError(
 				"chromium_prefs are written to the profile, so they need a persistent context: pass " +
@@ -2644,12 +2786,20 @@ export async function launchOptions({
 			inspect(maskedConfig(config), { depth: null, sorted: true }),
 		);
 	}
-	Object.assign(env, getEnvVars(config, targetOs, browserBinary));
+	// A passthrough launch keeps the host's fonts and timezone: only the
+	// behaviour keys go to the browser.
+	Object.assign(
+		env,
+		passthrough
+			? configEnvVars(config)
+			: getEnvVars(config, targetOs, browserBinary),
+	);
 
 	const ignored =
-		passthrough.ignore_default_args ?? passthrough.ignoreDefaultArgs;
-	delete passthrough.ignore_default_args;
-	delete passthrough.ignoreDefaultArgs;
+		playwrightOptions.ignore_default_args ??
+		playwrightOptions.ignoreDefaultArgs;
+	delete playwrightOptions.ignore_default_args;
+	delete playwrightOptions.ignoreDefaultArgs;
 	const ignoreDefaultArgs: true | string[] =
 		ignored === true
 			? true
@@ -2668,6 +2818,6 @@ export async function launchOptions({
 		headless,
 		ignoreDefaultArgs,
 		...(pyTruthy(browserProxy) ? { proxy: browserProxy } : {}),
-		...passthrough,
+		...playwrightOptions,
 	};
 }

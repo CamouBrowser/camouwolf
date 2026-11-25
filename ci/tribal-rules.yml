@@ -24,6 +24,16 @@ rules:
         - browser/settings/properties.json
         - python/src/camouwolf/data/properties.json
 
+  - id: defaults-one-file
+    decision: camouwolf.defaults.json at the root and the launcher's packaged copy are one file.
+    why: >-
+      People read the root copy and the launchers load the packaged one; an
+      option documented in one and not the other has a default nobody sees.
+    identical:
+      files:
+        - camouwolf.defaults.json
+        - python/src/camouwolf/camouwolf.defaults.json
+
   - id: binary-is-named-by-the-caller
     decision: No stage or test has a default browser path.
     why: >-

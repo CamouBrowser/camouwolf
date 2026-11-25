@@ -79,6 +79,8 @@ instance you own, and `launch_options(...)` returns the options for
 | `pin_cpu_cores` | Pin the browser to as many cores as the identity reports. |
 | `args`, `env` | Extra switches and environment. |
 | `executable_path` | A specific build; `CAMOUWOLF_EXECUTABLE_PATH` does the same. |
+| `passthrough` | Launch as this machine, with nothing spoofed ([Passthrough](#passthrough)). |
+| `telemetry` | `False` sends no telemetry ([Telemetry](#telemetry)). |
 | `persistent_context`, `from_options`, `debug`, `i_know_what_im_doing` | As in Camoufox. `debug` also sends Chromium's log to stderr, and prints the config with proxy passwords masked. |
 
 ### How the identity reaches the browser
@@ -121,6 +123,49 @@ proxy (needs the `geoip` extra), and a failed lookup raises `InvalidIP`.
 Without a proxy it leaves from the browser's address and keeps the launch's
 place and languages.
 
+### Defaults file
+
+Every option that is not passed to the launch call takes its value from
+[`camouwolf.defaults.json`](../camouwolf.defaults.json), which also says what
+each option does. To change a default for yourself, run `camouwolf defaults`:
+it copies that file to your user config directory, prints the path, and your
+copy's `"default"` values then win over the packaged ones. It may also be just
+`{"telemetry": false}`. `CAMOUWOLF_DEFAULTS=<path>` reads it from elsewhere.
+An unknown option or a value of the wrong type in it raises. A value passed
+to `Camouwolf()`, `NewBrowser()` or `launch_options()` wins over both files.
+
+### Passthrough
+
+`passthrough=True` launches the browser as the machine it runs on: no identity
+is drawn, and the user agent, screen, GPU, fonts, timezone and languages are
+the host's. Proxy, `block_*`, `headless`, `humanize`, addons and the automation
+hiding still apply. An option that sets the identity (`os`, `locale`, `geoip`,
+`config`, `fingerprint`, `screen`, `window`, `fonts`, ...) raises `ValueError`
+alongside it, and a proxy warns, since the host's timezone and languages then
+disagree with the exit. Contexts keep the host's identity; `NewContext()`
+raises.
+
+### Telemetry
+
+Camouwolf sends anonymous counts of how pages behind anti-bot systems treated
+each launch, to publish proxy providers' success rates (against no proxy, by
+release, Pro or not, cross-OS or not) on the Camoufox website.
+
+- **Collected:** per anti-bot provider (Cloudflare, Turnstile, DataDome,
+  Akamai, PerimeterX, Kasada, Imperva, AWS WAF, hCaptcha, reCAPTCHA, Arkose
+  Labs, Queue-it, Shape, ThreatMetrix, Google BotGuard), how many encounters
+  ended in success, challenge, block or unknown; and the launcher and its
+  version, the browser version, whether the launch is Pro, cross-OS (an
+  identity OS other than the host's) or passthrough, and the proxy provider's
+  domain (`none` without a proxy).
+- **Never collected:** URLs, sites, page content, cookies, IP addresses, the
+  proxy's username, password, host or port, or anything that identifies you or
+  this machine.
+- **Off:** `telemetry=False`, `"telemetry": false` in your defaults file,
+  `CAMOUWOLF_TELEMETRY=0`, or `DO_NOT_TRACK=1`.
+
+A failure in telemetry never fails a launch or a page.
+
 ### Differences from Camoufox
 
 | Camoufox | Camouwolf |
@@ -143,6 +188,7 @@ place and languages.
 camouwolf fetch [version]     install the browser, fpgen model, GeoIP data, default addon
 camouwolf sync                refresh the list of available releases
 camouwolf set [specifier]     choose a channel or pin a build (--geoip for the GeoIP source)
+camouwolf defaults            copy camouwolf.defaults.json to edit your own defaults; print its path
 camouwolf active | list | remove | version | path
 camouwolf test [url]          open a browser with the Playwright inspector
 camouwolf server              launch a Playwright server and print its endpoint

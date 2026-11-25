@@ -21,6 +21,7 @@ export const INSTALL_DIR: string = PRODUCT.cacheDir;
  */
 export const DATA_FILES: readonly string[] = [
 	"browser-pin.json",
+	"camouwolf.defaults.json",
 	"data/bundle-fonts.json",
 	"data/chrome-languages.json",
 	"data/properties.json",
@@ -41,6 +42,12 @@ export const LOCAL_DATA: string = fs.existsSync(
 )
 	? path.join(import.meta.dirname, "data-files")
 	: path.resolve(import.meta.dirname, "..", "..", "python", "src", "camouwolf");
+
+/** camouwolf.defaults.json: the documented default of each launch option. */
+export const DEFAULTS_FILE: string = path.join(
+	LOCAL_DATA,
+	"camouwolf.defaults.json",
+);
 
 /** A data file (relative to LOCAL_DATA), parsed as YAML or JSON by its extension. */
 export function loadDataFile<T = any>(file: string): T {
