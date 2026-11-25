@@ -395,11 +395,16 @@ so it cannot drift out of step with the identity the rest of the series serves.
 Web Bluetooth is the other one: `navigator.bluetooth` and the eight `Bluetooth*`
 interfaces are stable on Windows and macOS and experimental on Linux, and they
 were the only names a secure page on a real macOS Chrome had that a Windows
-identity here lacked, apart from version differences. The browser side is
-compiled in on Linux. Without a BlueZ adapter it answers like a machine with no
-Bluetooth adapter: `getAvailability()` resolves `false` and `requestDevice()`
-rejects with `NotFoundError: Bluetooth adapter not available.` (a real Chrome
-with an adapter shows its chooser and waits instead). `EyeDropper` needs
+identity here lacked, apart from version differences. The browser side answers
+as a machine with no Bluetooth adapter on every host:
+`BluetoothAdapterFactoryWrapper` hands Web Bluetooth an absent
+`bluetooth::FakeCentral` (the central DevTools' BluetoothEmulation installs)
+instead of the host's adapter, so `getAvailability()` resolves `false` and
+`requestDevice()` rejects with `NotFoundError: Bluetooth adapter not available.`
+Answering from the host's radio would let any page see whether the machine has
+one and open a chooser listing the devices around it. A DevTools Bluetooth
+emulation still replaces the absent central. `tests/native/test_web_bluetooth.py`
+checks it against a fake BlueZ with a powered adapter. `EyeDropper` needs
 nothing: it is already exposed on every identity, as on Linux Chrome.
 
 ### 0020 — system colors

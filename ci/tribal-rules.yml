@@ -156,3 +156,17 @@ rules:
         - .github/workflows/*.yml
         - .github/actions/*/action.yml
       pattern: 'self-hosted'
+
+  - id: web-bluetooth-has-no-adapter
+    decision: >-
+      Web Bluetooth answers as a machine without a Bluetooth adapter on every
+      host. It is a constant in the browser, not a config key.
+    why: >-
+      Answering from the host's adapter tells a page whether the machine has a
+      radio and opens a chooser listing the devices around it. A key would be
+      one more value to draw and keep coherent, for an answer a real machine
+      without a radio already gives. tests/native/test_web_bluetooth.py checks
+      it against a fake BlueZ with a powered adapter.
+    required:
+      paths: [browser/patches/0019-platform-web-features.patch]
+      pattern: 'bluetooth::mojom::CentralState::ABSENT'

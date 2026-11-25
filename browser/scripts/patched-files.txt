@@ -50,6 +50,7 @@ third_party/blink/renderer/platform/runtime_enabled_features.json5
 
 # --- platform-conditional web platform features ------------------------------
 content/child/runtime_features.cc
+content/browser/bluetooth/bluetooth_adapter_factory_wrapper.cc
 
 # --- canvas 2D readback ---
 third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
