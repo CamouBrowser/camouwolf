@@ -5,8 +5,6 @@ minimumReleaseAgeExclude:
   - camoucore
 
 onlyBuiltDependencies:
-  # From git main until camoucore 0.3.0 is on npm: its prepare script builds it.
-  - camoucore
   - esbuild
   - playwright-core
 

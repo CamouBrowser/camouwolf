@@ -44,12 +44,11 @@
   "license": "MIT",
   "description": "Camouwolf: TypeScript launcher for the Camouwolf anti-detect Chromium browser. A port of the Python launcher.",
   "//playwright-core": "Range mirrors python/pyproject.toml's `playwright = \"<1.63\"`: src/switches.ts restates the --disable-features list of Playwright's Chromium launch, so the ceiling is bumped deliberately, checking chromiumSwitches against PLAYWRIGHT_DISABLED_FEATURES. The dev pin (1.62.0) is the version the Python venv resolves, so the goldens compare like with like.",
-  "//camoucore": "From git main until camoucore 0.3.0 (passthrough, settings, telemetry) is on npm; it goes back to \"^0.3.0\" before the next release.",
   "//@jwriter20/myuri": "Pinned to the release python/pyproject.toml pins, so a humanize seed plans the same input in both launchers.",
   "packageManager": "pnpm@10.33.4",
   "dependencies": {
     "@jwriter20/myuri": "4.0.0",
-    "camoucore": "github:CamouBrowser/camoucore#main&path:/typescript",
+    "camoucore": "^0.3.0",
     "commander": "^14.0.0",
     "fpgen-js": "1.3.0",
     "python-random": "1.0.0",

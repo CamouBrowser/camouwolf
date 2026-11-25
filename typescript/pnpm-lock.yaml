@@ -12,8 +12,8 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(playwright-core@1.62.0)
       camoucore:
-        specifier: github:CamouBrowser/camoucore#main&path:/typescript
-        version: https://codeload.github.com/CamouBrowser/camoucore/tar.gz/17e7443eaf5f47f786d30398063c54f38fe2d311#path:/typescript
+        specifier: ^0.3.0
+        version: 0.3.0
       commander:
         specifier: ^14.0.0
         version: 14.0.3
@@ -299,9 +299,8 @@ packages:
     resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
     engines: {node: 20 || >=22}
 
-  camoucore@https://codeload.github.com/CamouBrowser/camoucore/tar.gz/17e7443eaf5f47f786d30398063c54f38fe2d311#path:/typescript:
-    resolution: {gitHosted: true, integrity: sha512-TVnE0PbMJuAWixr+E1SLv8KukXvo/ichQ8qpQI93wxU/r3JFq9HuXTZXqOQ8+88hBGK9H/+o3rHRVKtbFOMBPw==, tarball: https://codeload.github.com/CamouBrowser/camoucore/tar.gz/17e7443eaf5f47f786d30398063c54f38fe2d311}
-    version: 0.2.0
+  camoucore@0.3.0:
+    resolution: {integrity: sha512-G4pzbQA6qkD4vGiyjbRtVIQerhcDiRCLtKCC+qFvpRnRSAkAwkmL6U6Skj62tod/4kwa4gmrk5s49KclUWe3EA==}
     engines: {node: '>=22.15'}
 
   chai@6.2.2:
@@ -874,7 +873,7 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
-  camoucore@https://codeload.github.com/CamouBrowser/camoucore/tar.gz/17e7443eaf5f47f786d30398063c54f38fe2d311#path:/typescript:
+  camoucore@0.3.0:
     dependencies:
       adm-zip: 0.6.1
       cli-progress: 3.12.0

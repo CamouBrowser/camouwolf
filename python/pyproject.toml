@@ -31,10 +31,8 @@ classifiers = [
 # 3.11: myuri (humanize) and its cursory need it, and 3.10 reached end of life
 # in October 2026.
 python = "^3.11"
-# The launcher core shared with Camoufox. From git main until camoucore 0.3.0
-# (passthrough, settings, telemetry) is on PyPI; PyPI refuses a release that
-# depends on a git URL, so this goes back to "^0.3.0" before the next release.
-camoucore = {git = "https://github.com/CamouBrowser/camoucore.git", branch = "main", subdirectory = "python"}
+# The launcher core shared with Camoufox, from PyPI.
+camoucore = "^0.3.0"
 rich-click = "*"
 rich = "*"
 requests = "*"
