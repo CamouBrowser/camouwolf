@@ -86,7 +86,7 @@ jobs:
           compression-level: 0
 
   stage-1:
-    name: Stage 1 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 1 (${{ inputs.target }} ${{ inputs.arch }})
     needs: toolchain
     if: >-
       !cancelled() && (needs.toolchain.result == 'success' || needs.toolchain.result == 'skipped')
@@ -112,7 +112,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-2:
-    name: Stage 2 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 2 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-1
     if: >-
       !cancelled() && needs.stage-1.result == 'success'
@@ -138,7 +138,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-3:
-    name: Stage 3 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 3 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-2
     if: >-
       !cancelled() && needs.stage-2.result == 'success'
@@ -164,7 +164,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-4:
-    name: Stage 4 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 4 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-3
     if: >-
       !cancelled() && needs.stage-3.result == 'success'
@@ -190,7 +190,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-5:
-    name: Stage 5 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 5 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-4
     if: >-
       !cancelled() && needs.stage-4.result == 'success'
@@ -216,7 +216,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-6:
-    name: Stage 6 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 6 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-5
     if: >-
       !cancelled() && needs.stage-5.result == 'success'
@@ -242,7 +242,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-7:
-    name: Stage 7 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 7 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-6
     if: >-
       !cancelled() && needs.stage-6.result == 'success'
@@ -268,7 +268,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-8:
-    name: Stage 8 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 8 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-7
     if: >-
       !cancelled() && needs.stage-7.result == 'success'
@@ -294,7 +294,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-9:
-    name: Stage 9 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 9 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-8
     if: >-
       !cancelled() && needs.stage-8.result == 'success'
@@ -320,7 +320,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-10:
-    name: Stage 10 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 10 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-9
     if: >-
       !cancelled() && needs.stage-9.result == 'success'
@@ -346,7 +346,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-11:
-    name: Stage 11 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 11 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-10
     if: >-
       !cancelled() && needs.stage-10.result == 'success'
@@ -372,7 +372,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-12:
-    name: Stage 12 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 12 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-11
     if: >-
       !cancelled() && needs.stage-11.result == 'success'
@@ -398,7 +398,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-13:
-    name: Stage 13 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 13 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-12
     if: >-
       !cancelled() && needs.stage-12.result == 'success'
@@ -424,7 +424,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-14:
-    name: Stage 14 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 14 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-13
     if: >-
       !cancelled() && needs.stage-13.result == 'success'
@@ -450,7 +450,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-15:
-    name: Stage 15 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 15 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-14
     if: >-
       !cancelled() && needs.stage-14.result == 'success'
@@ -476,7 +476,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   stage-16:
-    name: Stage 16 ({{ inputs.target }} {{ inputs.arch }})
+    name: Stage 16 (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-15
     if: >-
       !cancelled() && needs.stage-15.result == 'success'
@@ -502,7 +502,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
   package:
-    name: Package ({{ inputs.target }} {{ inputs.arch }})
+    name: Package (${{ inputs.target }} ${{ inputs.arch }})
     needs: stage-16
     if: "!cancelled() && needs.stage-16.result == 'success'"
     runs-on: ubuntu-24.04
