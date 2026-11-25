@@ -3,7 +3,7 @@
 
 Single source of truth:
 
-    browser/assets/CamouwolfLogo.svg     (drawn by hand; edit it directly)
+    browser/assets/CamouwolfLogo.svg     (traced from the chosen artwork; cropped to it)
 
 Two destinations, both committed:
 
@@ -62,11 +62,9 @@ SOURCE_SVG = BROWSER_DIR / "assets" / "CamouwolfLogo.svg"
 BRANDING_DIR = BROWSER_DIR / "branding"
 DESKTOP_ICON_DIR = BROWSER_DIR / "settings" / "linux-desktop" / "icons"
 
-# Fraction of each edge left empty. The mark's viewBox is square and the wolf
-# nearly fills it, so this is the only breathing room there is. Enough that the
-# ear tips do not touch the edge, small enough that the mark still reads at
-# 32px.
-MARGIN = 0.03
+# Fraction of each edge left empty. None: the mark's viewBox is cropped to the
+# art, and every pixel of an icon is better spent on the wolf than on padding.
+MARGIN = 0.0
 
 # Hicolor sizes install-desktop.sh installs. Keep in sync with ICON_SIZES there.
 DESKTOP_ICON_SIZES = (16, 22, 24, 32, 48, 64, 128, 256)
@@ -78,9 +76,10 @@ ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 # the tree still #includes it, but a drop-in replacement should stay drop-in.
 XPM_SYMBOL = "linux_icon_chromium_32_xpm"
 
-# The mark's one flat fill. Asserted against the SVG at run time rather than
-# trusted, so a recoloured logo cannot leave the XPM and mono icons behind.
-FLAT_FILL = "#7A8CB4"
+# The silhouette's fill, the colour the one-colour XPM uses. Asserted against the
+# SVG at run time rather than trusted, so a recoloured logo cannot leave the XPM
+# behind.
+FLAT_FILL = "#7B8DE4"
 
 # Every PNG in the branding tree, as {path relative to chrome/app/theme/: size}.
 BRANDING_PNGS = {
@@ -91,8 +90,8 @@ BRANDING_PNGS = {
     "chromium/product_logo_64.png": 64,
     "chromium/product_logo_128.png": 128,
     "chromium/product_logo_256.png": 256,
-    # IDR_STATUS_TRAY_ICON (macOS only). The mark is already one flat colour,
-    # so it is "mono" as-is.
+    # IDR_STATUS_TRAY_ICON (macOS only). The camo tints are too close to the
+    # base to show at 22px, so the mark reads as one colour there as-is.
     "chromium/product_logo_22_mono.png": 22,
     # is_linux takes these for IDR_PRODUCT_LOGO_{64,128,256} and the installer.
     "chromium/linux/product_logo_24.png": 24,
@@ -125,9 +124,10 @@ def _square_png(size: int) -> bytes:
     from PIL import Image
 
     box = max(1, int(round(size * (1 - 2 * MARGIN))))
-    # The viewBox is square, so fitting by height also fits by width; cairosvg
-    # preserves the aspect from the viewBox.
-    raw = cairosvg.svg2png(url=str(SOURCE_SVG), output_height=box)
+    # Fit the longer side of the viewBox to the box; cairosvg keeps the aspect.
+    src_w, src_h = _viewbox()
+    fit = {"output_height": box} if src_h >= src_w else {"output_width": box}
+    raw = cairosvg.svg2png(url=str(SOURCE_SVG), **fit)
     mark = Image.open(io.BytesIO(raw)).convert("RGBA")
 
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -151,6 +151,15 @@ def _square_image(size: int):
     return Image.open(io.BytesIO(_square_png(size))).convert("RGBA")
 
 
+def _viewbox() -> tuple[float, float]:
+    import re
+
+    match = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', SOURCE_SVG.read_text())
+    if not match:
+        raise SystemExit(f"ERROR: no parsable viewBox in {SOURCE_SVG}")
+    return float(match.group(1)), float(match.group(2))
+
+
 def _square_svg(extent: int) -> bytes:
     """Wrap the mark in a square viewBox, centred with the same margin.
 
@@ -160,10 +169,7 @@ def _square_svg(extent: int) -> bytes:
     import re
 
     source = SOURCE_SVG.read_text()
-    match = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', source)
-    if not match:
-        raise SystemExit(f"ERROR: no parsable viewBox in {SOURCE_SVG}")
-    src_w, src_h = float(match.group(1)), float(match.group(2))
+    src_w, src_h = _viewbox()
 
     if FLAT_FILL.lower() not in source.lower():
         raise SystemExit(
@@ -171,7 +177,8 @@ def _square_svg(extent: int) -> bytes:
             "Set FLAT_FILL in generate-branding.py to the logo's fill."
         )
 
-    body = re.search(r"<path\b.*?/>", source, re.S)
+    # Every layer: the silhouette and the camo paths over it.
+    body = re.findall(r"<path\b.*?/>", source, re.S)
     if not body:
         raise SystemExit(f"ERROR: no <path> in {SOURCE_SVG}")
 
@@ -184,9 +191,8 @@ def _square_svg(extent: int) -> bytes:
         '<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{extent}" height="{extent}" viewBox="0 0 {extent} {extent}">\n'
         f'  <g transform="translate({dx:.4f} {dy:.4f}) scale({scale:.6f})">\n'
-        f"    {body.group(0)}\n"
-        "  </g>\n"
-        "</svg>\n"
+        + "".join(f"    {path}\n" for path in body)
+        + "  </g>\n</svg>\n"
     ).encode()
 
 
