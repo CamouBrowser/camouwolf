@@ -182,7 +182,8 @@ Full enumeration of `window`/`navigator`/`document`/`screen` on a secure origin,
 | `navigator.bluetooth` + 8 `Bluetooth*` globals | **yes** |
 | `window.EyeDropper` | already exposed on every identity at 158 |
 
-Web Bluetooth answers as a machine without a Bluetooth adapter; see 0019 in
+Web Bluetooth answers as a machine without a Bluetooth adapter, whatever the
+host has; see 0019 in
 `docs/PATCHES.md`.
 
 ### 2.7 Window decoration geometry — stale

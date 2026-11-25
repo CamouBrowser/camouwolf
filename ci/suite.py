@@ -56,7 +56,7 @@ _MINIMAL = (
 # plugin's, tests/native's (run_native uses this interpreter), and the launcher's.
 _REQUIRED_MODULES = (
     "pytest", "pytest_asyncio", "pytest_timeout", "pytest_rerunfailures", "PIL", "pixelmatch",
-    "autobahn", "twisted", "OpenSSL", "cryptography", "objgraph", "yaml", "psutil", "orjson", "fpgen",
+    "autobahn", "twisted", "OpenSSL", "cryptography", "objgraph", "yaml", "psutil", "dbus_fast", "orjson", "fpgen",
 )
 
 
@@ -185,8 +185,10 @@ def make_venv(checkout: Path, tag: str, *, reuse: bool = True) -> Path:
     run([str(python), "-m", "pip", "install", "--quiet", f"playwright=={version}"], check=True)
 
     # ci/pw_camouwolf_plugin.py reads ci/skiplist.yml and launches through
-    # python/src from inside this interpreter; tests/native counts processes with psutil.
-    run([str(python), "-m", "pip", "install", "--quiet", "PyYAML>=6.0", "psutil>=5.9", *launcher_requirements()],
+    # python/src from inside this interpreter; tests/native counts processes with psutil
+    # and serves a fake BlueZ with dbus-fast.
+    run([str(python), "-m", "pip", "install", "--quiet", "PyYAML>=6.0", "psutil>=5.9", "dbus-fast>=2",
+         *launcher_requirements()],
         check=True)
 
     # No `playwright install chromium`: every launch names the binary under
