@@ -24,6 +24,11 @@ fi
 
 echo "==> Camouwolf $release on Chromium $version -> $SRC"
 
+# Every file the overlay writes, relative to src/. A build restored from another
+# commit's cache rebuilds exactly these where they differ (ci/out_cache.py).
+OVERLAY="$SRC/.camouwolf-overlay-files"
+: > "$OVERLAY"
+
 # 1. additions (new files, not diffs). base/camouwolf_config.* and base/camouwolf_farble.h
 #    are shipped whole rather than as `new file` hunks: a 200-line file expressed
 #    as a diff is unreadable in review and conflicts pointlessly on every bump.
@@ -35,6 +40,7 @@ echo "==> Camouwolf $release on Chromium $version -> $SRC"
 #    saves hours on the incremental path, which is where this runs most.
 echo "--> additions"
 install_if_changed() {
+  echo "${2#"$SRC/"}" >> "$OVERLAY"
   if [ -f "$2" ] && cmp -s "$1" "$2"; then
     return 0
   fi
@@ -110,9 +116,11 @@ while read -r line; do
     echo "   Run 'python3 scripts/check-dead-patches.py' to see which hunks moved." >&2
     exit 1
   fi
+  grep -oP '(?<=^diff --git a/)\S+' "$patch_file" >> "$OVERLAY"
   printf '    %-44s ok\n' "$line"
   applied=$((applied + 1))
 done < "$REPO/browser/patches/series"
 
+sort -u -o "$OVERLAY" "$OVERLAY"
 date -u +"%Y-%m-%dT%H:%M:%SZ ${version} ${release}" > "$STAMP"
 echo "==> $applied patches applied"

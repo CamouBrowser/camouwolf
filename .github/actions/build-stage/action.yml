@@ -85,6 +85,25 @@ runs:
       shell: bash
       run: python3 -m ci.run_prepare --target "${{ inputs.target }}" --arch "${{ inputs.arch }}"
 
+    - name: Name the build cache
+      # One finished out/ per target and Chromium version; the newest wins.
+      id: cache
+      if: inputs.finished != 'true'
+      shell: bash
+      run: |
+        source browser/upstream.sh
+        echo "prefix=out-${{ inputs.target }}-${{ inputs.arch }}-$version-" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the last finished build
+      # The first job starts from the newest finished out/ of this Chromium
+      # version, so a run compiles only what its commit changed.
+      if: inputs.finished != 'true' && inputs.first == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /mnt/camouwolf/out/out.tar.zst
+        key: ${{ steps.cache.outputs.prefix }}${{ github.run_id }}
+        restore-keys: ${{ steps.cache.outputs.prefix }}
+
     - name: Restore the previous job's out/
       if: inputs.finished != 'true' && inputs.first != 'true'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -96,7 +115,8 @@ runs:
       # ninja rebuilds whatever is older than its inputs, and a fresh sync makes
       # every source file new. Every job gives the source and the toolchain the
       # same old time, and tar keeps out/'s own, so a job compiles only what the
-      # previous one did not.
+      # previous one did not. An out/ from the cache was built from another
+      # commit, so the overlay files that differ get the current time instead.
       if: inputs.finished != 'true'
       shell: bash
       run: |
@@ -107,6 +127,7 @@ runs:
           mkdir -p "$src/out"
           tar -C "$src/out" --zstd -xf /mnt/camouwolf/out/out.tar.zst
           rm /mnt/camouwolf/out/out.tar.zst
+          python3 -m ci.out_cache stale --src "$src"
         fi
 
     - name: Build until the job's time is nearly up
@@ -128,6 +149,7 @@ runs:
       if: inputs.finished != 'true'
       shell: bash
       run: |
+        python3 -m ci.out_cache record --src "$CAMOUWOLF_BUILD_DIR/chromium/src"
         mkdir -p /mnt/camouwolf/out
         tar -C "$CAMOUWOLF_BUILD_DIR/chromium/src/out" --zstd -cf /mnt/camouwolf/out/out.tar.zst .
 
@@ -140,3 +162,11 @@ runs:
         retention-days: 1
         compression-level: 0
         overwrite: true
+
+    - name: Keep the finished build for the next run
+      # Not from a pull request: the cache is shared, and holds only a few builds.
+      if: steps.build.outputs.finished == 'true' && github.event_name != 'pull_request'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /mnt/camouwolf/out/out.tar.zst
+        key: ${{ steps.cache.outputs.prefix }}${{ github.run_id }}-${{ github.run_attempt }}
