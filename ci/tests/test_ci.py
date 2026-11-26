@@ -536,6 +536,25 @@ def test_a_throttled_include_lookup_is_never_read_as_missing(monkeypatch: pytest
     assert "base/values.h" not in cache
 
 
+def test_a_timed_out_include_lookup_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read timeout surfaces as a bare TimeoutError, not a URLError, and failed a guard run."""
+    import base64
+    import io
+
+    apis = _patch_apis()
+    replies = [TimeoutError("The read operation timed out"), base64.b64encode(b"int x;\n")]
+
+    def slow_then_served(url, timeout):
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return io.BytesIO(reply)
+
+    monkeypatch.setattr(apis.urllib.request, "urlopen", slow_then_served)
+    monkeypatch.setattr(apis.time, "sleep", lambda _: None)
+    assert apis.googlesource("base/values.h", "1.0") == "int x;\n"
+
+
 def test_only_a_404_means_an_include_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     import urllib.error
 

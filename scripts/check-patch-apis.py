@@ -232,6 +232,9 @@ def googlesource(path: str, version: str) -> str | None:
             wait = int(retry_after) if retry_after.isdigit() else 0
         except urllib.error.URLError as e:
             reason = str(e.reason)
+        except TimeoutError as e:
+            # A timeout reading the response is raised bare, not as a URLError.
+            reason = str(e)
         time.sleep(max(wait, 5 * 2**attempt))
     raise Unverifiable(f"{path}: {reason} after 5 attempts")
 
