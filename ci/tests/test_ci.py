@@ -333,14 +333,23 @@ def test_build_tester_flatten() -> None:
 # ------------------------------------------------------------------ packaging
 
 
-def test_only_linux_x86_64_is_enabled_and_the_others_say_why() -> None:
-    assert [t.name for t in targets.TARGETS.values() if t.enabled] == ["linux-x86_64"]
+def test_every_target_the_launchers_fetch_is_built_as_camoufox_releases() -> None:
+    import ast
+
+    # Read from the source: ci's tests run without the launcher installed.
+    pkgman = ast.parse((REPO_ROOT / "python" / "src" / "camouwolf" / "pkgman.py").read_text())
+    node = next(n for n in ast.walk(pkgman) if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "OS_ARCH_MATRIX")
+    OS_ARCH_MATRIX = ast.literal_eval(node.value)
+    # camoufox releases every launcher arch but Linux i686, which Chromium dropped.
+    released = {f"{targets.OS_SHORT[t.os]}.{t.arch}" for t in targets.TARGETS.values() if t.enabled}
+    fetched = {f"{os_short}.{arch}" for os_short, arches in OS_ARCH_MATRIX.items() for arch in arches}
+    assert released == fetched - {"lin.i686"}
     for target in targets.TARGETS.values():
         assert target.enabled or (target.disabled_reason and "\n" not in target.disabled_reason)
     with pytest.raises(SystemExit):
-        targets.require_enabled("windows")
-    with pytest.raises(SystemExit):
         targets.get("linux", "i686")
+    with pytest.raises(SystemExit):
+        targets.require_enabled("windows", "arm64")
 
 
 def test_release_builds_every_enabled_target_but_the_tested_one() -> None:

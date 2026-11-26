@@ -27,7 +27,7 @@ on:
         required: true
         type: string
       arch:
-        description: x86_64 or arm64
+        description: x86_64, arm64 or i686
         required: true
         type: string
       ref:
