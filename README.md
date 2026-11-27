@@ -45,11 +45,14 @@ launcher takes the same options, with the same names. Their defaults, and what
 each does, are in [`camouwolf.defaults.json`](camouwolf.defaults.json);
 `camouwolf defaults` makes you a copy to change them.
 
-**Telemetry.** Camouwolf sends anonymous counts of anti-bot outcomes (success,
-challenge, block) per proxy provider, to publish proxy success rates. It never
-sends URLs, sites, page content, IP addresses or proxy credentials. Turn it off
-with `telemetry=False`, `CAMOUWOLF_TELEMETRY=0` or `DO_NOT_TRACK=1`; the details
-are in [`python/README.md`](python/README.md#telemetry).
+**Telemetry is on by default, and it is used ONLY to judge proxy providers'
+failure rates.** Camouwolf sends anonymous counts of anti-bot outcomes (success,
+challenge, block) per proxy provider. It never sends URLs, sites, page content,
+IP addresses or proxy credentials, and the reports are put to no other use. You
+are free to audit that this is enforced: the code is open, and you can send the
+reports to your own server to read each one
+([`python/README.md`](python/README.md#telemetry)). Turn it off with
+`telemetry=False`, `CAMOUWOLF_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 
 ## Features
 

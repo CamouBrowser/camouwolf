@@ -147,9 +147,11 @@ raises.
 
 ### Telemetry
 
-Camouwolf sends anonymous counts of how pages behind anti-bot systems treated
-each launch, to publish proxy providers' success rates (against no proxy, by
-release, Pro or not, cross-OS or not) on the Camoufox website.
+Telemetry is **on by default**, and it is used **only** to judge how often
+proxy providers fail against anti-bot systems. Camouwolf sends anonymous counts
+of how pages behind anti-bot systems treated each launch, and they are used for
+nothing but publishing proxy providers' success and failure rates (against no
+proxy, by release, Pro or not, cross-OS or not) on the Camoufox website.
 
 - **Collected:** per anti-bot provider (Cloudflare, Turnstile, DataDome,
   Akamai, PerimeterX, Kasada, Imperva, AWS WAF, hCaptcha, reCAPTCHA, Arkose
@@ -165,6 +167,24 @@ release, Pro or not, cross-OS or not) on the Camoufox website.
   `CAMOUWOLF_TELEMETRY=0`, or `DO_NOT_TRACK=1`.
 
 A failure in telemetry never fails a launch or a page.
+
+**Audit it.** You are free to check that this is enforced:
+
+- The code that decides what is sent is camoucore's
+  [`telemetry.py`](https://github.com/CamouBrowser/camoucore/blob/v0.3.0/python/src/camoucore/telemetry.py) and
+  [`telemetry.ts`](https://github.com/CamouBrowser/camoucore/blob/v0.3.0/typescript/src/telemetry.ts). A report is the payload
+  `Telemetry.payload` builds: a schema number, the launch fields above and the
+  outcome counts, and nothing else. The sites are kept in memory only to tell
+  encounters apart, and are never sent.
+- Which responses it looks at is
+  [`antibot-rules.json`](https://github.com/CamouBrowser/camoucore/blob/v0.3.0/python/src/camoucore/antibot-rules.json): only
+  the anti-bot providers' own endpoints and the headers their edges add. Any
+  other response is dropped after that match.
+- `CAMOUWOLF_TELEMETRY_URL=<your endpoint>` sends every report to your own
+  server instead, so you can read exactly what would have been sent.
+- Reports go to `api.camoufox.com`, which keeps daily sums only. Like any web
+  request, the server sees the address the report comes from; it is used only
+  as an in-memory rate-limit key, and is never stored or logged.
 
 ### Differences from Camoufox
 
