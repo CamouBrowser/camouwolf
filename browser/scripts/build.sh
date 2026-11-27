@@ -18,7 +18,7 @@
 #                     CAMOUWOLF_MAC_SDK_DIR, an Xcode.app-shaped directory holding
 #                     Contents/version.plist and the MacOSX.sdk
 #                     (browser/scripts/pack-mac-sdk.sh).
-#   CAMOUWOLF_ARCH    x86_64 (default) or arm64
+#   CAMOUWOLF_ARCH    x86_64 (default), arm64 or i686 (windows only)
 #   CAMOUWOLF_OUT     the out/ directory name (default Camouwolf)
 #   CAMOUWOLF_BUILD_SECONDS  stop the compile after this long and exit 0 with
 #                     out/<dir>/.camouwolf-unfinished in place: a hosted CI job
@@ -62,9 +62,12 @@ case "$TARGET" in
   macos) GCLIENT_OS="mac" ;;
   *) echo "!! CAMOUWOLF_TARGET must be linux, windows or macos, not $TARGET" >&2; exit 2 ;;
 esac
+# GCLIENT_CPU is Chromium's name for the CPU; empty for the host's own.
 case "$ARCH" in
-  x86_64|arm64) ;;
-  *) echo "!! CAMOUWOLF_ARCH must be x86_64 or arm64, not $ARCH" >&2; exit 2 ;;
+  x86_64) GCLIENT_CPU="" ;;
+  arm64) GCLIENT_CPU="arm64" ;;
+  i686) GCLIENT_CPU="x86" ;;
+  *) echo "!! CAMOUWOLF_ARCH must be x86_64, arm64 or i686, not $ARCH" >&2; exit 2 ;;
 esac
 export TMPDIR="${TMPDIR:-$WORK/tmp}"
 mkdir -p "$WORK" "$TMPDIR"
@@ -188,7 +191,7 @@ rm -f .camouwolf-patched
 # top of the Linux host's own.
 sed -i '/^target_os *=/d; /^target_cpu *=/d' ../.gclient
 [ -z "$GCLIENT_OS" ] || echo "target_os = ['$GCLIENT_OS']" >> ../.gclient
-[ "$ARCH" = x86_64 ] || echo "target_cpu = ['$ARCH']" >> ../.gclient
+[ -z "$GCLIENT_CPU" ] || echo "target_cpu = ['$GCLIENT_CPU']" >> ../.gclient
 
 # The sync's win_toolchain hook unpacks the Visual Studio zip named for this
 # tag's TOOLCHAIN_HASH; GYP_MSVS_HASH_<that> maps it to the zip packed here.

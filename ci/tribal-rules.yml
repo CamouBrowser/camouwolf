@@ -170,3 +170,16 @@ rules:
     required:
       paths: [browser/patches/0019-platform-web-features.patch]
       pattern: 'bluetooth::mojom::CentralState::ABSENT'
+
+  - id: releases-match-camoufox
+    decision: >-
+      A release builds and publishes the six targets camoufox releases: Linux
+      x86_64 and arm64, Windows x86_64 and i686, macOS x86_64 and arm64.
+    why: >-
+      The launchers fetch from camoufox's OS and CPU matrix (pkgman.py
+      OS_ARCH_MATRIX), so a target missing from a release is a machine where
+      camoufox installs and camouwolf does not. A target is switched off in
+      ci/targets.py, with its reason, only while its build is broken.
+    required:
+      paths: [ci/targets.py]
+      pattern: 'Target\("linux", "x86_64", True, ""\),\s*Target\("linux", "arm64", True, ""\),\s*Target\("windows", "x86_64", True, ""\),\s*Target\("windows", "i686", True, ""\),\s*Target\("macos", "x86_64", True, ""\),\s*Target\("macos", "arm64", True, ""\),'

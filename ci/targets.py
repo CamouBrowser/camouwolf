@@ -39,13 +39,16 @@ class Target(NamedTuple):
         return f"{OS_SHORT[self.os]}.{self.arch}"
 
 
+# The targets camoufox releases, so a launcher finds a build wherever it finds
+# one of camoufox's. A target goes back to disabled, with its reason, only when
+# its build is broken.
 TARGETS: Dict[str, Target] = {t.name: t for t in (
     Target("linux", "x86_64", True, ""),
-    Target("linux", "arm64", False, "the cross build has not yet been linked and run on an arm64 host"),
-    Target("windows", "x86_64", False, "no Visual Studio toolchain zip has been packed yet, so it has never compiled"),
-    Target("windows", "arm64", False, "the launchers have no Windows arm64 build to fetch (OS_ARCH_MATRIX)"),
-    Target("macos", "x86_64", False, "the cross build has not yet been linked and run on a Mac"),
-    Target("macos", "arm64", False, "the cross build has not yet been linked and run on a Mac"),
+    Target("linux", "arm64", True, ""),
+    Target("windows", "x86_64", True, ""),
+    Target("windows", "i686", True, ""),
+    Target("macos", "x86_64", True, ""),
+    Target("macos", "arm64", True, ""),
 )}
 
 

@@ -10,7 +10,7 @@ inputs:
     description: linux, windows or macos
     required: true
   arch:
-    description: x86_64 or arm64
+    description: x86_64, arm64 or i686
     required: true
   first:
     description: "true for the first job, which has no out/ to restore"

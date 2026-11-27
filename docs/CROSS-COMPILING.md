@@ -2,7 +2,7 @@
 
 Every Camouwolf target is built on an x86_64 Linux host, in CI and locally
 (`ci/tribal-rules.yml`: `hosted-runners-only`). Chromium's own clang
-and lld already emit and link PE and Mach-O for x64 and arm64; what a Linux
+and lld already emit and link PE and Mach-O for x86, x64 and arm64; what a Linux
 host lacks is each vendor's SDK, which is licensed software and is never
 committed or published.
 
@@ -19,17 +19,20 @@ toolchain hooks and sysroots on top of the host's.
 
 ## Status
 
-| Target | Series applies | `chrome` links | Runs on its OS | Released |
-|---|---|---|---|---|
-| linux x86_64 | yes | yes | yes | yes |
-| linux arm64 | yes | not yet | not yet | no |
-| windows x86_64 | yes | never tried: no toolchain zip yet | no | no |
-| windows arm64 | yes | no | no | no: the launchers have no Windows arm64 entry |
-| macos x86_64 | yes | not yet | no | no |
-| macos arm64 | yes | not yet | not yet | no |
+A release builds the six targets camoufox releases (`ci/tribal-rules.yml`:
+`releases-match-camoufox`); `ci/targets.py` lists them and `release.yml`'s
+matrix follows it. A target is switched off there, with its reason, only while
+its build is broken. Every target but linux x86_64 is first built by the
+release run itself.
 
-`ci/targets.py` enables a target once its build has linked and run on its own
-OS; `release.yml`'s matrix follows it.
+| Target | Series applies | `chrome` links | Runs on its OS |
+|---|---|---|---|
+| linux x86_64 | yes | yes | yes |
+| linux arm64 | yes | not yet | not yet |
+| windows x86_64 | yes | not yet | not yet |
+| windows i686 | yes | not yet | not yet |
+| macos x86_64 | yes | not yet | not yet |
+| macos arm64 | yes | not yet | not yet |
 
 ## Linux arm64
 
@@ -44,7 +47,9 @@ The Visual Studio and Windows SDK toolchain is a zip that Chromium's
 10.0.28000.0, which the hosted `windows-2025-vs2026` image does not carry, so the
 script installs it first and fails if a new pin asks for another SDK. Point
 `CAMOUWOLF_WIN_TOOLCHAIN_ZIP` at the `<hash>.zip`; build.sh maps the tag's
-`TOOLCHAIN_HASH` to it (`GYP_MSVS_HASH_<pin>`) before the sync unpacks it.
+`TOOLCHAIN_HASH` to it (`GYP_MSVS_HASH_<pin>`) before the sync unpacks it. The zip carries the x86,
+x64 and arm64 libraries, so one zip serves `x86_64` and `i686`
+(`target_cpu = "x86"`, `browser/args/i686.gn`).
 
 ## macOS
 
@@ -59,5 +64,7 @@ MacOSX SDK from an installed Xcode whose SDK the pinned Chromium names in
   `dsymutil`, which Chromium fetches only for a Mac host, and the release has
   no debug symbols to put in them.
 
-The app is not code-signed with a Developer ID or notarized, so Gatekeeper
-quarantines a downloaded copy; that needs an Apple Developer account.
+The app is not signed with a Developer ID or notarized, as camoufox's is not.
+The launchers download and unzip it themselves, so it carries no quarantine
+attribute and Gatekeeper does not stop Playwright launching it; only a copy
+downloaded with a web browser is quarantined.

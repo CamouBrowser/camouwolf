@@ -3,7 +3,7 @@
 #
 # Usage:
 #   bash scripts/release-camouwolf.sh [--target linux|macos|windows]
-#                                 [--arch x86_64|arm64]
+#                                 [--arch x86_64|arm64|i686]
 #                                 [--skip-build] [--no-release]
 #
 # Env:
@@ -51,7 +51,7 @@ case "$TARGET" in
   *) echo "unknown target: $TARGET" >&2; exit 2 ;;
 esac
 case "$ARCH" in
-  x86_64|arm64) ;;
+  x86_64|arm64|i686) ;;
   *) echo "unknown arch: $ARCH" >&2; exit 2 ;;
 esac
 ARCHIVE="${PREFIX}-${OS_SHORT}.${ARCH}.zip"
