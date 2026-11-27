@@ -11,9 +11,10 @@ name: Build the browser
 # source, restores the previous job's out/ directory, compiles until its time is
 # nearly up and hands out/ on (.github/actions/build-stage). Once a job finishes
 # the build, the rest pass straight through, and `package` writes the archive.
-# A finished out/ is kept in the Actions cache, and the first job of the next
-# run starts from it, so a run that changes a patch compiles only what that
-# patch touches (ci/out_cache.py).
+# In a test run, the finished out/ of the tested target is kept in the Actions
+# cache, and the first job of the next test run starts from it, so a run that
+# changes a patch compiles only what that patch touches (ci/out_cache.py). A
+# release always builds cold.
 #
 # The toolchain a Windows or macOS build needs -- Visual Studio and the Windows
 # SDK, or Xcode's macOS SDK -- is Microsoft's or Apple's licensed software, and

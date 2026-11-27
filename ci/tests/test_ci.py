@@ -696,6 +696,18 @@ def test_dead_patch_check_applies_the_series_in_order(tmp_path: Path) -> None:
     assert [v for _, v, _ in dead.check_series(src, names, patches)] == ["OK", "DEAD", "OK"]
 
 
+def test_a_release_never_builds_from_the_cache() -> None:
+    """A published build must depend on no earlier run; only tests.yml's target is cached."""
+    action = yaml.safe_load((REPO_ROOT / ".github" / "actions" / "build-stage" / "action.yml").read_text())
+    steps = action["runs"]["steps"]
+    name = next(step for step in steps if step.get("id") == "cache")
+    assert "*/.github/workflows/tests.yml@*)" in name["run"] and "TESTED" in name["run"]
+    cached = [step for step in steps if str(step.get("uses", "")).startswith("actions/cache/")]
+    assert len(cached) == 2
+    for step in cached:
+        assert "steps.cache.outputs.use == 'true'" in step["if"], step["name"]
+
+
 def test_out_cache_rebuilds_only_the_overlay_that_changed(tmp_path):
     from ci import out_cache
 

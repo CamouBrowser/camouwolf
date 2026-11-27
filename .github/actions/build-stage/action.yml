@@ -86,18 +86,30 @@ runs:
       run: python3 -m ci.run_prepare --target "${{ inputs.target }}" --arch "${{ inputs.arch }}"
 
     - name: Name the build cache
-      # One finished out/ per target and Chromium version; the newest wins.
+      # One finished out/ per Chromium version; the newest wins. Only the target
+      # tests.yml tests is cached: the cache holds about three builds. A release
+      # never uses it, so a published build depends on no earlier run
+      # (ci/tribal-rules.yml: hosted-runners-only). Inside a reusable workflow,
+      # workflow_ref names the top-level workflow.
       id: cache
       if: inputs.finished != 'true'
       shell: bash
+      env:
+        TOP: ${{ github.workflow_ref }}
       run: |
         source browser/upstream.sh
         echo "prefix=out-${{ inputs.target }}-${{ inputs.arch }}-$version-" >> "$GITHUB_OUTPUT"
+        tested="$(python3 -c 'from ci.targets import TESTED; print(TESTED)')"
+        case "$TOP" in
+          */.github/workflows/tests.yml@*) [ "${{ inputs.target }}-${{ inputs.arch }}" = "$tested" ] && use=true || use=false ;;
+          *) use=false ;;
+        esac
+        echo "use=$use" >> "$GITHUB_OUTPUT"
 
     - name: Restore the last finished build
       # The first job starts from the newest finished out/ of this Chromium
       # version, so a run compiles only what its commit changed.
-      if: inputs.finished != 'true' && inputs.first == 'true'
+      if: inputs.finished != 'true' && inputs.first == 'true' && steps.cache.outputs.use == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /mnt/camouwolf/out/out.tar.zst
@@ -165,7 +177,9 @@ runs:
 
     - name: Keep the finished build for the next run
       # Not from a pull request: the cache is shared, and holds only a few builds.
-      if: steps.build.outputs.finished == 'true' && github.event_name != 'pull_request'
+      if: >-
+        steps.build.outputs.finished == 'true' && steps.cache.outputs.use == 'true' &&
+        github.event_name != 'pull_request'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: /mnt/camouwolf/out/out.tar.zst
