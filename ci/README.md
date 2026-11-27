@@ -124,7 +124,11 @@ repository; there is no self-hosted runner (`ci/tribal-rules.yml`:
 `hosted-runners-only`). The browser is built by `build-browser.yml`, the same
 workflow a release uses: a hosted job stops at six hours, so the build is a
 chain of up to 16 jobs that hand the out/ directory on, then a `package` job,
-and a cold build takes about a day. A new push to a pull request cancels the
+and a cold build takes about a day. The finished linux
+x86_64 out/ is kept in the Actions cache, and the next test run starts from it,
+recompiling only the patched files that changed (`ci/out_cache.py`); pull
+requests read the cache but never write it, and a release never uses it. A new
+push to a pull request cancels the
 run it replaces. The stealth check runs only where its credential is set, so
 never for a fork. Branch protection requires one check, **All tests passed**
 (`ci/branch-protection.json`).

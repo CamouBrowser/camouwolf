@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import types
@@ -693,3 +694,39 @@ def test_dead_patch_check_applies_the_series_in_order(tmp_path: Path) -> None:
 
     names = [patch("1.patch", 3, "one\n"), patch("2.patch", 4, "two\n"), patch("3.patch", 15, "three\n")]
     assert [v for _, v, _ in dead.check_series(src, names, patches)] == ["OK", "DEAD", "OK"]
+
+
+def test_a_release_never_builds_from_the_cache() -> None:
+    """A published build must depend on no earlier run; only tests.yml's target is cached."""
+    action = yaml.safe_load((REPO_ROOT / ".github" / "actions" / "build-stage" / "action.yml").read_text())
+    steps = action["runs"]["steps"]
+    name = next(step for step in steps if step.get("id") == "cache")
+    assert "*/.github/workflows/tests.yml@*)" in name["run"] and "TESTED" in name["run"]
+    cached = [step for step in steps if str(step.get("uses", "")).startswith("actions/cache/")]
+    assert len(cached) == 2
+    for step in cached:
+        assert "steps.cache.outputs.use == 'true'" in step["if"], step["name"]
+
+
+def test_out_cache_rebuilds_only_the_overlay_that_changed(tmp_path):
+    from ci import out_cache
+
+    src = tmp_path / "src"
+    (src / "out").mkdir(parents=True)
+    for name, text in {"same.cc": "a", "edited.cc": "b", "dropped.cc": "patched"}.items():
+        (src / name).write_text(text)
+    (src / out_cache.OVERLAY_LIST).write_text("dropped.cc\nedited.cc\nsame.cc\n")
+    out_cache.record(src)
+
+    # The next commit edits one patched file, stops patching another (it is
+    # pristine again) and patches a new one; every file starts with an old time.
+    (src / "edited.cc").write_text("b2")
+    (src / "dropped.cc").write_text("pristine")
+    (src / "added.cc").write_text("c")
+    (src / out_cache.OVERLAY_LIST).write_text("added.cc\nedited.cc\nsame.cc\n")
+    for f in src.glob("*.cc"):
+        os.utime(f, (946684800, 946684800))
+
+    assert out_cache.stale(src) == 3
+    fresh = {f.name for f in src.glob("*.cc") if f.stat().st_mtime > 946684800}
+    assert fresh == {"added.cc", "edited.cc", "dropped.cc"}
