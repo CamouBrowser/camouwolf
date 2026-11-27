@@ -1,0 +1,118 @@
+{
+  "$about": "Camouwolf's launch defaults: the value every launch starts from for each option below, with what it does and example values. Change one for yourself without editing the installed package: run `camouwolf defaults`, which copies this file to your user config directory (~/.config/camouwolf/defaults.json on Linux, ~/Library/Application Support/camouwolf/defaults.json on macOS, %LOCALAPPDATA%\\camouwolf\\camouwolf\\defaults.json on Windows) and prints its path, then edit the \"default\" values there. CAMOUWOLF_DEFAULTS=<path> reads your file from another path instead. Your file may also use the short form {\"telemetry\": false}. An unknown option or a value of the wrong type in it is an error. A value passed to the launch call (Camouwolf(), NewBrowser(), launch_options(); launchOptions() in TypeScript, with the same option names) wins over both files.",
+  "headless": {
+    "default": false,
+    "about": "Run Chromium's own headless mode. For a headed browser on an invisible display on Linux, pass headless='virtual' (or 'virtual-gpu') in the launch call.",
+    "examples": [true]
+  },
+  "humanize": {
+    "default": false,
+    "about": "Move the mouse, type and scroll like a person (the myuri engine) for Playwright's input calls. The launch call also takes a per-channel dict with a seed.",
+    "examples": [true]
+  },
+  "passthrough": {
+    "default": false,
+    "about": "Launch with this machine's own fingerprint: no identity is drawn and nothing about the device is spoofed (user agent, screen, GPU, fonts, timezone and languages are the host's). Behaviour options (proxy, headless, humanize, addons, block_images) still apply. Cannot be combined with an option that sets the identity (os, locale, geoip, config, fingerprint, screen, window, fonts, ...).",
+    "examples": [true]
+  },
+  "telemetry": {
+    "default": true,
+    "about": "Anonymous proxy telemetry. What is collected: per anti-bot provider (Cloudflare, Cloudflare Turnstile, DataDome, Akamai, PerimeterX, Kasada, Imperva, AWS WAF, hCaptcha, reCAPTCHA, Arkose Labs, Queue-it, Shape (F5), ThreatMetrix, Google BotGuard), how many encounters ended in success, challenge, block or unknown; and the launch's launcher name, launcher version, browser version, whether it is Pro, whether it is cross-OS (an identity OS other than this machine's), whether it is passthrough, and the proxy provider's domain only ('none' without a proxy). What is never collected: URLs, sites, page content, cookies, IP addresses, the proxy's username, password, host or port, or any identifier of you or this machine. What it is used for: ONLY judging proxy providers' failure rates, published as the success rates of proxy providers against no proxy, by release, Pro or not, and cross-OS or not, on the Camoufox website; it is put to no other use. On by default. You are free to audit that this is enforced: the code is camoucore's telemetry.py and telemetry.ts (https://github.com/CamouBrowser/camoucore/blob/v0.3.0/python/src/camoucore/telemetry.py), and CAMOUWOLF_TELEMETRY_URL sends every report to your own server instead, so you can read exactly what is sent. How to turn it off: set this to false, set CAMOUWOLF_TELEMETRY=0, or set DO_NOT_TRACK=1.",
+    "examples": [false]
+  },
+  "geoip": {
+    "default": false,
+    "about": "Place the identity where its IP address is: timezone, locale, geolocation and WebRTC address from the public IP (through the proxy when there is one). Needs the geoip extra. The launch call also takes an IP address string.",
+    "examples": [true]
+  },
+  "geoip_db": {
+    "default": null,
+    "about": "Which GeoIP database geoip looks the IP up in; null is the one `camouwolf set --geoip` selected.",
+    "examples": ["GeoIP AIO by daijro"]
+  },
+  "locale": {
+    "default": null,
+    "about": "The identity's locale(s). The first is the UI and Intl locale; all of them are navigator.languages and Accept-Language. null takes it from geoip, or the host's.",
+    "examples": ["en-US", ["de-DE", "en-US"]]
+  },
+  "os": {
+    "default": null,
+    "about": "Operating system of the identity: \"windows\", \"macos\", \"linux\", or a list to choose from. null is what this host can pass for (its own OS, and Windows on a Linux host).",
+    "examples": ["windows", ["windows", "linux"]]
+  },
+  "proxy": {
+    "default": null,
+    "about": "Proxy for the whole browser, in Playwright's format. A socks5:// proxy may carry a username and password.",
+    "examples": [{"server": "http://proxy.example.com:8080", "username": "user", "password": "pass"}, {"server": "socks5://proxy.example.com:1080"}]
+  },
+  "block_images": {
+    "default": false,
+    "about": "Block every image. A page can tell, so it warns.",
+    "examples": [true]
+  },
+  "block_webrtc": {
+    "default": false,
+    "about": "Keep WebRTC to TCP through the proxy, with no UDP at all.",
+    "examples": [true]
+  },
+  "block_webgl": {
+    "default": false,
+    "about": "Turn WebGL off. Few real browsers lack it, so it warns.",
+    "examples": [true]
+  },
+  "disable_coop": {
+    "default": false,
+    "about": "Ignore Cross-Origin-Opener-Policy headers, so a popup a COOP page opens keeps its opener. It warns.",
+    "examples": [true]
+  },
+  "instant_animations": {
+    "default": false,
+    "about": "Finish every finite CSS and Web Animation at once. A page reads the zero duration back, so it warns.",
+    "examples": [true]
+  },
+  "show_cursor": {
+    "default": false,
+    "about": "Show where automation clicks, as a ripple a page cannot read, in screenshots and a watched window.",
+    "examples": [true]
+  },
+  "enable_cache": {
+    "default": false,
+    "about": "Keep the HTTP disk cache.",
+    "examples": [true]
+  },
+  "canvas_noise": {
+    "default": false,
+    "about": "Perturb canvas readback with a per-identity seed. Stock Chrome does not, so it warns.",
+    "examples": [true]
+  },
+  "pin_cpu_cores": {
+    "default": false,
+    "about": "Pin the browser to as many cores as the identity reports, instead of reporting the host's count. Costs real CPU; does nothing on macOS.",
+    "examples": [true]
+  },
+  "allow_os_mismatch": {
+    "default": false,
+    "about": "Allow an identity on an OS this host cannot render as. Its fonts and graphics then disagree with its user agent.",
+    "examples": [true]
+  },
+  "allow_addon_new_tab": {
+    "default": false,
+    "about": "Let extensions open tabs and windows of their own.",
+    "examples": [true]
+  },
+  "browser": {
+    "default": null,
+    "about": "Which installed browser build to launch (`camouwolf list`); null is the active one.",
+    "examples": ["official/alpha.1"]
+  },
+  "debug": {
+    "default": false,
+    "about": "Print the config sent to the browser (proxy credentials masked) and have the browser log to stderr.",
+    "examples": [true]
+  },
+  "i_know_what_im_doing": {
+    "default": false,
+    "about": "Silence the launcher's warnings, and drop conflicting switches instead of refusing them.",
+    "examples": [true]
+  }
+}

@@ -73,6 +73,8 @@ env:
   NODE_VERSION: "22"
   CI_WORK_DIR: ${{ github.workspace }}/.ci-work
   CI_RESULTS_DIR: ${{ github.workspace }}/.ci-work/results
+  # Test launches send no telemetry (ci/_util.py says the same for local runs).
+  CAMOUWOLF_TELEMETRY: "0"
 
 jobs:
   # ---------------------------------------------------------------------------

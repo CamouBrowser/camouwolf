@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import inspect
 import ipaddress
 import json
 import math
@@ -8,6 +9,7 @@ import re
 import secrets
 import subprocess  # nosec
 from functools import wraps
+from importlib.metadata import version as package_version
 from os import environ
 from os.path import abspath
 from pathlib import Path
@@ -55,6 +57,9 @@ from .humanize import HumanizeSetting
 from .humanize import normalize as normalize_humanize
 from camoucore.ip import Proxy, public_ip, public_ipv6, valid_ipv4
 from camoucore.locales import handle_locales
+from camoucore.passthrough import IDENTITY_OPTIONS, check_passthrough, warn_passthrough
+from camoucore.settings import apply_defaults, load_defaults
+from camoucore.telemetry import Telemetry, telemetry_enabled
 from .product import PRODUCT
 from .pkgman import (
     INSTALL_DIR,
@@ -84,6 +89,8 @@ ListOrString: TypeAlias = Union[Tuple[str, ...], List[str], str]
 PROPERTIES_FILE: Path = LOCAL_DATA / 'data' / 'properties.json'
 SYSTEM_COLORS: Dict[str, Dict[str, int]] = orjson.loads((LOCAL_DATA / 'data' / 'system-colors.json').read_bytes())
 CHROME_LANGUAGES: Dict[str, Any] = orjson.loads((LOCAL_DATA / 'data' / 'chrome-languages.json').read_bytes())
+# The documented launch defaults; the repository root holds the same file.
+DEFAULTS_FILE: Path = LOCAL_DATA / 'camouwolf.defaults.json'
 
 # What this host can pass for. A Linux build can render as Windows (the bundled
 # Windows fonts, the UCRT math replica, patches 0019 and 0022); nothing makes a
@@ -565,6 +572,12 @@ def launch_os(from_options: Dict[str, Any]) -> str:
     return OS_NAMES[get_target_os(launch_config(from_options))]
 
 
+def launch_is_passthrough(from_options: Dict[str, Any]) -> bool:
+    """Whether these launch options are a passthrough launch's: every drawn
+    identity claims a user agent, and a passthrough launch draws none."""
+    return 'navigator.userAgent' not in launch_config(from_options)
+
+
 def launch_geolocation(from_options: Dict[str, Any]) -> Optional[Dict[str, float]]:
     """The position these launch options place the browser at, as Playwright's
     `geolocation` option, or None."""
@@ -638,24 +651,37 @@ PER_CONTEXT_IDENTITY_OPTIONS: Dict[str, str] = {
 }
 
 
-def _wrap_context_factories(target: Any, adjust: Any) -> Any:
-    """Run `adjust(kwargs)` before every new_page()/new_context() call on `target`."""
+def _wrap_context_factories(target: Any, adjust: Any = None, created: Any = None) -> Any:
+    """Run `adjust(kwargs)` before every new_page()/new_context() call on
+    `target`, and `created(context)` with the context each one made."""
     for name in ('new_page', 'new_context'):
         original = getattr(target, name, None)
         if original is None:
             continue
 
-        def wrap(original: Any) -> Any:
+        def wrap(original: Any, name: str) -> Any:
+            def made(result: Any) -> Any:
+                created(result.context if name == 'new_page' else result)
+                return result
+
             @wraps(original)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
-                adjust(kwargs)
-                # Works for both sync and async: async returns the coroutine
-                # unawaited, and the caller awaits it as usual.
-                return original(*args, **kwargs)
+                if adjust:
+                    adjust(kwargs)
+                result = original(*args, **kwargs)
+                if not created:
+                    return result
+                if inspect.isawaitable(result):
+
+                    async def finish() -> Any:
+                        return made(await result)
+
+                    return finish()
+                return made(result)
 
             return wrapper
 
-        setattr(target, name, wrap(original))
+        setattr(target, name, wrap(original, name))
     return target
 
 
@@ -681,7 +707,7 @@ def refuse_per_context_identity(kwargs: Dict[str, Any]) -> None:
         )
 
 
-def context_defaults(geolocation: Optional[Dict[str, float]]) -> Any:
+def context_defaults(geolocation: Optional[Dict[str, float]], passthrough: bool = False) -> Any:
     """The adjustment every new_page()/new_context() of a Camouwolf browser gets.
 
     - no_viewport: Playwright's default 1280x720 viewport is a device-metrics
@@ -692,11 +718,12 @@ def context_defaults(geolocation: Optional[Dict[str, float]]) -> Any:
     - the launch's geolocation (geoip, or geolocation:* in config), granted, as
       a browser whose user chose "Always allow" has it.
     - a LeakWarning for an option that gives the context another identity than
-      the browser's (NewContext refuses those outright).
+      the browser's (NewContext refuses those outright). A passthrough browser
+      has no identity to contradict.
     """
 
     def adjust(kwargs: Dict[str, Any]) -> None:
-        for problem in per_context_identity_problems(kwargs):
+        for problem in [] if passthrough else per_context_identity_problems(kwargs):
             _warn_from_caller(WARNINGS_DATA['per_context_identity'].format(problem=problem), LeakWarning)
         if 'viewport' not in kwargs and 'no_viewport' not in kwargs:
             kwargs['no_viewport'] = True
@@ -801,6 +828,11 @@ def context_identity(
     launch = launch_config(from_options)
     if not launch:
         raise ValueError('NewContext needs a browser launched by Camouwolf: a context identity is drawn to fit it')
+    if launch_is_passthrough(from_options):
+        raise ValueError(
+            'NewContext draws a context its own identity, and a passthrough browser injects none. '
+            'Use browser.new_context(), whose pages are this machine as the rest of the browser is.'
+        )
     target_os = launch_os(from_options)
     if os is not None and os != target_os:
         raise ValueError(
@@ -903,7 +935,7 @@ def persistent_context_options(from_options: Dict[str, Any]) -> Dict[str, Any]:
     """Launch options for launch_persistent_context(). The launch itself creates
     the context, so the defaults new_context() would get go into the options."""
     options = dict(from_options)
-    context_defaults(launch_geolocation(from_options))(options)
+    context_defaults(launch_geolocation(from_options), launch_is_passthrough(from_options))(options)
     return options
 
 
@@ -917,7 +949,9 @@ def warn_addons_without_profile(from_options: Dict[str, Any]) -> None:
 def attach_context_defaults(browser: Any, from_options: Dict[str, Any]) -> None:
     """Give every new_page()/new_context() of `browser` Camouwolf's defaults,
     and keep the launch options NewContext draws a context's identity to fit."""
-    _wrap_context_factories(browser, context_defaults(launch_geolocation(from_options)))
+    _wrap_context_factories(
+        browser, context_defaults(launch_geolocation(from_options), launch_is_passthrough(from_options))
+    )
     driver_defaults.mark(browser)
     setattr(getattr(browser, '_impl_obj', browser), _LAUNCH_OPTIONS, from_options)
 
@@ -928,6 +962,63 @@ def launch_options_of(browser: Any) -> Dict[str, Any]:
     if from_options is None:
         raise ValueError('NewContext needs a browser from NewBrowser or Camouwolf: a context identity is drawn to fit it')
     return from_options
+
+
+"""
+Defaults and telemetry
+"""
+
+
+def launch_defaults(options: Dict[str, Any]) -> Dict[str, Any]:
+    """`options` with each one the caller left unset taken from the defaults
+    file (camouwolf.defaults.json), overlaid with the user's own."""
+    return apply_defaults(load_defaults(PRODUCT, DEFAULTS_FILE), options)
+
+
+def _with_launch_defaults(func: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(func)
+    def wrapper(**kwargs: Any) -> Any:
+        return func(**launch_defaults(kwargs))
+
+    return wrapper
+
+
+def start_telemetry(target: Any, from_options: Dict[str, Any], setting: Optional[bool], persistent: bool) -> None:
+    """Count anti-bot outcomes on every context of `target` (a Browser, or a
+    persistent BrowserContext) when telemetry is on; see camoucore.telemetry
+    for what is sent. Telemetry never fails a launch."""
+    try:
+        if not telemetry_enabled(PRODUCT, setting):
+            return
+        passthrough = launch_is_passthrough(from_options)
+        telemetry = Telemetry(
+            PRODUCT,
+            version=package_version('camouwolf'),
+            browser_version=resolve_version(from_options['executable_path']),
+            # Camouwolf has no Pro build.
+            pro=False,
+            cross_os=not passthrough and launch_os(from_options) != OS_NAMES[OS_NAME],
+            passthrough=passthrough,
+            proxy=from_options.get('proxy'),
+        )
+        if persistent:
+            telemetry.watch(target)
+            target.on('close', lambda *_: telemetry.close())
+        else:
+            _wrap_context_factories(target, created=_never_raises(telemetry.watch))
+            telemetry.watch_browser(target)
+    except Exception:  # nosec
+        pass
+
+
+def _never_raises(func: Callable[..., Any]) -> Callable[..., Any]:
+    def call(*args: Any) -> None:
+        try:
+            func(*args)
+        except Exception:  # nosec
+            pass
+
+    return call
 
 
 """
@@ -1488,6 +1579,7 @@ def draw_identity(
     return config, languages, target_os
 
 
+@_with_launch_defaults
 def launch_options(
     *,
     config: Optional[Dict[str, Any]] = None,
@@ -1532,11 +1624,15 @@ def launch_options(
     pin_cpu_cores: Optional[bool] = None,
     canvas_noise: Optional[bool] = None,
     allow_os_mismatch: Optional[bool] = None,
+    passthrough: Optional[bool] = None,
+    telemetry: Optional[bool] = None,
     **launch_options: Any,
 ) -> Dict[str, Any]:
     """
     Builds the Playwright launch options for a Camouwolf browser.
-    Accepts all Playwright Chromium launch options, along with the following:
+    Accepts all Playwright Chromium launch options, along with the following.
+    An option left unset takes its value from camouwolf.defaults.json and the
+    user's own defaults file (`camouwolf defaults`).
 
     Parameters:
         config (Optional[Dict[str, Any]]):
@@ -1680,9 +1776,22 @@ def launch_options(
             Allow an identity on an OS this host cannot pass for.
         i_know_what_im_doing (Optional[bool]):
             Silence warnings, and drop conflicting switches instead of refusing them.
+        passthrough (Optional[bool]):
+            Launch with this machine's own fingerprint: no identity is drawn and
+            no identity config, font set, timezone, window size or language is
+            sent. Behaviour options still apply. An identity option (os, locale,
+            geoip, config, ...) alongside it raises ValueError.
+        telemetry (Optional[bool]):
+            Report anonymous anti-bot outcome counts per proxy provider (see the
+            README). Applied by Camouwolf()/NewBrowser(); CAMOUWOLF_TELEMETRY=0
+            or DO_NOT_TRACK=1 turns it off too.
         **launch_options (Dict[str, Any]):
             Additional Playwright Chromium launch options.
     """
+    if passthrough:
+        options = locals()
+        check_passthrough(PRODUCT, {name: options[name] for name in IDENTITY_OPTIONS})
+
     # ---- options with no Chromium equivalent ------------------------------
     if firefox_user_prefs:
         raise NotImplementedError(
@@ -1755,66 +1864,71 @@ def launch_options(
         args.insert(0, '--ozone-platform=x11')
 
     # ---- the identity ------------------------------------------------------
-    if not i_know_what_im_doing:
-        warn_manual_config(config)
-    if preset:
-        if os or webgl_config or fingerprint is not None:
-            raise ValueError('fingerprint_preset names the OS and GPU; it cannot be combined with os, '
-                             'webgl_config or fingerprint')
-        os, webgl_config = preset.os, preset.webgl_config
-    if cpu is not None:
-        os = oses_for_cpu(cpu, os or list(ALLOWED_OS_TARGETS[OS_NAME]))
-    if os:
-        check_valid_os(os)
-        check_os_policy([os] if isinstance(os, str) else list(os), allow_os_mismatch)
-    elif webgl_config:
-        raise ValueError('OS must be set when using webgl_config')
-    elif not allow_os_mismatch:
-        os = list(ALLOWED_OS_TARGETS[OS_NAME])
+    if passthrough:
+        # The host's own device: no identity, so nothing to place, size or name.
+        warn_passthrough(PRODUCT, proxy, i_know_what_im_doing)
+        languages, target_os = None, OS_NAME
+    else:
+        if not i_know_what_im_doing:
+            warn_manual_config(config)
+        if preset:
+            if os or webgl_config or fingerprint is not None:
+                raise ValueError('fingerprint_preset names the OS and GPU; it cannot be combined with os, '
+                                 'webgl_config or fingerprint')
+            os, webgl_config = preset.os, preset.webgl_config
+        if cpu is not None:
+            os = oses_for_cpu(cpu, os or list(ALLOWED_OS_TARGETS[OS_NAME]))
+        if os:
+            check_valid_os(os)
+            check_os_policy([os] if isinstance(os, str) else list(os), allow_os_mismatch)
+        elif webgl_config:
+            raise ValueError('OS must be set when using webgl_config')
+        elif not allow_os_mismatch:
+            os = list(ALLOWED_OS_TARGETS[OS_NAME])
 
-    # The identity has to match the Chromium that actually runs.
-    full_version = resolve_version(browser_binary)
-    if chrome_version is not None and int(chrome_version) != int(full_version.split('.', 1)[0]):
-        LeakWarning.warn(WARNINGS_DATA['chrome_version'], i_know_what_im_doing)
-        full_version = f'{int(chrome_version)}.0.0.0'
+        # The identity has to match the Chromium that actually runs.
+        full_version = resolve_version(browser_binary)
+        if chrome_version is not None and int(chrome_version) != int(full_version.split('.', 1)[0]):
+            LeakWarning.warn(WARNINGS_DATA['chrome_version'], i_know_what_im_doing)
+            full_version = f'{int(chrome_version)}.0.0.0'
 
-    # A real display bounds the screen the identity may claim; so does a
-    # virtual one of fixed size, which the real window has to fit on. One the
-    # launcher sizes is fitted to the identity instead.
-    display_bound: Optional[Screen] = None
-    if headless is not True:
-        if virtual_display_size:
-            display_bound = Screen(max_width=virtual_display_size[0], max_height=virtual_display_size[1])
-        elif not virtual_display and has_display(env):
-            display = largest_display()
-            if display:
-                display_bound = Screen(max_width=display.width, max_height=display.height)
+        # A real display bounds the screen the identity may claim; so does a
+        # virtual one of fixed size, which the real window has to fit on. One the
+        # launcher sizes is fitted to the identity instead.
+        display_bound: Optional[Screen] = None
+        if headless is not True:
+            if virtual_display_size:
+                display_bound = Screen(max_width=virtual_display_size[0], max_height=virtual_display_size[1])
+            elif not virtual_display and has_display(env):
+                display = largest_display()
+                if display:
+                    display_bound = Screen(max_width=display.width, max_height=display.height)
 
-    config, languages, target_os = draw_identity(
-        config,
-        os=os,
-        webgl_config=webgl_config,
-        geoip=geoip,
-        geoip_db=geoip_db,
-        proxy=proxy,
-        block_webrtc=block_webrtc,
-        locale=locale,
-        fingerprint=fingerprint,
-        screen=screen,
-        window=window,
-        fonts=fonts,
-        custom_fonts_only=custom_fonts_only,
-        canvas_noise=canvas_noise,
-        pin_cpu_cores=pin_cpu_cores,
-        full_version=full_version,
-        allow_os_mismatch=allow_os_mismatch,
-        i_know_what_im_doing=i_know_what_im_doing,
-        browser_binary=browser_binary,
-        display_bound=display_bound,
-        virtual_display=bool(virtual_display),
-        cpu=cpu,
-        recorded=preset.config if preset else None,
-    )
+        config, languages, target_os = draw_identity(
+            config,
+            os=os,
+            webgl_config=webgl_config,
+            geoip=geoip,
+            geoip_db=geoip_db,
+            proxy=proxy,
+            block_webrtc=block_webrtc,
+            locale=locale,
+            fingerprint=fingerprint,
+            screen=screen,
+            window=window,
+            fonts=fonts,
+            custom_fonts_only=custom_fonts_only,
+            canvas_noise=canvas_noise,
+            pin_cpu_cores=pin_cpu_cores,
+            full_version=full_version,
+            allow_os_mismatch=allow_os_mismatch,
+            i_know_what_im_doing=i_know_what_im_doing,
+            browser_binary=browser_binary,
+            display_bound=display_bound,
+            virtual_display=bool(virtual_display),
+            cpu=cpu,
+            recorded=preset.config if preset else None,
+        )
 
     # ---- browser behaviour ------------------------------------------------
     config.setdefault('allowAddonNewtab', bool(allow_addon_new_tab))
@@ -1911,7 +2025,9 @@ def launch_options(
     if debug:
         print('[DEBUG] Config:')
         pprint(masked_config(config))
-    env.update(get_env_vars(config, target_os, path=browser_binary))
+    # A passthrough launch keeps the host's fonts and timezone: only the
+    # behaviour keys go to the browser.
+    env.update(config_env_vars(config) if passthrough else get_env_vars(config, target_os, path=browser_binary))
 
     ignored = launch_options.pop('ignore_default_args', None)
     if ignored is True:

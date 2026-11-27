@@ -1181,5 +1181,18 @@ def path_cmd():
     click.echo(INSTALL_DIR)
 
 
+@cli.command(name="defaults")
+def defaults_cmd():
+    """
+    Copy the launch defaults to your own defaults file, if you have none yet, and print its path
+    """
+    from camoucore.settings import write_user_defaults
+
+    from .product import PRODUCT
+    from .utils import DEFAULTS_FILE
+
+    click.echo(write_user_defaults(PRODUCT, DEFAULTS_FILE))
+
+
 if __name__ == "__main__":
     cli()

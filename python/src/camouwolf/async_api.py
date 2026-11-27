@@ -16,6 +16,7 @@ from . import _humanize_playwright, driver_defaults
 from .utils import (
     async_attach_vd,
     attach_context_defaults,
+    launch_defaults,
     launch_options,
     launch_os,
     context_identity,
@@ -25,6 +26,7 @@ from .utils import (
     refuse_context_options,
     set_context_identity_params,
     persistent_context_options,
+    start_telemetry,
     start_virtual_display,
     warn_addons_without_profile,
 )
@@ -108,6 +110,10 @@ async def AsyncNewBrowser(
         **kwargs:
             All other keyword arguments passed to `launch_options()`.
     """
+    # The defaults file fills what the caller left unset; options read here
+    # (headless, humanize, telemetry) need it before launch_options runs.
+    kwargs = launch_defaults({'headless': headless, 'debug': debug, **kwargs})
+    headless, debug = kwargs.pop('headless'), kwargs.pop('debug')
     # humanize runs in this process: checked before the launch,
     # attached to the browser after it (also with from_options).
     _humanize_playwright.check(kwargs.get('humanize'), is_async=True)
@@ -155,17 +161,19 @@ async def _new_browser(
     from camoucore import cpu_affinity
     from .utils import driver_pid, pinned_core_count
 
+    telemetry = kwargs.get('telemetry')
     pin_to = pinned_core_count(from_options) if kwargs.get('pin_cpu_cores') else None
     pid = driver_pid(playwright) if pin_to else None
     if not pid:
-        return await _launch(playwright, from_options, persistent_context, virtual_display), launch_os(from_options)
+        browser = await _launch(playwright, from_options, persistent_context, virtual_display, telemetry)
+        return browser, launch_os(from_options)
     # The browser inherits the driver's mask at spawn, so two concurrent launches
     # on one driver must not interleave pin/restore: the second pin would land on
     # the first browser, and the first restore would leave the driver pinned.
     async with _pin_lock(pid):
         previous = cpu_affinity.pin(pid, pin_to)
         try:
-            return await _launch(playwright, from_options, persistent_context, virtual_display), launch_os(
+            return await _launch(playwright, from_options, persistent_context, virtual_display, telemetry), launch_os(
                 from_options
             )
         finally:
@@ -188,15 +196,18 @@ async def _launch(
     from_options: Dict[str, Any],
     persistent_context: bool,
     virtual_display: Optional[VirtualDisplay],
+    telemetry: Optional[bool],
 ) -> Union[Browser, BrowserContext]:
     if persistent_context:
         context = await playwright.chromium.launch_persistent_context(**persistent_context_options(from_options))
         driver_defaults.mark(context)
+        start_telemetry(context, from_options, telemetry, persistent=True)
         return await async_attach_vd(context, virtual_display)
 
     warn_addons_without_profile(from_options)
     browser = await playwright.chromium.launch(**from_options)
     attach_context_defaults(browser, from_options)
+    start_telemetry(browser, from_options, telemetry, persistent=False)
     return await async_attach_vd(browser, virtual_display)
 
 

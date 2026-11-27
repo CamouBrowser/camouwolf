@@ -146,7 +146,7 @@ individual vectors.
 # Using Camouwolf
 
 [`python/README.md`](python/README.md) is the reference for every launch
-option; the TypeScript launcher takes the same options in camelCase.
+option; the TypeScript launcher takes the same options with the same names.
 
 - **Do not set identity values by hand.** The identity is drawn as a whole; a
   Playwright `user_agent`, or a `navigator.*` key in `config`, leaves the rest

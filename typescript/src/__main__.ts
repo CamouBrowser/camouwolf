@@ -22,6 +22,7 @@ import {
 	saveGeoipConfig,
 	warnIfDeprecated,
 } from "camoucore/geolocation.js";
+import { writeUserDefaults } from "camoucore/settings.js";
 import { Argument, Command, Option } from "commander";
 import { ensureModel } from "fpgen-js";
 import { LIBRARY_VERSION } from "./__version__.js";
@@ -52,7 +53,7 @@ import {
 	saveConfig,
 	saveRepoCache,
 } from "./multiversion.js";
-import { INSTALL_DIR, rprint, style } from "./paths.js";
+import { DEFAULTS_FILE, INSTALL_DIR, rprint, style } from "./paths.js";
 import {
 	AvailableVersion,
 	CamouwolfFetcher,
@@ -69,6 +70,7 @@ import {
 	upgradeMessage,
 	Version,
 } from "./pkgman.js";
+import { PRODUCT } from "./product.js";
 
 // --------------------------------------------------------------------------
 // click-style output + prompts
@@ -1445,6 +1447,15 @@ program
 	.description("Print the install directory path")
 	.action(() => {
 		echo(INSTALL_DIR);
+	});
+
+program
+	.command("defaults")
+	.description(
+		"Copy the launch defaults to your own defaults file, if you have none yet, and print its path",
+	)
+	.action(() => {
+		echo(writeUserDefaults(PRODUCT, DEFAULTS_FILE));
 	});
 
 program

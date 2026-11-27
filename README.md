@@ -41,7 +41,18 @@ with Camouwolf(os="windows", headless="virtual", humanize=True) as browser:
 ```
 
 Every option is in [`python/README.md`](python/README.md); the TypeScript
-launcher takes the same options in camelCase.
+launcher takes the same options, with the same names. Their defaults, and what
+each does, are in [`camouwolf.defaults.json`](camouwolf.defaults.json);
+`camouwolf defaults` makes you a copy to change them.
+
+**Telemetry is on by default, and it is used ONLY to judge proxy providers'
+failure rates.** Camouwolf sends anonymous counts of anti-bot outcomes (success,
+challenge, block) per proxy provider. It never sends URLs, sites, page content,
+IP addresses or proxy credentials, and the reports are put to no other use. You
+are free to audit that this is enforced: the code is open, and you can send the
+reports to your own server to read each one
+([`python/README.md`](python/README.md#telemetry)). Turn it off with
+`telemetry=False`, `CAMOUWOLF_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 
 ## Features
 
@@ -100,6 +111,7 @@ fingerprint in its own right.
 | Finish animations at once (a page can read it) | `instant_animations=True` | `0043` |
 | Show where automation clicks | `show_cursor=True` | `0046` |
 | Extensions cannot open tabs unless allowed | `allow_addon_new_tab=True` | `0044` |
+| Launch as this machine, nothing spoofed | `passthrough=True` | launcher |
 | Headed browser on a private display (Linux) | `headless="virtual"` or `"virtual-gpu"` | launcher |
 | Install, pin and switch browser builds | `camouwolf fetch`, `set`, `list`, `remove` | launcher |
 

@@ -32,6 +32,10 @@ SKIPLIST_PATH = CI_DIR / "skiplist.yml"
 WORK_DIR = Path(os.environ.get("CI_WORK_DIR", REPO_ROOT / ".ci-work"))
 RESULTS_DIR = Path(os.environ.get("CI_RESULTS_DIR", WORK_DIR / "results"))
 
+# A test run's launches are not real use: they send no telemetry, here or in
+# any process a stage starts.
+os.environ["CAMOUWOLF_TELEMETRY"] = "0"
+
 # The name the runners import; the results directory holds the evidence.
 EVIDENCE_DIR = RESULTS_DIR
 

@@ -14,6 +14,7 @@ from camoucore.virtdisplay import VirtualDisplay
 from . import _humanize_playwright, driver_defaults
 from .utils import (
     attach_context_defaults,
+    launch_defaults,
     launch_options,
     launch_os,
     context_identity,
@@ -23,6 +24,7 @@ from .utils import (
     refuse_context_options,
     set_context_identity_params,
     persistent_context_options,
+    start_telemetry,
     start_virtual_display,
     warn_addons_without_profile,
     sync_attach_vd,
@@ -111,6 +113,10 @@ def NewBrowser(
         **kwargs:
             All other keyword arguments passed to `launch_options()`.
     """
+    # The defaults file fills what the caller left unset; options read here
+    # (headless, humanize, telemetry) need it before launch_options runs.
+    kwargs = launch_defaults({'headless': headless, 'debug': debug, **kwargs})
+    headless, debug = kwargs.pop('headless'), kwargs.pop('debug')
     # humanize runs in this process: checked before the launch,
     # attached to the browser after it (also with from_options).
     _humanize_playwright.check(kwargs.get('humanize'), is_async=False)
@@ -161,11 +167,13 @@ def _launch(
         if persistent_context:
             context = playwright.chromium.launch_persistent_context(**persistent_context_options(from_options))
             driver_defaults.mark(context)
+            start_telemetry(context, from_options, kwargs.get('telemetry'), persistent=True)
             return sync_attach_vd(context, virtual_display), launch_os(from_options)
 
         warn_addons_without_profile(from_options)
         browser = playwright.chromium.launch(**from_options)
         attach_context_defaults(browser, from_options)
+        start_telemetry(browser, from_options, kwargs.get('telemetry'), persistent=False)
         return sync_attach_vd(browser, virtual_display), launch_os(from_options)
     finally:
         if pid:
