@@ -1189,15 +1189,21 @@ def draw_fingerprint(
     then the ones a machine with that GPU reported.
 
     `host_canvas` reads the GPU this host's canvas renders on. A draw on this
-    host's OS then claims it where fpgen recorded it, so the canvas is the
-    claimed machine's and needs no farbling (draw_identity).
+    host's OS then claims it where fpgen recorded it beside the other
+    constraints, so the canvas is the claimed machine's and needs no farbling
+    (draw_identity).
     """
     if host_canvas and not webgl_config:
         fingerprint = draw_fingerprint(os, screen, window, None, language, cpu)
         host = host_canvas() if fingerprint_os(fingerprint) == OS_NAME else None
         if host not in chrome_gpus(OS_NAMES[OS_NAME]):
             return fingerprint
-        return draw_fingerprint(OS_NAMES[OS_NAME], screen, window, host, language, cpu)
+        # fpgen may have the host's GPU but no machine with it that also fits
+        # the screen, window or CPU; the first draw then stands, farbled.
+        try:
+            return draw_fingerprint(OS_NAMES[OS_NAME], screen, window, host, language, cpu)
+        except (ValueError, RuntimeError):
+            return fingerprint
     names = [os] if isinstance(os, str) else list(os or [])
     if webgl_config:
         vendor, renderer = webgl_config

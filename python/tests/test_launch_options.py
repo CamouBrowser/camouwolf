@@ -191,6 +191,15 @@ def test_a_host_gpu_fpgen_never_recorded_is_farbled(options, monkeypatch, host):
     assert re.fullmatch('[0-9a-f]{32}', config['canvas:farblingToken'])
 
 
+def test_a_host_gpu_fpgen_never_recorded_with_the_constraints_is_farbled(options, monkeypatch):
+    intel = next(gpu for gpu in sorted(chrome_gpus('linux')) if 'Intel' in gpu[1])
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: intel)
+    with pytest.warns(LeakWarning, match='farbled'):
+        config = config_of(options(os='linux', cpu={'manufacturer': 'amd'}))
+    assert (config['webGl:vendor'], config['webGl:renderer']) != intel
+    assert re.fullmatch('[0-9a-f]{32}', config['canvas:farblingToken'])
+
+
 def test_another_os_is_farbled_with_a_token_per_launch(options, monkeypatch):
     monkeypatch.setattr(utils, 'host_gpu', lambda *args: LINUX_GPU)
     with pytest.warns(LeakWarning, match='farbled'):

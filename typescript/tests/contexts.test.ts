@@ -687,6 +687,23 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 		);
 	});
 
+	it("farbles a host GPU fpgen never recorded with the constraints", async () => {
+		const intel = utils.utilsDeps
+			.chromeGpus("linux")
+			.sort()
+			.find(([, r]) => r.includes("Intel")) as [string, string];
+		utils.utilsDeps.hostGpu = async () => intel;
+		const { result, warnings: caught } = await warnings.recordWarnings(() =>
+			utils.launchOptions({ ...base(), cpu: { manufacturer: "amd" } }),
+		);
+		expect(caught.some((w) => w.message.includes("farbled"))).toBe(true);
+		const config = configOf(result as any);
+		expect([config["webGl:vendor"], config["webGl:renderer"]]).not.toEqual(
+			intel,
+		);
+		expect(config["canvas:farblingToken"]).toMatch(/^[0-9a-f]{32}$/);
+	});
+
 	it("canvas_noise forces farbling either way without a probe", async () => {
 		utils.utilsDeps.hostGpu = async () => {
 			throw new Error("probed the host GPU");
