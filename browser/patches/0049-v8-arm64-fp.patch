@@ -1,0 +1,2224 @@
+diff --git a/content/renderer/render_process_impl.cc b/content/renderer/render_process_impl.cc
+--- a/content/renderer/render_process_impl.cc
++++ b/content/renderer/render_process_impl.cc
+@@ -19,6 +19,7 @@
+ #include <utility>
+ 
+ #include "base/base_switches.h"
++#include "base/camouwolf_config.h"
+ #include "base/command_line.h"
+ #include "base/compiler_specific.h"
+ #include "base/debug/crash_logging.h"
+@@ -179,6 +180,14 @@
+ 
+   }
+ 
++  // CAMOUWOLF: an ARM64 identity on an x86 host makes the NaNs and relaxed
++  // SIMD results an ARM64 CPU makes (cpu:identity, as 0048 does for Skia).
++  if (base::CamouwolfConfig::Get().EmulatedCpu() ==
++      base::CamouwolfConfig::Cpu::kArm64) {
++    constexpr char kArm64Fp[] = "--camouwolf-arm64-fp";
++    v8::V8::SetFlagsFromString(kArm64Fp, sizeof(kArm64Fp) - 1);
++  }
++
+   bool enable_shared_array_buffer_unconditionally =
+       base::FeatureList::IsEnabled(features::kSharedArrayBuffer);
+ 
+diff --git a/v8/src/codegen/code-stub-assembler.cc b/v8/src/codegen/code-stub-assembler.cc
+--- a/v8/src/codegen/code-stub-assembler.cc
++++ b/v8/src/codegen/code-stub-assembler.cc
+@@ -437,6 +437,26 @@
+   return var_x.value();
+ }
+ 
++TNode<BoolT> CodeStubAssembler::IsArm64FpEmulated() {
++  return Word32NotEqual(
++      Load<Uint8T>(ExternalConstant(
++          ExternalReference::address_of_camouwolf_arm64_fp_flag())),
++      Int32Constant(0));
++}
++
++void CodeStubAssembler::GotoIfArm64RoundsNaN(TNode<Float64T> x,
++                                             TVariable<Float64T>* var_x,
++                                             Label* done) {
++  Label is_nan(this), not_nan(this);
++  BranchIfFloat64IsNaN(x, &is_nan, &not_nan);
++  BIND(&is_nan);
++  GotoIfNot(IsArm64FpEmulated(), &not_nan);
++  // Adding a NaN to itself quiets it and keeps its sign and payload.
++  *var_x = Float64Add(x, x);
++  Goto(done);
++  BIND(&not_nan);
++}
++
+ TNode<Float64T> CodeStubAssembler::Float64Ceil(TNode<Float64T> x) {
+   TVARIABLE(Float64T, var_x, x);
+   Label round_op_supported(this), round_op_fallback(this), return_x(this);
+@@ -458,6 +478,7 @@
+ 
+   BIND(&round_op_fallback);
+   {
++    GotoIfArm64RoundsNaN(x, &var_x, &return_x);
+     TNode<Float64T> one = Float64Constant(1.0);
+     TNode<Float64T> zero = Float64Constant(0.0);
+     TNode<Float64T> two_52 = Float64Constant(4503599627370496.0E0);
+@@ -525,6 +546,7 @@
+ 
+   BIND(&round_op_fallback);
+   {
++    GotoIfArm64RoundsNaN(x, &var_x, &return_x);
+     TNode<Float64T> one = Float64Constant(1.0);
+     TNode<Float64T> zero = Float64Constant(0.0);
+     TNode<Float64T> two_52 = Float64Constant(4503599627370496.0E0);
+@@ -639,6 +661,7 @@
+ 
+   BIND(&trunc_op_fallback);
+   {
++    GotoIfArm64RoundsNaN(x, &var_x, &return_x);
+     TNode<Float64T> one = Float64Constant(1.0);
+     TNode<Float64T> zero = Float64Constant(0.0);
+     TNode<Float64T> two_52 = Float64Constant(4503599627370496.0E0);
+@@ -7688,9 +7711,23 @@
+     BIND(&if_infinity_or_nan);
+     {
+       // Result is infinity or NaN.
++      auto nan = [=, this] {
++        // ARM64's FCVT keeps the top payload bits, which a page can read back.
++        return Select<Uint16T>(
++            IsArm64FpEmulated(),
++            [=, this] {
++              TNode<Word64T> payload = Word64And(
++                  Word64Shr(
++                      in, Int64Constant(kFP64MantissaBits - kFP16MantissaBits)),
++                  Uint64Constant(0x3ff));
++              return ReinterpretCast<Uint16T>(Word32Or(
++                  Int32Constant(kFP16qNaN), TruncateWord64ToWord32(payload)));
++            },
++            [=, this] { return Uint16Constant(kFP16qNaN); });
++      };
+       out = Select<Uint16T>(
+           Uint64GreaterThan(in, Uint64Constant(kFP64Infinity)),
+-          [=, this] { return Uint16Constant(kFP16qNaN); },       // NaN->qNaN
++          nan,                                                   // NaN->qNaN
+           [=, this] { return Uint16Constant(kFP16Infinity); });  // Inf->Inf
+       Goto(&done);
+     }
+diff --git a/v8/src/codegen/code-stub-assembler.h b/v8/src/codegen/code-stub-assembler.h
+--- a/v8/src/codegen/code-stub-assembler.h
++++ b/v8/src/codegen/code-stub-assembler.h
+@@ -401,6 +401,12 @@
+   TNode<Float64T> Float64Round(TNode<Float64T> x);
+   TNode<Float64T> Float64RoundToEven(TNode<Float64T> x);
+   TNode<Float64T> Float64Trunc(TNode<Float64T> x);
++  // Whether --camouwolf-arm64-fp is on, read at run time.
++  TNode<BoolT> IsArm64FpEmulated();
++  // With --camouwolf-arm64-fp, a NaN {x} goes to {done} quieted in {var_x}, as
++  // ARM64's FRINT instructions return it.
++  void GotoIfArm64RoundsNaN(TNode<Float64T> x, TVariable<Float64T>* var_x,
++                            Label* done);
+   // Select the minimum of the two provided Number values.
+   TNode<Number> NumberMax(TNode<Number> left, TNode<Number> right);
+   // Select the minimum of the two provided Number values.
+diff --git a/v8/src/codegen/external-reference.cc b/v8/src/codegen/external-reference.cc
+--- a/v8/src/codegen/external-reference.cc
++++ b/v8/src/codegen/external-reference.cc
+@@ -818,6 +818,10 @@
+   return ExternalReference(&v8_flags.builtin_subclassing);
+ }
+ 
++ExternalReference ExternalReference::address_of_camouwolf_arm64_fp_flag() {
++  return ExternalReference(&v8_flags.camouwolf_arm64_fp);
++}
++
+ ExternalReference ExternalReference::address_of_js_pr_3883_flag() {
+   return ExternalReference(&v8_flags.js_pr_3883);
+ }
+diff --git a/v8/src/codegen/external-reference.h b/v8/src/codegen/external-reference.h
+--- a/v8/src/codegen/external-reference.h
++++ b/v8/src/codegen/external-reference.h
+@@ -82,6 +82,7 @@
+   V(abort_with_sandbox_violation, "abort_with_sandbox_violation")              \
+   V(address_of_log_or_trace_osr, "v8_flags.log_or_trace_osr")                  \
+   V(address_of_builtin_subclassing_flag, "v8_flags.builtin_subclassing")       \
++  V(address_of_camouwolf_arm64_fp_flag, "v8_flags.camouwolf_arm64_fp")         \
+   V(address_of_double_abs_constant, "double_absolute_constant")                \
+   V(address_of_double_neg_constant, "double_negate_constant")                  \
+   V(address_of_enable_experimental_regexp_engine,                              \
+diff --git a/v8/src/codegen/x64/assembler-x64.cc b/v8/src/codegen/x64/assembler-x64.cc
+--- a/v8/src/codegen/x64/assembler-x64.cc
++++ b/v8/src/codegen/x64/assembler-x64.cc
+@@ -249,6 +249,8 @@
+ #ifdef V8_ENABLE_AVX10_1
+   if (!v8_flags.enable_avx10_1 || !IsSupported(AVX2)) SetUnsupported(AVX10_1);
+ #endif  // V8_ENABLE_AVX10_1
++  // The ARM64 emulation needs three-operand SIMD, and FMLA is fused.
++  if (v8_flags.camouwolf_arm64_fp) CHECK(IsSupported(AVX) && IsSupported(FMA3));
+ 
+   // Set a static value on whether Simd is supported.
+   // This variable is only used for certain archs to query SupportWasmSimd128()
+diff --git a/v8/src/codegen/x64/macro-assembler-x64.cc b/v8/src/codegen/x64/macro-assembler-x64.cc
+--- a/v8/src/codegen/x64/macro-assembler-x64.cc
++++ b/v8/src/codegen/x64/macro-assembler-x64.cc
+@@ -1603,6 +1603,148 @@
+   }
+ }
+ 
++void MacroAssembler::Arm64NaN(XMMRegister dst, XMMRegister scratch,
++                              int lane_bits, Arm64NaNRule rule,
++                              base::Vector<const Arm64NaNInput> inputs,
++                              int negated, bool negate_result) {
++  ASM_CODE_COMMENT(this);
++  DCHECK(lane_bits == 32 || lane_bits == 64);
++  DCHECK_IMPLIES(rule == Arm64NaNRule::kMulAdd, inputs.size() == 3);
++  DCHECK_LE(inputs.size(), 3);
++  const bool f64 = lane_bits == 64;
++  const Register bits = kScratchRegister;
++  const uint64_t default_nan =
++      f64 ? uint64_t{0x7FF8000000000000} : uint64_t{0x7FC00000};
++#ifdef DEBUG
++  for (const Arm64NaNInput& in : inputs) DCHECK_NE(in.reg, scratch);
++#endif
++
++  auto flip_sign = [&]() {
++    if (f64) {
++      rolq(bits, Immediate(1));
++      xorq(bits, Immediate(1));
++      rorq(bits, Immediate(1));
++    } else {
++      xorl(bits, Immediate(kMinInt));
++    }
++  };
++  // Loads operand {i} into {bits} and sets the parity flag if it is a NaN.
++  auto load = [&](int i) {
++    const Arm64NaNInput& in = inputs[i];
++    if (f64 && in.reg.is_valid()) {
++      Movq(bits, in.reg);
++    } else if (f64) {
++      movq(bits, in.mem);
++    } else if (in.reg.is_valid()) {
++      Movd(bits, in.reg);
++    } else {
++      movl(bits, in.mem);
++    }
++    if (negated & (1 << i)) flip_sign();
++    if (f64) {
++      Movq(scratch, bits);
++      Ucomisd(scratch, scratch);
++    } else {
++      Movd(scratch, bits);
++      Ucomiss(scratch, scratch);
++    }
++  };
++  // Loads operand {i} into {scratch}, or applies {op} to {scratch} and it.
++  auto use = [&](int i, auto op) {
++    const Arm64NaNInput& in = inputs[i];
++    if (in.reg.is_valid()) {
++      op(in.reg);
++    } else {
++      op(in.mem);
++    }
++  };
++
++  const int count = static_cast<int>(inputs.size());
++  Label done, pass2;
++  for (int i = 0; i < count; i++) {
++    Label next;
++    load(i);
++    j(parity_odd, &next, Label::kNear);
++    // Sets the quiet bit; it was clear if the NaN was signalling.
++    btsq(bits, Immediate(f64 ? 51 : 22));
++    j(not_carry, &done);
++    bind(&next);
++  }
++  if (rule == Arm64NaNRule::kMulAdd) {
++    // Only a quiet NaN addend is left to beat inf * 0, and a NaN factor
++    // loses to it anyway.
++    load(0);
++    j(parity_odd, &pass2, Label::kNear);
++    use(1, [&](auto a) { f64 ? Movsd(scratch, a) : Movss(scratch, a); });
++    use(2, [&](auto b) { f64 ? Ucomisd(scratch, b) : Ucomiss(scratch, b); });
++    j(parity_even, &pass2, Label::kNear);
++    use(2, [&](auto b) { f64 ? Mulsd(scratch, b) : Mulss(scratch, b); });
++    if (f64) {
++      Ucomisd(scratch, scratch);
++    } else {
++      Ucomiss(scratch, scratch);
++    }
++    j(parity_odd, &pass2, Label::kNear);
++    movq(bits, default_nan);
++    jmp(&done, Label::kNear);
++  }
++  bind(&pass2);
++  for (int i = 0; i < count; i++) {
++    load(i);
++    j(parity_even, &done, Label::kNear);
++  }
++  movq(bits, default_nan);
++  bind(&done);
++  if (negate_result) flip_sign();
++  if (f64) {
++    Movq(dst, bits);
++  } else {
++    Movd(dst, bits);
++  }
++}
++
++void MacroAssembler::Arm64NaNLanes(XMMRegister dst, int lane_bits,
++                                   Arm64NaNRule rule,
++                                   std::initializer_list<XMMRegister> inputs,
++                                   int negated) {
++  ASM_CODE_COMMENT(this);
++  const int count = static_cast<int>(inputs.size());
++  const int lane_bytes = lane_bits / kBitsPerByte;
++  const int frame = kSimd128Size * (count + 1);
++  // The lanes are rewritten in memory: the result at rsp, operand k at
++  // rsp + 16 * (k + 1). {dst} is free to use once stored.
++  AllocateStackSpace(frame);
++  Movdqu(Operand(rsp, 0), dst);
++  for (int k = 0; k < count; k++) {
++    Movdqu(Operand(rsp, kSimd128Size * (k + 1)), inputs.begin()[k]);
++  }
++  for (int offset = 0; offset < kSimd128Size; offset += lane_bytes) {
++    Label next;
++    auto in = [&](int k) {
++      return Operand(rsp, kSimd128Size * (k + 1) + offset);
++    };
++    if (lane_bits == 64) {
++      Movsd(dst, Operand(rsp, offset));
++      Ucomisd(dst, dst);
++    } else {
++      Movss(dst, Operand(rsp, offset));
++      Ucomiss(dst, dst);
++    }
++    j(parity_odd, &next);
++    Arm64NaNInput lanes[3];
++    for (int k = 0; k < count; k++) lanes[k] = in(k);
++    Arm64NaN(dst, dst, lane_bits, rule, base::VectorOf(lanes, count), negated);
++    if (lane_bits == 64) {
++      movq(Operand(rsp, offset), kScratchRegister);
++    } else {
++      movl(Operand(rsp, offset), kScratchRegister);
++    }
++    bind(&next);
++  }
++  Movdqu(dst, Operand(rsp, 0));
++  addq(rsp, Immediate(frame));
++}
++
+ void MacroAssembler::Pextrq(Register dst, XMMRegister src, int8_t imm8) {
+   if (CpuFeatures::IsSupported(AVX)) {
+     CpuFeatureScope avx_scope(this, AVX);
+diff --git a/v8/src/codegen/x64/macro-assembler-x64.h b/v8/src/codegen/x64/macro-assembler-x64.h
+--- a/v8/src/codegen/x64/macro-assembler-x64.h
++++ b/v8/src/codegen/x64/macro-assembler-x64.h
+@@ -10,6 +10,7 @@
+ #endif
+ 
+ #include "src/base/flags.h"
++#include "src/base/vector.h"
+ #include "src/codegen/bailout-reason.h"
+ #include "src/codegen/shared-ia32-x64/macro-assembler-shared-ia32-x64.h"
+ #include "src/codegen/x64/assembler-x64.h"
+@@ -161,6 +162,39 @@
+   // impossible, will be selected when deducing the arguments for AvxHelper.
+   void Movq(XMMRegister dst, Register src);
+   void Movq(Register dst, XMMRegister src);
++
++  // An operand of a floating-point instruction, for Arm64NaN.
++  struct Arm64NaNInput {
++    Arm64NaNInput() : Arm64NaNInput(no_dreg) {}
++    Arm64NaNInput(XMMRegister reg) : reg(reg), mem(rsp, 0) {}  // NOLINT
++    Arm64NaNInput(Operand mem) : reg(no_dreg), mem(mem) {}     // NOLINT
++    XMMRegister reg;
++    Operand mem;
++  };
++  enum class Arm64NaNRule {
++    kOperands,
++    // FMLA/FMLS: (addend, a, b); a quiet NaN addend plus inf * 0 gives the
++    // default NaN.
++    kMulAdd,
++  };
++  // Writes to {dst} the NaN an ARM64 instruction returns with FPCR.DN=0, for
++  // operands that give a NaN: the first signalling NaN operand quieted, else
++  // the first quiet NaN operand, else the positive default NaN. Bit i of
++  // {negated} flips the sign of operand i first, as FMLS and FNMUL do.
++  // {scratch} must not hold an operand; {dst} may. Clobbers kScratchRegister.
++  void Arm64NaN(XMMRegister dst, XMMRegister scratch, int lane_bits,
++                Arm64NaNRule rule, base::Vector<const Arm64NaNInput> inputs,
++                int negated = 0, bool negate_result = false);
++  void Arm64NaN(XMMRegister dst, XMMRegister scratch, int lane_bits,
++                Arm64NaNRule rule, std::initializer_list<Arm64NaNInput> inputs,
++                int negated = 0, bool negate_result = false) {
++    Arm64NaN(dst, scratch, lane_bits, rule, base::VectorOf(inputs), negated,
++             negate_result);
++  }
++  // The same for every NaN lane of a 128-bit {dst}, from register operands.
++  void Arm64NaNLanes(XMMRegister dst, int lane_bits, Arm64NaNRule rule,
++                     std::initializer_list<XMMRegister> inputs,
++                     int negated = 0);
+ 
+   void Cvtss2sd(XMMRegister dst, XMMRegister src);
+   void Cvtss2sd(XMMRegister dst, Operand src);
+diff --git a/v8/src/compiler/backend/instruction-codes.h b/v8/src/compiler/backend/instruction-codes.h
+--- a/v8/src/compiler/backend/instruction-codes.h
++++ b/v8/src/compiler/backend/instruction-codes.h
+@@ -456,6 +456,14 @@
+ // only used for TSAN.
+ using SharedBaseField = AccessModeField::Next<SharedFlag, 1>;
+ 
++#if V8_TARGET_ARCH_X64
++// For the ARM64 NaN fixup of an x64 float binop: the ARM64 instruction takes
++// the inputs in reverse order, and (FNMUL) negates its first input and its
++// result.
++using Arm64NaNSwappedField = SharedBaseField::Next<bool, 1>;
++using Arm64NaNFnmulField = Arm64NaNSwappedField::Next<bool, 1>;
++#endif
++
+ // TODO(turbofan): {HasMemoryAccessMode} is currently only used to guard
+ // decoding (in CodeGenerator and InstructionScheduler). Encoding (in
+ // InstructionSelector) is not yet guarded. There are in fact instructions for
+diff --git a/v8/src/compiler/backend/x64/code-generator-x64.cc b/v8/src/compiler/backend/x64/code-generator-x64.cc
+--- a/v8/src/compiler/backend/x64/code-generator-x64.cc
++++ b/v8/src/compiler/backend/x64/code-generator-x64.cc
+@@ -324,6 +324,111 @@
+ 
+  private:
+   XMMRegister const result_;
++};
++
++// Builtins are compiled before flags are known, so they always carry the
++// ARM64 NaN fixup and check --camouwolf-arm64-fp when they take it.
++bool EmitsArm64NaN(MacroAssembler* masm) {
++  return v8_flags.camouwolf_arm64_fp ||
++         masm->options().isolate_independent_code;
++}
++
++// Replaces a NaN result with the one ARM64 computes from the same operands.
++// A NaN min or max has no result yet, and without the flag gets the x64 one.
++class OutOfLineArm64NaN final : public OutOfLineCode {
++ public:
++  using Input = MacroAssembler::Arm64NaNInput;
++  using Rule = MacroAssembler::Arm64NaNRule;
++
++  OutOfLineArm64NaN(CodeGenerator* gen, XMMRegister result, XMMRegister scratch,
++                    int lane_bits, Rule rule,
++                    std::initializer_list<Input> inputs, int negated = 0,
++                    bool negate_result = false, bool min_max = false)
++      : OutOfLineCode(gen),
++        result_(result),
++        scratch_(scratch),
++        lane_bits_(lane_bits),
++        rule_(rule),
++        count_(static_cast<int>(inputs.size())),
++        negated_(negated),
++        negate_result_(negate_result),
++        min_max_(min_max) {
++    std::copy(inputs.begin(), inputs.end(), inputs_);
++  }
++
++  void Generate() final {
++    if (masm()->options().isolate_independent_code) {
++      Label emulate;
++      __ cmpb(__ ExternalReferenceAsOperand(
++                  ExternalReference::address_of_camouwolf_arm64_fp_flag(),
++                  kScratchRegister),
++              Immediate(0));
++      __ j(not_equal, &emulate, Label::kNear);
++      if (min_max_ && lane_bits_ == 64) {
++        __ Xorpd(result_, result_);
++        __ Divsd(result_, result_);
++      } else if (min_max_) {
++        __ Xorps(result_, result_);
++        __ Divss(result_, result_);
++      }
++      __ jmp(exit());
++      __ bind(&emulate);
++    }
++    __ Arm64NaN(result_, scratch_, lane_bits_, rule_,
++                base::VectorOf(inputs_, count_), negated_, negate_result_);
++  }
++
++ private:
++  XMMRegister const result_;
++  XMMRegister const scratch_;
++  int const lane_bits_;
++  Rule const rule_;
++  Input inputs_[3];
++  int const count_;
++  int const negated_;
++  bool const negate_result_;
++  bool const min_max_;
++};
++
++// The same for every NaN lane of a 128-bit result. Only JIT code has SIMD.
++class OutOfLineArm64NaNLanes final : public OutOfLineCode {
++ public:
++  using Rule = MacroAssembler::Arm64NaNRule;
++
++  OutOfLineArm64NaNLanes(CodeGenerator* gen, XMMRegister result, int lane_bits,
++                         Rule rule, XMMRegister in0, XMMRegister in1,
++                         XMMRegister in2, int count, int negated)
++      : OutOfLineCode(gen),
++        result_(result),
++        lane_bits_(lane_bits),
++        rule_(rule),
++        inputs_{in0, in1, in2},
++        count_(count),
++        negated_(negated) {}
++
++  void Generate() final {
++    switch (count_) {
++      case 1:
++        __ Arm64NaNLanes(result_, lane_bits_, rule_, {inputs_[0]}, negated_);
++        break;
++      case 2:
++        __ Arm64NaNLanes(result_, lane_bits_, rule_, {inputs_[0], inputs_[1]},
++                         negated_);
++        break;
++      default:
++        __ Arm64NaNLanes(result_, lane_bits_, rule_,
++                         {inputs_[0], inputs_[1], inputs_[2]}, negated_);
++        break;
++    }
++  }
++
++ private:
++  XMMRegister const result_;
++  int const lane_bits_;
++  Rule const rule_;
++  XMMRegister const inputs_[3];
++  int const count_;
++  int const negated_;
+ };
+ 
+ class OutOfLineTruncateDoubleToI final : public OutOfLineCode {
+@@ -1677,6 +1782,98 @@
+   X64OperandConverter i(this, instr);
+   InstructionCode opcode = instr->opcode();
+   ArchOpcode arch_opcode = ArchOpcodeField::decode(opcode);
++  // Emits a scalar float binop or square root, then gives a NaN result the
++  // ARM64 value. An operand the result overwrites is kept in
++  // kScratchDoubleReg.
++  auto with_arm64_nan = [&](int lane_bits, int arity, auto emit) {
++    if (!EmitsArm64NaN(masm())) return emit();
++    using Input = MacroAssembler::Arm64NaNInput;
++    XMMRegister dst = i.OutputDoubleRegister();
++    Input in[2];
++    for (int k = 0; k < arity; k++) {
++      if (k == 1 && HasAddressingMode(instr)) {
++        size_t index = 1;
++        in[k] = i.MemoryOperand(&index);
++      } else if (instr->InputAt(k)->IsFPRegister()) {
++        in[k] = i.InputDoubleRegister(k);
++      } else {
++        in[k] = i.InputOperand(k);
++      }
++    }
++    bool saved = false;
++    for (int k = 0; k < arity; k++) {
++      if (in[k].reg != dst) continue;
++      if (!saved) __ Movaps(kScratchDoubleReg, dst);
++      saved = true;
++      in[k] = kScratchDoubleReg;
++    }
++    emit();
++    if (Arm64NaNSwappedField::decode(opcode)) std::swap(in[0], in[1]);
++    const bool fnmul = Arm64NaNFnmulField::decode(opcode);
++    auto ool = zone()->New<OutOfLineArm64NaN>(
++        this, dst, dst, lane_bits, MacroAssembler::Arm64NaNRule::kOperands,
++        arity == 1 ? std::initializer_list<Input>{in[0]}
++                   : std::initializer_list<Input>{in[0], in[1]},
++        fnmul ? 1 : 0, fnmul);
++    if (lane_bits == 64) {
++      __ Ucomisd(dst, dst);
++    } else {
++      __ Ucomiss(dst, dst);
++    }
++    __ j(parity_even, ool->entry());
++    __ bind(ool->exit());
++  };
++  // The out-of-line code that gives a min or max with a NaN operand its
++  // result; the output is still the first operand there.
++  auto min_max_nan = [&](int lane_bits) -> OutOfLineCode* {
++    using Input = MacroAssembler::Arm64NaNInput;
++    XMMRegister dst = i.OutputDoubleRegister();
++    if (!EmitsArm64NaN(masm())) {
++      if (lane_bits == 64) {
++        return zone()->New<OutOfLineLoadFloat64NaN>(this, dst);
++      }
++      return zone()->New<OutOfLineLoadFloat32NaN>(this, dst);
++    }
++    Input right = instr->InputAt(1)->IsFPRegister()
++                      ? Input(i.InputDoubleRegister(1))
++                      : Input(i.InputOperand(1));
++    return zone()->New<OutOfLineArm64NaN>(
++        this, dst, kScratchDoubleReg, lane_bits,
++        MacroAssembler::Arm64NaNRule::kOperands,
++        std::initializer_list<Input>{dst, right}, 0, false, true);
++  };
++  // Gives the NaN lanes of a 128-bit float result the ARM64 value; the
++  // instruction selector keeps the operands apart from the result.
++  auto simd_arm64_nan = [&](int count,
++                            MacroAssembler::Arm64NaNRule rule =
++                                MacroAssembler::Arm64NaNRule::kOperands,
++                            int negated = 0, int lane_bits = 0) {
++    if (!v8_flags.camouwolf_arm64_fp) return;
++    if (lane_bits == 0) {
++      if (VectorLengthField::decode(opcode) != VectorLength::kV128) return;
++      LaneSize lane_size = LaneSizeField::decode(opcode);
++      if (lane_size != LaneSize::kL32 && lane_size != LaneSize::kL64) return;
++      lane_bits = lane_size == LaneSize::kL32 ? 32 : 64;
++    }
++    XMMRegister dst = i.OutputSimd128Register();
++    auto input = [&](int k) {
++      return k < count ? i.InputSimd128Register(k) : no_dreg;
++    };
++    // FMLA and FMLS take the addend, the last wasm operand, first.
++    const bool mul_add = rule == MacroAssembler::Arm64NaNRule::kMulAdd;
++    auto ool = zone()->New<OutOfLineArm64NaNLanes>(
++        this, dst, lane_bits, rule, input(mul_add ? 2 : 0),
++        input(mul_add ? 0 : 1), input(mul_add ? 1 : 2), count, negated);
++    CpuFeatureScope avx_scope(masm(), AVX);
++    if (lane_bits == 64) {
++      __ vcmpunordpd(kScratchDoubleReg, dst, dst);
++    } else {
++      __ vcmpunordps(kScratchDoubleReg, dst, dst);
++    }
++    __ vptest(kScratchDoubleReg, kScratchDoubleReg);
++    __ j(not_zero, ool->entry());
++    __ bind(ool->exit());
++  };
+   if (!UseApxSetzucc()) {
+     if (ShouldClearOutputRegisterBeforeInstruction(this, instr)) {
+       // Transform setcc + movzxbl into xorl + setcc to avoid register stall and
+@@ -2574,23 +2771,31 @@
+       ASSEMBLE_SSE_BINOP(Ucomiss);
+       break;
+     case kSSEFloat32Add:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(addss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(addss);
++      });
+       break;
+     case kSSEFloat32Sub:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(subss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(subss);
++      });
+       break;
+     case kSSEFloat32Mul:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(mulss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(mulss);
++      });
+       break;
+     case kSSEFloat32Div:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(divss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(divss);
++      });
+       break;
+     case kSSEFloat32Sqrt:
+-      ASSEMBLE_SSE_UNOP(sqrtss);
++      with_arm64_nan(32, 1, [&] { ASSEMBLE_SSE_UNOP(sqrtss); });
+       break;
+     case kSSEFloat32ToFloat64:
+       ASSEMBLE_SSE_UNOP(Cvtss2sd);
+@@ -2621,59 +2826,69 @@
+       ASSEMBLE_SSE_BINOP(Ucomisd);
+       break;
+     case kSSEFloat64Add:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(addsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(addsd);
++      });
+       break;
+     case kSSEFloat64Sub:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(subsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(subsd);
++      });
+       break;
+     case kSSEFloat64Mul:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(mulsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(mulsd);
++      });
+       break;
+     case kSSEFloat64Div:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_SSE_BINOP(divsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_SSE_BINOP(divsd);
++      });
+       break;
+     case kSSEFloat64Mod: {
+-      __ AllocateStackSpace(kDoubleSize);
+-      unwinding_info_writer_.MaybeIncreaseBaseOffsetAt(__ pc_offset(),
+-                                                       kDoubleSize);
+-      // Move values to st(0) and st(1).
+-      __ Movsd(Operand(rsp, 0), i.InputDoubleRegister(1));
+-      __ fld_d(Operand(rsp, 0));
+-      __ Movsd(Operand(rsp, 0), i.InputDoubleRegister(0));
+-      __ fld_d(Operand(rsp, 0));
+-      // Loop while fprem isn't done.
+-      Label mod_loop;
+-      __ bind(&mod_loop);
+-      // This instructions traps on all kinds inputs, but we are assuming the
+-      // floating point control word is set to ignore them all.
+-      __ fprem();
+-      // The following 2 instruction implicitly use rax.
+-      __ fnstsw_ax();
+-      if (CpuFeatures::IsSupported(SAHF)) {
+-        CpuFeatureScope sahf_scope(masm(), SAHF);
+-        __ sahf();
+-      } else {
+-        __ shrl(rax, Immediate(8));
+-        __ andl(rax, Immediate(0xFF));
+-        __ pushq(rax);
++      with_arm64_nan(64, 2, [&] {
++        __ AllocateStackSpace(kDoubleSize);
+         unwinding_info_writer_.MaybeIncreaseBaseOffsetAt(__ pc_offset(),
+-                                                         kSystemPointerSize);
+-        __ popfq();
++                                                         kDoubleSize);
++        // Move values to st(0) and st(1).
++        __ Movsd(Operand(rsp, 0), i.InputDoubleRegister(1));
++        __ fld_d(Operand(rsp, 0));
++        __ Movsd(Operand(rsp, 0), i.InputDoubleRegister(0));
++        __ fld_d(Operand(rsp, 0));
++        // Loop while fprem isn't done.
++        Label mod_loop;
++        __ bind(&mod_loop);
++        // This instructions traps on all kinds inputs, but we are assuming the
++        // floating point control word is set to ignore them all.
++        __ fprem();
++        // The following 2 instruction implicitly use rax.
++        __ fnstsw_ax();
++        if (CpuFeatures::IsSupported(SAHF)) {
++          CpuFeatureScope sahf_scope(masm(), SAHF);
++          __ sahf();
++        } else {
++          __ shrl(rax, Immediate(8));
++          __ andl(rax, Immediate(0xFF));
++          __ pushq(rax);
++          unwinding_info_writer_.MaybeIncreaseBaseOffsetAt(__ pc_offset(),
++                                                           kSystemPointerSize);
++          __ popfq();
++          unwinding_info_writer_.MaybeIncreaseBaseOffsetAt(__ pc_offset(),
++                                                           -kSystemPointerSize);
++        }
++        __ j(parity_even, &mod_loop);
++        // Move output to stack and clean up.
++        __ fstp(1);
++        __ fstp_d(Operand(rsp, 0));
++        __ Movsd(i.OutputDoubleRegister(), Operand(rsp, 0));
++        __ addq(rsp, Immediate(kDoubleSize));
+         unwinding_info_writer_.MaybeIncreaseBaseOffsetAt(__ pc_offset(),
+-                                                         -kSystemPointerSize);
+-      }
+-      __ j(parity_even, &mod_loop);
+-      // Move output to stack and clean up.
+-      __ fstp(1);
+-      __ fstp_d(Operand(rsp, 0));
+-      __ Movsd(i.OutputDoubleRegister(), Operand(rsp, 0));
+-      __ addq(rsp, Immediate(kDoubleSize));
+-      unwinding_info_writer_.MaybeIncreaseBaseOffsetAt(__ pc_offset(),
+-                                                       -kDoubleSize);
++                                                         -kDoubleSize);
++      });
+       break;
+     }
+     case kSSEFloat32Max: {
+@@ -2683,8 +2898,7 @@
+       } else {
+         __ Ucomiss(i.InputDoubleRegister(0), i.InputOperand(1));
+       }
+-      auto ool =
+-          zone()->New<OutOfLineLoadFloat32NaN>(this, i.OutputDoubleRegister());
++      OutOfLineCode* ool = min_max_nan(32);
+       __ j(parity_even, ool->entry());
+       __ j(above, &done_compare, Label::kNear);
+       __ j(below, &compare_swap, Label::kNear);
+@@ -2708,8 +2922,7 @@
+       } else {
+         __ Ucomiss(i.InputDoubleRegister(0), i.InputOperand(1));
+       }
+-      auto ool =
+-          zone()->New<OutOfLineLoadFloat32NaN>(this, i.OutputDoubleRegister());
++      OutOfLineCode* ool = min_max_nan(32);
+       __ j(parity_even, ool->entry());
+       __ j(below, &done_compare, Label::kNear);
+       __ j(above, &compare_swap, Label::kNear);
+@@ -2738,8 +2951,7 @@
+       } else {
+         __ Ucomisd(i.InputDoubleRegister(0), i.InputOperand(1));
+       }
+-      auto ool =
+-          zone()->New<OutOfLineLoadFloat64NaN>(this, i.OutputDoubleRegister());
++      OutOfLineCode* ool = min_max_nan(64);
+       __ j(parity_even, ool->entry());
+       __ j(above, &done_compare, Label::kNear);
+       __ j(below, &compare_swap, Label::kNear);
+@@ -2763,8 +2975,7 @@
+       } else {
+         __ Ucomisd(i.InputDoubleRegister(0), i.InputOperand(1));
+       }
+-      auto ool =
+-          zone()->New<OutOfLineLoadFloat64NaN>(this, i.OutputDoubleRegister());
++      OutOfLineCode* ool = min_max_nan(64);
+       __ j(parity_even, ool->entry());
+       __ j(below, &done_compare, Label::kNear);
+       __ j(above, &compare_swap, Label::kNear);
+@@ -2787,7 +2998,7 @@
+       break;
+     }
+     case kSSEFloat64Sqrt:
+-      ASSEMBLE_SSE_UNOP(Sqrtsd);
++      with_arm64_nan(64, 1, [&] { ASSEMBLE_SSE_UNOP(Sqrtsd); });
+       break;
+     case kSSEFloat64Round: {
+       CpuFeatureScope sse_scope(masm(), SSE4_1);
+@@ -3135,20 +3346,28 @@
+       break;
+     }
+     case kAVXFloat32Add:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vaddss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vaddss);
++      });
+       break;
+     case kAVXFloat32Sub:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vsubss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vsubss);
++      });
+       break;
+     case kAVXFloat32Mul:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vmulss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vmulss);
++      });
+       break;
+     case kAVXFloat32Div:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vdivss);
++      with_arm64_nan(32, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vdivss);
++      });
+       break;
+     case kAVXFloat64Cmp: {
+       CpuFeatureScope avx_scope(masm(), AVX);
+@@ -3160,20 +3379,28 @@
+       break;
+     }
+     case kAVXFloat64Add:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vaddsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vaddsd);
++      });
+       break;
+     case kAVXFloat64Sub:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vsubsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vsubsd);
++      });
+       break;
+     case kAVXFloat64Mul:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vmulsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vmulsd);
++      });
+       break;
+     case kAVXFloat64Div:
+-      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+-      ASSEMBLE_AVX_BINOP(vdivsd);
++      with_arm64_nan(64, 2, [&] {
++        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
++        ASSEMBLE_AVX_BINOP(vdivsd);
++      });
+       break;
+     case kX64Float32Abs: {
+       __ Absps(i.OutputDoubleRegister(), i.InputDoubleRegister(0),
+@@ -4015,6 +4242,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(1);
+       break;
+     }
+     case kX64FAdd: {
+@@ -4063,6 +4291,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(2);
+       break;
+     }
+     case kX64FSub: {
+@@ -4111,6 +4340,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(2);
+       break;
+     }
+     case kX64FMul: {
+@@ -4154,6 +4384,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(2);
+       break;
+     }
+     case kX64FDiv: {
+@@ -4196,6 +4427,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(2);
+       break;
+     }
+     case kX64FMin: {
+@@ -4252,6 +4484,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(2);
+       break;
+     }
+     case kX64FMax: {
+@@ -4308,6 +4541,7 @@
+       } else {
+         UNREACHABLE();
+       }
++      simd_arm64_nan(2);
+       break;
+     }
+     case kX64FEq: {
+@@ -4486,12 +4720,15 @@
+       __ F64x2Qfma(i.OutputSimd128Register(), i.InputSimd128Register(0),
+                    i.InputSimd128Register(1), i.InputSimd128Register(2),
+                    kScratchDoubleReg);
++      simd_arm64_nan(3, MacroAssembler::Arm64NaNRule::kMulAdd, 0, 64);
+       break;
+     }
+     case kX64F64x2Qfms: {
+       __ F64x2Qfms(i.OutputSimd128Register(), i.InputSimd128Register(0),
+                    i.InputSimd128Register(1), i.InputSimd128Register(2),
+                    kScratchDoubleReg);
++      // FMLS negates the first factor.
++      simd_arm64_nan(3, MacroAssembler::Arm64NaNRule::kMulAdd, 2, 64);
+       break;
+     }
+     case kX64F64x4Qfma: {
+@@ -4650,12 +4887,15 @@
+       __ F32x4Qfma(i.OutputSimd128Register(), i.InputSimd128Register(0),
+                    i.InputSimd128Register(1), i.InputSimd128Register(2),
+                    kScratchDoubleReg);
++      simd_arm64_nan(3, MacroAssembler::Arm64NaNRule::kMulAdd, 0, 32);
+       break;
+     }
+     case kX64F32x4Qfms: {
+       __ F32x4Qfms(i.OutputSimd128Register(), i.InputSimd128Register(0),
+                    i.InputSimd128Register(1), i.InputSimd128Register(2),
+                    kScratchDoubleReg);
++      // FMLS negates the first factor.
++      simd_arm64_nan(3, MacroAssembler::Arm64NaNRule::kMulAdd, 2, 32);
+       break;
+     }
+     case kX64F32x8Qfma: {
+diff --git a/v8/src/compiler/backend/x64/instruction-selector-x64.cc b/v8/src/compiler/backend/x64/instruction-selector-x64.cc
+--- a/v8/src/compiler/backend/x64/instruction-selector-x64.cc
++++ b/v8/src/compiler/backend/x64/instruction-selector-x64.cc
+@@ -2907,8 +2907,23 @@
+                  g.Use(op.input(1)));
+ }
+ 
++// The input of a multiplication that ARM64 fuses with it into FNMUL, or -1.
++template <typename NegateMask>
++int Arm64FnmulInput(InstructionSelector* selector, OpIndex node) {
++  if (!v8_flags.camouwolf_arm64_fp) return -1;
++  const FloatBinopOp& mul = selector->Cast<FloatBinopOp>(node);
++  for (int k = 0; k < 2; k++) {
++    if (selector->Get(mul.input(k)).Is<NegateMask>() &&
++        selector->CanCover(node, mul.input(k))) {
++      return k;
++    }
++  }
++  return -1;
++}
++
+ void VisitFloatBinop(InstructionSelector* selector, OpIndex node,
+-                     InstructionCode avx_opcode, InstructionCode sse_opcode) {
++                     InstructionCode avx_opcode, InstructionCode sse_opcode,
++                     int fnmul_input = -1) {
+   X64OperandGenerator g(selector);
+   const FloatBinopOp& op = selector->Cast<FloatBinopOp>(node);
+   DCHECK_EQ(op.input_count, 2);
+@@ -2919,6 +2934,8 @@
+   InstructionOperand outputs[1];
+   size_t output_count = 0;
+   OpIndex trapping_load = {};
++  // FNMUL takes the negated input first.
++  bool arm64_swapped = fnmul_input == 1;
+ 
+   if (left == right) {
+     // If both inputs refer to the same operand, enforce allocating a register
+@@ -2939,6 +2956,7 @@
+         (!g.CanBeBetterLeftOperand(left) ||
+          !g.CanBeMemoryOperand(avx_opcode, node, right, effect_level))) {
+       std::swap(left, right);
++      arm64_swapped = !arm64_swapped;
+     }
+     if (g.CanBeMemoryOperand(avx_opcode, node, right, effect_level)) {
+       inputs[input_count++] = g.UseRegister(left);
+@@ -2969,6 +2987,8 @@
+   DCHECK_NE(0u, input_count);
+   DCHECK_GE(arraysize(inputs), input_count);
+   InstructionCode code = selector->IsSupported(AVX) ? avx_opcode : sse_opcode;
++  code |= Arm64NaNSwappedField::encode(arm64_swapped) |
++          Arm64NaNFnmulField::encode(fnmul_input >= 0);
+   outputs[output_count++] = selector->IsSupported(AVX)
+                                 ? g.DefineAsRegister(node)
+                                 : g.DefineSameAsFirst(node);
+@@ -3151,7 +3171,10 @@
+ }
+ 
+ void InstructionSelector::VisitFloat32Mul(OpIndex node) {
+-  VisitFloatBinop(this, node, kAVXFloat32Mul, kSSEFloat32Mul);
++  VisitFloatBinop(this, node, kAVXFloat32Mul, kSSEFloat32Mul,
++                  ensure_deterministic_nan_
++                      ? -1
++                      : Arm64FnmulInput<Opmask::kFloat32Negate>(this, node));
+ }
+ 
+ void InstructionSelector::VisitFloat32Div(OpIndex node) {
+@@ -3181,7 +3204,8 @@
+ }
+ 
+ void InstructionSelector::VisitFloat64Mul(OpIndex node) {
+-  VisitFloatBinop(this, node, kAVXFloat64Mul, kSSEFloat64Mul);
++  VisitFloatBinop(this, node, kAVXFloat64Mul, kSSEFloat64Mul,
++                  Arm64FnmulInput<Opmask::kFloat64Negate>(this, node));
+ }
+ 
+ void InstructionSelector::VisitFloat64Div(OpIndex node) {
+@@ -5171,6 +5195,27 @@
+ #undef VISIT_SIMD_UNOP
+ #undef SIMD_UNOP_LIST
+ 
++// Under --camouwolf-arm64-fp the NaN lanes of a float SIMD result are
++// recomputed from the operands, so the operands must outlive the result.
++bool KeepsArm64NaNOperands(ArchOpcode opcode, LaneSize lane_size,
++                           VectorLength vector_length) {
++  if (!v8_flags.camouwolf_arm64_fp) return false;
++  if (vector_length != VectorLength::kV128) return false;
++  if (lane_size != LaneSize::kL32 && lane_size != LaneSize::kL64) return false;
++  switch (opcode) {
++    case kX64FAdd:
++    case kX64FSub:
++    case kX64FMul:
++    case kX64FDiv:
++    case kX64FMin:
++    case kX64FMax:
++    case kX64FSqrt:
++      return true;
++    default:
++      return false;
++  }
++}
++
+ #define VISIT_SIMD_UNOP_LANE_SIZE_VECTOR_LENGTH(Name, Opcode, LaneSize, \
+                                                 VectorLength)           \
+   void InstructionSelector::Visit##Name(OpIndex node) {                 \
+@@ -5179,7 +5224,10 @@
+     DCHECK_EQ(op.input_count, 1);                                       \
+     Emit(kX64##Opcode | LaneSizeField::encode(LaneSize) |               \
+              VectorLengthField::encode(VectorLength),                   \
+-         g.DefineAsRegister(node), g.UseRegister(op.input(0)));         \
++         g.DefineAsRegister(node),                                      \
++         KeepsArm64NaNOperands(kX64##Opcode, LaneSize, VectorLength)    \
++             ? g.UseUniqueRegister(op.input(0))                         \
++             : g.UseRegister(op.input(0)));                             \
+   }
+ 
+ SIMD_UNOP_LANE_SIZE_VECTOR_LENGTH_LIST(VISIT_SIMD_UNOP_LANE_SIZE_VECTOR_LENGTH)
+@@ -5187,16 +5235,21 @@
+ #undef VISIT_SIMD_UNOP_LANE_SIZE_VECTOR_LENGTH
+ #undef SIMD_UNOP_LANE_SIZE_VECTOR_LENGTH_LIST
+ 
+-#define VISIT_SIMD_BINOP_LANE_SIZE_VECTOR_LENGTH(Name, Opcode, LaneSize, \
+-                                                 VectorLength)           \
+-  void InstructionSelector::Visit##Name(OpIndex node) {                  \
+-    X64OperandGenerator g(this);                                         \
+-    const Operation& op = Get(node);                                     \
+-    DCHECK_EQ(op.input_count, 2);                                        \
+-    Emit(kX64##Opcode | LaneSizeField::encode(LaneSize) |                \
+-             VectorLengthField::encode(VectorLength),                    \
+-         g.DefineSameAsFirst(node), g.UseRegister(op.input(0)),          \
+-         g.UseRegister(op.input(1)));                                    \
++#define VISIT_SIMD_BINOP_LANE_SIZE_VECTOR_LENGTH(Name, Opcode, LaneSize,     \
++                                                 VectorLength)               \
++  void InstructionSelector::Visit##Name(OpIndex node) {                      \
++    X64OperandGenerator g(this);                                             \
++    const Operation& op = Get(node);                                         \
++    DCHECK_EQ(op.input_count, 2);                                            \
++    InstructionCode code = kX64##Opcode | LaneSizeField::encode(LaneSize) |  \
++                           VectorLengthField::encode(VectorLength);          \
++    if (KeepsArm64NaNOperands(kX64##Opcode, LaneSize, VectorLength)) {       \
++      Emit(code, g.DefineAsRegister(node), g.UseUniqueRegister(op.input(0)), \
++           g.UseUniqueRegister(op.input(1)));                                \
++      return;                                                                \
++    }                                                                        \
++    Emit(code, g.DefineSameAsFirst(node), g.UseRegister(op.input(0)),        \
++         g.UseRegister(op.input(1)));                                        \
+   }
+ 
+ SIMD_BINOP_LANE_SIZE_VECTOR_LENGTH_LIST(
+@@ -5229,7 +5282,12 @@
+     X64OperandGenerator g(this);                                         \
+     const Operation& op = Get(node);                                     \
+     DCHECK_EQ(op.input_count, 2);                                        \
+-    if (IsSupported(AVX)) {                                              \
++    if (KeepsArm64NaNOperands(kX64##Opcode, LaneSize, VectorLength)) {   \
++      Emit(kX64##Opcode | LaneSizeField::encode(LaneSize) |              \
++               VectorLengthField::encode(VectorLength),                  \
++           g.DefineAsRegister(node), g.UseUniqueRegister(op.input(0)),   \
++           g.UseUniqueRegister(op.input(1)));                            \
++    } else if (IsSupported(AVX)) {                                       \
+       Emit(kX64##Opcode | LaneSizeField::encode(LaneSize) |              \
+                VectorLengthField::encode(VectorLength),                  \
+            g.DefineAsRegister(node), g.UseRegister(op.input(0)),         \
+@@ -5442,13 +5500,20 @@
+   }
+ }
+ 
+-#define VISIT_SIMD_QFMOP(Opcode)                                        \
+-  void InstructionSelector::Visit##Opcode(OpIndex node) {               \
+-    X64OperandGenerator g(this);                                        \
+-    const Operation& op = Get(node);                                    \
+-    DCHECK_EQ(op.input_count, 3);                                       \
+-    Emit(kX64##Opcode, g.UseRegister(node), g.UseRegister(op.input(0)), \
+-         g.UseRegister(op.input(1)), g.UseRegister(op.input(2)));       \
++#define VISIT_SIMD_QFMOP(Opcode)                                               \
++  void InstructionSelector::Visit##Opcode(OpIndex node) {                      \
++    X64OperandGenerator g(this);                                               \
++    const Operation& op = Get(node);                                           \
++    DCHECK_EQ(op.input_count, 3);                                              \
++    if (v8_flags.camouwolf_arm64_fp) {                                         \
++      /* The NaN lanes are recomputed from the operands. */                    \
++      Emit(kX64##Opcode, g.DefineAsRegister(node),                             \
++           g.UseUniqueRegister(op.input(0)), g.UseUniqueRegister(op.input(1)), \
++           g.UseUniqueRegister(op.input(2)));                                  \
++      return;                                                                  \
++    }                                                                          \
++    Emit(kX64##Opcode, g.UseRegister(node), g.UseRegister(op.input(0)),        \
++         g.UseRegister(op.input(1)), g.UseRegister(op.input(2)));              \
+   }
+ VISIT_SIMD_QFMOP(F64x2Qfma)
+ VISIT_SIMD_QFMOP(F64x2Qfms)
+diff --git a/v8/src/compiler/machine-operator-reducer.cc b/v8/src/compiler/machine-operator-reducer.cc
+--- a/v8/src/compiler/machine-operator-reducer.cc
++++ b/v8/src/compiler/machine-operator-reducer.cc
+@@ -574,8 +574,9 @@
+         return ReplaceFloat32(SilenceNaN(m.left()));
+       }
+       if (m.IsFoldable()) {  // L - R => (L - R)
+-        return ReplaceFloat32(m.left().ResolvedValue() -
+-                              m.right().ResolvedValue());
++        const float l = m.left().ResolvedValue(), r = m.right().ResolvedValue();
++        return ReplaceFloat32(
++            static_cast<float>(math::FoldedArithmetic(l - r, l, r)));
+       }
+       if (signalling_nan_propagation_ == kPropagateSignallingNan &&
+           m.left().IsMinusZero()) {
+@@ -606,7 +607,8 @@
+         return ReplaceFloat64(SilenceNaN(m.left()));
+       }
+       if (m.IsFoldable()) {  // K + K => K  (K stands for arbitrary constants)
+-        return ReplaceFloat64(m.left().ScalarValue() + m.right().ScalarValue());
++        const double l = m.left().ScalarValue(), r = m.right().ScalarValue();
++        return ReplaceFloat64(math::FoldedArithmetic(l + r, l, r));
+       }
+       break;
+     }
+@@ -623,7 +625,8 @@
+         return ReplaceFloat64(SilenceNaN(m.left()));
+       }
+       if (m.IsFoldable()) {  // L - R => (L - R)
+-        return ReplaceFloat64(m.left().ScalarValue() - m.right().ScalarValue());
++        const double l = m.left().ScalarValue(), r = m.right().ScalarValue();
++        return ReplaceFloat64(math::FoldedArithmetic(l - r, l, r));
+       }
+       if (signalling_nan_propagation_ == kPropagateSignallingNan &&
+           m.left().IsMinusZero()) {
+@@ -661,7 +664,8 @@
+         return ReplaceFloat64(SilenceNaN(m.right()));
+       }
+       if (m.IsFoldable()) {  // K * K => K  (K stands for arbitrary constants)
+-        return ReplaceFloat64(m.left().ScalarValue() * m.right().ScalarValue());
++        const double l = m.left().ScalarValue(), r = m.right().ScalarValue();
++        return ReplaceFloat64(math::FoldedArithmetic(l * r, l, r));
+       }
+       if (m.right().Is(2)) {  // x * 2.0 => x + x
+         node->ReplaceInput(1, m.left().node());
+@@ -684,8 +688,8 @@
+         return ReplaceFloat64(SilenceNaN(m.left()));
+       }
+       if (m.IsFoldable()) {  // K / K => K  (K stands for arbitrary constants)
+-        return ReplaceFloat64(
+-            base::Divide(m.left().ScalarValue(), m.right().ScalarValue()));
++        const double l = m.left().ScalarValue(), r = m.right().ScalarValue();
++        return ReplaceFloat64(math::FoldedArithmetic(base::Divide(l, r), l, r));
+       }
+       if (signalling_nan_propagation_ == kPropagateSignallingNan &&
+           m.right().Is(-1)) {  // x / -1.0 => -x
+@@ -718,8 +722,8 @@
+         return ReplaceFloat64(SilenceNaN(m.left()));
+       }
+       if (m.IsFoldable()) {  // K % K => K  (K stands for arbitrary constants)
+-        return ReplaceFloat64(
+-            Modulo(m.left().ScalarValue(), m.right().ScalarValue()));
++        const double l = m.left().ScalarValue(), r = m.right().ScalarValue();
++        return ReplaceFloat64(math::FoldedArithmetic(Modulo(l, r), l, r));
+       }
+       break;
+     }
+diff --git a/v8/src/flags/flag-definitions.h b/v8/src/flags/flag-definitions.h
+--- a/v8/src/flags/flag-definitions.h
++++ b/v8/src/flags/flag-definitions.h
+@@ -387,6 +387,13 @@
+ 
+ DEFINE_BOOL(builtin_subclassing, true,
+             "subclassing support in built-in methods")
++
++DEFINE_BOOL(camouwolf_arm64_fp, false,
++            "produce the NaN results and relaxed SIMD results of ARM64")
++#if V8_ENABLE_WEBASSEMBLY && defined(V8_ENABLE_WASM_SIMD256_REVEC)
++// 256-bit revectorized code has no ARM64 counterpart.
++DEFINE_NEG_IMPLICATION(camouwolf_arm64_fp, wasm_revectorize)
++#endif
+ 
+ // If the following flag is set to `true`, the SharedArrayBuffer constructor is
+ // enabled per context depending on the callback set via
+diff --git a/v8/src/maglev/maglev-graph-optimizer.cc b/v8/src/maglev/maglev-graph-optimizer.cc
+--- a/v8/src/maglev/maglev-graph-optimizer.cc
++++ b/v8/src/maglev/maglev-graph-optimizer.cc
+@@ -22,6 +22,7 @@
+ #include "src/maglev/maglev-reducer-inl.h"
+ #include "src/maglev/maglev-reducer.h"
+ #include "src/maglev/maglev-tracer.h"
++#include "src/numbers/ieee754.h"
+ #include "src/objects/objects-inl.h"
+ 
+ namespace v8 {
+@@ -3441,8 +3442,9 @@
+     Float64Sqrt* node, const ProcessingState& state) {
+   if (auto cst = reducer_.TryGetFloat64Constant(node->input_node(0),
+                                                 NodeType::kNumberOrOddball)) {
++    const double x = cst.value().get_scalar();
+     return ReplaceWith(
+-        reducer_.GetFloat64Constant(std::sqrt(cst.value().get_scalar())));
++        reducer_.GetFloat64Constant(math::FoldedArithmetic(std::sqrt(x), x)));
+   }
+   return ProcessResult::kContinue;
+ }
+diff --git a/v8/src/maglev/maglev-reducer-inl.h b/v8/src/maglev/maglev-reducer-inl.h
+--- a/v8/src/maglev/maglev-reducer-inl.h
++++ b/v8/src/maglev/maglev-reducer-inl.h
+@@ -4054,13 +4054,17 @@
+   const double left_scalar = cst_left->get_scalar();
+   switch (kOperation) {
+     case Operation::kAdd:
+-      return GetNumberConstant(left_scalar + cst_right);
++      return GetNumberConstant(math::FoldedArithmetic(left_scalar + cst_right,
++                                                      left_scalar, cst_right));
+     case Operation::kSubtract:
+-      return GetNumberConstant(left_scalar - cst_right);
++      return GetNumberConstant(math::FoldedArithmetic(left_scalar - cst_right,
++                                                      left_scalar, cst_right));
+     case Operation::kMultiply:
+-      return GetNumberConstant(left_scalar * cst_right);
++      return GetNumberConstant(math::FoldedArithmetic(left_scalar * cst_right,
++                                                      left_scalar, cst_right));
+     case Operation::kDivide:
+-      return GetNumberConstant(left_scalar / cst_right);
++      return GetNumberConstant(math::FoldedArithmetic(left_scalar / cst_right,
++                                                      left_scalar, cst_right));
+     case Operation::kModulus:
+       // TODO(v8:7700): Constant fold mod.
+       return {};
+diff --git a/v8/src/maglev/x64/maglev-ir-x64.cc b/v8/src/maglev/x64/maglev-ir-x64.cc
+--- a/v8/src/maglev/x64/maglev-ir-x64.cc
++++ b/v8/src/maglev/x64/maglev-ir-x64.cc
+@@ -754,6 +754,33 @@
+   __ notl(value);
+ }
+ 
++namespace {
++// Under --camouwolf-arm64-fp, emits {op}, which writes {out} from {left} and
++// {right}, and gives a NaN result the ARM64 value. {out} must not be {right}
++// unless {left} is too; {left} is kept in kScratchDoubleReg.
++template <typename Op>
++void EmitWithArm64NaN(MaglevAssembler* masm, DoubleRegister out,
++                      DoubleRegister left, DoubleRegister right, Op op) {
++  if (!v8_flags.camouwolf_arm64_fp) return op();
++  DCHECK_IMPLIES(out == right, left == right);
++  __ Movaps(kScratchDoubleReg, left);
++  if (right == left) right = kScratchDoubleReg;
++  op();
++  ZoneLabelRef done(masm);
++  __ Ucomisd(out, out);
++  __ JumpToDeferredIf(
++      parity_even,
++      [](MaglevAssembler* masm, ZoneLabelRef done, DoubleRegister out,
++         DoubleRegister right) {
++        __ Arm64NaN(out, out, 64, MacroAssembler::Arm64NaNRule::kOperands,
++                    {kScratchDoubleReg, right});
++        __ jmp(*done);
++      },
++      done, out, right);
++  __ bind(*done);
++}
++}  // namespace
++
+ void Float64Add::SetValueLocationConstraints() {
+   UseRegister(LeftInput());
+   UseRegister(RightInput());
+@@ -764,7 +791,7 @@
+                               const ProcessingState& state) {
+   DoubleRegister left = ToDoubleRegister(LeftInput());
+   DoubleRegister right = ToDoubleRegister(RightInput());
+-  __ Addsd(left, right);
++  EmitWithArm64NaN(masm, left, left, right, [&] { __ Addsd(left, right); });
+ }
+ 
+ void Float64Subtract::SetValueLocationConstraints() {
+@@ -777,7 +804,7 @@
+                                    const ProcessingState& state) {
+   DoubleRegister left = ToDoubleRegister(LeftInput());
+   DoubleRegister right = ToDoubleRegister(RightInput());
+-  __ Subsd(left, right);
++  EmitWithArm64NaN(masm, left, left, right, [&] { __ Subsd(left, right); });
+ }
+ 
+ void Float64Multiply::SetValueLocationConstraints() {
+@@ -790,7 +817,7 @@
+                                    const ProcessingState& state) {
+   DoubleRegister left = ToDoubleRegister(LeftInput());
+   DoubleRegister right = ToDoubleRegister(RightInput());
+-  __ Mulsd(left, right);
++  EmitWithArm64NaN(masm, left, left, right, [&] { __ Mulsd(left, right); });
+ }
+ 
+ void Float64Divide::SetValueLocationConstraints() {
+@@ -803,49 +830,59 @@
+                                  const ProcessingState& state) {
+   DoubleRegister left = ToDoubleRegister(LeftInput());
+   DoubleRegister right = ToDoubleRegister(RightInput());
+-  __ Divsd(left, right);
++  EmitWithArm64NaN(masm, left, left, right, [&] { __ Divsd(left, right); });
+ }
+ 
+ void Float64Modulus::SetValueLocationConstraints() {
+   UseRegister(LeftInput());
+   UseRegister(RightInput());
+   RequireSpecificTemporary(rax);
+-  DefineAsRegister(this);
++  // The ARM64 NaN is computed from the operands after the result is written.
++  if (v8_flags.camouwolf_arm64_fp) {
++    DefineSameAsFirst(this);
++  } else {
++    DefineAsRegister(this);
++  }
+ }
+ 
+ void Float64Modulus::GenerateCode(MaglevAssembler* masm,
+                                   const ProcessingState& state) {
+-  // Approach copied from code-generator-x64.cc
+-  // Allocate space to use fld to move the value to the FPU stack.
+-  __ AllocateStackSpace(kDoubleSize);
+-  Operand scratch_stack_space = Operand(rsp, 0);
+-  __ Movsd(scratch_stack_space, ToDoubleRegister(RightInput()));
+-  __ fld_d(scratch_stack_space);
+-  __ Movsd(scratch_stack_space, ToDoubleRegister(LeftInput()));
+-  __ fld_d(scratch_stack_space);
+-  // Loop while fprem isn't done.
+-  Label mod_loop;
+-  __ bind(&mod_loop);
+-  // This instructions traps on all kinds inputs, but we are assuming the
+-  // floating point control word is set to ignore them all.
+-  __ fprem();
+-  // The following 2 instruction implicitly use rax.
+-  __ fnstsw_ax();
+-  if (CpuFeatures::IsSupported(SAHF)) {
+-    CpuFeatureScope sahf_scope(masm, SAHF);
+-    __ sahf();
+-  } else {
+-    __ shrl(rax, Immediate(8));
+-    __ andl(rax, Immediate(0xFF));
+-    __ pushq(rax);
+-    __ popfq();
+-  }
+-  __ j(parity_even, &mod_loop);
+-  // Move output to stack and clean up.
+-  __ fstp(1);
+-  __ fstp_d(scratch_stack_space);
+-  __ Movsd(ToDoubleRegister(result()), scratch_stack_space);
+-  __ addq(rsp, Immediate(kDoubleSize));
++  DoubleRegister left = ToDoubleRegister(LeftInput());
++  auto modulus = [&] {
++    // Approach copied from code-generator-x64.cc
++    // Allocate space to use fld to move the value to the FPU stack.
++    __ AllocateStackSpace(kDoubleSize);
++    Operand scratch_stack_space = Operand(rsp, 0);
++    __ Movsd(scratch_stack_space, ToDoubleRegister(RightInput()));
++    __ fld_d(scratch_stack_space);
++    __ Movsd(scratch_stack_space, ToDoubleRegister(LeftInput()));
++    __ fld_d(scratch_stack_space);
++    // Loop while fprem isn't done.
++    Label mod_loop;
++    __ bind(&mod_loop);
++    // This instructions traps on all kinds inputs, but we are assuming the
++    // floating point control word is set to ignore them all.
++    __ fprem();
++    // The following 2 instruction implicitly use rax.
++    __ fnstsw_ax();
++    if (CpuFeatures::IsSupported(SAHF)) {
++      CpuFeatureScope sahf_scope(masm, SAHF);
++      __ sahf();
++    } else {
++      __ shrl(rax, Immediate(8));
++      __ andl(rax, Immediate(0xFF));
++      __ pushq(rax);
++      __ popfq();
++    }
++    __ j(parity_even, &mod_loop);
++    // Move output to stack and clean up.
++    __ fstp(1);
++    __ fstp_d(scratch_stack_space);
++    __ Movsd(ToDoubleRegister(result()), scratch_stack_space);
++    __ addq(rsp, Immediate(kDoubleSize));
++  };
++  EmitWithArm64NaN(masm, ToDoubleRegister(result()), left,
++                   ToDoubleRegister(RightInput()), modulus);
+ }
+ 
+ void Float64Negate::SetValueLocationConstraints() {
+@@ -947,7 +984,12 @@
+   __ jmp(&done);
+ 
+   __ bind(&has_nan);
+-  __ Pcmpeqd(left_and_out, left_and_out);
++  if (v8_flags.camouwolf_arm64_fp) {
++    __ Arm64NaN(left_and_out, kScratchDoubleReg, 64,
++                MacroAssembler::Arm64NaNRule::kOperands, {left_and_out, right});
++  } else {
++    __ Pcmpeqd(left_and_out, left_and_out);
++  }
+ 
+   __ bind(&done);
+ }
+@@ -1037,7 +1079,8 @@
+                                const ProcessingState& state) {
+   DoubleRegister value = ToDoubleRegister(ValueInput());
+   DoubleRegister result_register = ToDoubleRegister(result());
+-  __ Sqrtsd(result_register, value);
++  EmitWithArm64NaN(masm, result_register, value, value,
++                   [&] { __ Sqrtsd(result_register, value); });
+ }
+ 
+ void ChangeFloat64ToHoleyFloat64::SetValueLocationConstraints() {
+diff --git a/v8/src/numbers/ieee754.cc b/v8/src/numbers/ieee754.cc
+--- a/v8/src/numbers/ieee754.cc
++++ b/v8/src/numbers/ieee754.cc
+@@ -11,7 +11,9 @@
+ 
+ namespace v8::internal::math {
+ 
+-double pow(double x, double y) {
++namespace {
++
++double Pow(double x, double y) {
+   if (std::isnan(y)) {
+     // 1. If exponent is NaN, return NaN.
+     return std::numeric_limits<double>::quiet_NaN();
+@@ -57,4 +59,24 @@
+   return base::ieee754::legacy::pow(x, y);
+ }
+ 
++}  // namespace
++
++double pow(double x, double y) {
++  double result = Pow(x, y);
++  // Every NaN operand was replaced by the default NaN above, so a NaN result
++  // is the default NaN, which is positive on ARM64 and negative on x64.
++  if (v8_flags.camouwolf_arm64_fp && std::isnan(result)) {
++    return std::numeric_limits<double>::quiet_NaN();
++  }
++  return result;
++}
++
++double FoldedArithmetic(double result, double a, double b) {
++  if (v8_flags.camouwolf_arm64_fp && std::isnan(result) && !std::isnan(a) &&
++      !std::isnan(b)) {
++    return std::numeric_limits<double>::quiet_NaN();
++  }
++  return result;
++}
++
+ }  // namespace v8::internal::math
+diff --git a/v8/src/numbers/ieee754.h b/v8/src/numbers/ieee754.h
+--- a/v8/src/numbers/ieee754.h
++++ b/v8/src/numbers/ieee754.h
+@@ -16,6 +16,12 @@
+ // behaviour is preserved for compatibility reasons.
+ V8_EXPORT_PRIVATE double pow(double x, double y);
+ 
++// The {result} the host computed for an arithmetic operation on {a} and {b},
++// as generated code returns it. With --camouwolf-arm64-fp, a NaN made from
++// numbers is the default NaN, which is positive on ARM64 and negative on x64.
++V8_EXPORT_PRIVATE double FoldedArithmetic(double result, double a,
++                                          double b = 0);
++
+ }  // namespace v8::internal::math
+ 
+ #endif  // V8_NUMBERS_IEEE754_H_
+diff --git a/v8/src/wasm/baseline/liftoff-compiler.cc b/v8/src/wasm/baseline/liftoff-compiler.cc
+--- a/v8/src/wasm/baseline/liftoff-compiler.cc
++++ b/v8/src/wasm/baseline/liftoff-compiler.cc
+@@ -5282,6 +5282,7 @@
+   void SimdOp(FullDecoder* decoder, WasmOpcode opcode, const Value* /* args */,
+               Value* /* result */) {
+     CHECK(CpuFeatures::SupportsSimd128());
++    if (v8_flags.camouwolf_arm64_fp) opcode = Arm64EquivalentSimdOpcode(opcode);
+     switch (opcode) {
+       case wasm::kExprI8x16Swizzle:
+         return EmitI8x16Swizzle(false);
+diff --git a/v8/src/wasm/baseline/x64/liftoff-assembler-x64-inl.h b/v8/src/wasm/baseline/x64/liftoff-assembler-x64-inl.h
+--- a/v8/src/wasm/baseline/x64/liftoff-assembler-x64-inl.h
++++ b/v8/src/wasm/baseline/x64/liftoff-assembler-x64-inl.h
+@@ -1974,60 +1974,122 @@
+ 
+ void LiftoffAssembler::clear_i32_upper_half(Register dst) { movl(dst, dst); }
+ 
++namespace liftoff {
++// Under --camouwolf-arm64-fp, emits a scalar float op with {emit} and gives a
++// NaN result the ARM64 value. An operand {dst} overwrites is kept in
++// kScratchDoubleReg2.
++template <typename EmitFn>
++inline void EmitWithArm64NaN(LiftoffAssembler* lasm, int lane_bits,
++                             DoubleRegister dst, DoubleRegister lhs,
++                             DoubleRegister rhs, EmitFn emit) {
++  if (!v8_flags.camouwolf_arm64_fp) return emit();
++  MacroAssembler::Arm64NaNInput in[2] = {lhs, rhs};
++  const int count = rhs.is_valid() ? 2 : 1;
++  if (lhs == dst || rhs == dst) lasm->Movaps(kScratchDoubleReg2, dst);
++  for (int k = 0; k < count; k++) {
++    if (in[k].reg == dst) in[k] = kScratchDoubleReg2;
++  }
++  emit();
++  Label done;
++  if (lane_bits == 64) {
++    lasm->Ucomisd(dst, dst);
++  } else {
++    lasm->Ucomiss(dst, dst);
++  }
++  lasm->j(parity_odd, &done);
++  lasm->Arm64NaN(dst, dst, lane_bits, MacroAssembler::Arm64NaNRule::kOperands,
++                 base::VectorOf(in, count));
++  lasm->bind(&done);
++}
++
++// The same for a float SIMD op, which {emit} writes to kScratchDoubleReg2 so
++// that its operands outlive it.
++template <typename EmitFn>
++inline void EmitSimdWithArm64NaN(
++    LiftoffAssembler* lasm, int lane_bits, LiftoffRegister dst,
++    std::initializer_list<XMMRegister> inputs, EmitFn emit,
++    MacroAssembler::Arm64NaNRule rule = MacroAssembler::Arm64NaNRule::kOperands,
++    int negated = 0) {
++  CpuFeatureScope avx_scope(lasm, AVX);
++  emit(kScratchDoubleReg2);
++  Label done;
++  if (lane_bits == 64) {
++    lasm->vcmpunordpd(kScratchDoubleReg, kScratchDoubleReg2,
++                      kScratchDoubleReg2);
++  } else {
++    lasm->vcmpunordps(kScratchDoubleReg, kScratchDoubleReg2,
++                      kScratchDoubleReg2);
++  }
++  lasm->vptest(kScratchDoubleReg, kScratchDoubleReg);
++  lasm->j(zero, &done);
++  lasm->Arm64NaNLanes(kScratchDoubleReg2, lane_bits, rule, inputs, negated);
++  lasm->bind(&done);
++  lasm->vmovaps(dst.fp(), kScratchDoubleReg2);
++}
++}  // namespace liftoff
++
+ void LiftoffAssembler::emit_f32_add(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vaddss(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    addss(dst, lhs);
+-  } else {
+-    if (dst != lhs) movss(dst, lhs);
+-    addss(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 32, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vaddss(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      addss(dst, lhs);
++    } else {
++      if (dst != lhs) movss(dst, lhs);
++      addss(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f32_sub(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vsubss(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    movss(kScratchDoubleReg, rhs);
+-    movss(dst, lhs);
+-    subss(dst, kScratchDoubleReg);
+-  } else {
+-    if (dst != lhs) movss(dst, lhs);
+-    subss(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 32, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vsubss(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      movss(kScratchDoubleReg, rhs);
++      movss(dst, lhs);
++      subss(dst, kScratchDoubleReg);
++    } else {
++      if (dst != lhs) movss(dst, lhs);
++      subss(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f32_mul(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vmulss(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    mulss(dst, lhs);
+-  } else {
+-    if (dst != lhs) movss(dst, lhs);
+-    mulss(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 32, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vmulss(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      mulss(dst, lhs);
++    } else {
++      if (dst != lhs) movss(dst, lhs);
++      mulss(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f32_div(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vdivss(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    movss(kScratchDoubleReg, rhs);
+-    movss(dst, lhs);
+-    divss(dst, kScratchDoubleReg);
+-  } else {
+-    if (dst != lhs) movss(dst, lhs);
+-    divss(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 32, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vdivss(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      movss(kScratchDoubleReg, rhs);
++      movss(dst, lhs);
++      divss(dst, kScratchDoubleReg);
++    } else {
++      if (dst != lhs) movss(dst, lhs);
++      divss(dst, rhs);
++    }
++  });
+ }
+ 
+ namespace liftoff {
+@@ -2089,14 +2151,18 @@
+ 
+ void LiftoffAssembler::emit_f32_min(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  liftoff::EmitFloatMinOrMax<float>(this, dst, lhs, rhs,
+-                                    liftoff::MinOrMax::kMin);
++  liftoff::EmitWithArm64NaN(this, 32, dst, lhs, rhs, [&] {
++    liftoff::EmitFloatMinOrMax<float>(this, dst, lhs, rhs,
++                                      liftoff::MinOrMax::kMin);
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f32_max(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  liftoff::EmitFloatMinOrMax<float>(this, dst, lhs, rhs,
+-                                    liftoff::MinOrMax::kMax);
++  liftoff::EmitWithArm64NaN(this, 32, dst, lhs, rhs, [&] {
++    liftoff::EmitFloatMinOrMax<float>(this, dst, lhs, rhs,
++                                      liftoff::MinOrMax::kMax);
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f32_copysign(DoubleRegister dst, DoubleRegister lhs,
+@@ -2158,69 +2224,80 @@
+ }
+ 
+ void LiftoffAssembler::emit_f32_sqrt(DoubleRegister dst, DoubleRegister src) {
+-  Sqrtss(dst, src);
++  liftoff::EmitWithArm64NaN(this, 32, dst, src, no_dreg,
++                            [&] { Sqrtss(dst, src); });
+ }
+ 
+ void LiftoffAssembler::emit_f64_add(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vaddsd(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    addsd(dst, lhs);
+-  } else {
+-    if (dst != lhs) movsd(dst, lhs);
+-    addsd(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 64, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vaddsd(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      addsd(dst, lhs);
++    } else {
++      if (dst != lhs) movsd(dst, lhs);
++      addsd(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f64_sub(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vsubsd(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    movsd(kScratchDoubleReg, rhs);
+-    movsd(dst, lhs);
+-    subsd(dst, kScratchDoubleReg);
+-  } else {
+-    if (dst != lhs) movsd(dst, lhs);
+-    subsd(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 64, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vsubsd(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      movsd(kScratchDoubleReg, rhs);
++      movsd(dst, lhs);
++      subsd(dst, kScratchDoubleReg);
++    } else {
++      if (dst != lhs) movsd(dst, lhs);
++      subsd(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f64_mul(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vmulsd(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    mulsd(dst, lhs);
+-  } else {
+-    if (dst != lhs) movsd(dst, lhs);
+-    mulsd(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 64, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vmulsd(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      mulsd(dst, lhs);
++    } else {
++      if (dst != lhs) movsd(dst, lhs);
++      mulsd(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f64_div(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  if (CpuFeatures::IsSupported(AVX)) {
+-    CpuFeatureScope scope(this, AVX);
+-    vdivsd(dst, lhs, rhs);
+-  } else if (dst == rhs) {
+-    movsd(kScratchDoubleReg, rhs);
+-    movsd(dst, lhs);
+-    divsd(dst, kScratchDoubleReg);
+-  } else {
+-    if (dst != lhs) movsd(dst, lhs);
+-    divsd(dst, rhs);
+-  }
++  liftoff::EmitWithArm64NaN(this, 64, dst, lhs, rhs, [&] {
++    if (CpuFeatures::IsSupported(AVX)) {
++      CpuFeatureScope scope(this, AVX);
++      vdivsd(dst, lhs, rhs);
++    } else if (dst == rhs) {
++      movsd(kScratchDoubleReg, rhs);
++      movsd(dst, lhs);
++      divsd(dst, kScratchDoubleReg);
++    } else {
++      if (dst != lhs) movsd(dst, lhs);
++      divsd(dst, rhs);
++    }
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f64_min(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  liftoff::EmitFloatMinOrMax<double>(this, dst, lhs, rhs,
+-                                     liftoff::MinOrMax::kMin);
++  liftoff::EmitWithArm64NaN(this, 64, dst, lhs, rhs, [&] {
++    liftoff::EmitFloatMinOrMax<double>(this, dst, lhs, rhs,
++                                       liftoff::MinOrMax::kMin);
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f64_copysign(DoubleRegister dst, DoubleRegister lhs,
+@@ -2239,8 +2316,10 @@
+ 
+ void LiftoffAssembler::emit_f64_max(DoubleRegister dst, DoubleRegister lhs,
+                                     DoubleRegister rhs) {
+-  liftoff::EmitFloatMinOrMax<double>(this, dst, lhs, rhs,
+-                                     liftoff::MinOrMax::kMax);
++  liftoff::EmitWithArm64NaN(this, 64, dst, lhs, rhs, [&] {
++    liftoff::EmitFloatMinOrMax<double>(this, dst, lhs, rhs,
++                                       liftoff::MinOrMax::kMax);
++  });
+ }
+ 
+ void LiftoffAssembler::emit_f64_abs(DoubleRegister dst, DoubleRegister src) {
+@@ -2291,7 +2370,8 @@
+ }
+ 
+ void LiftoffAssembler::emit_f64_sqrt(DoubleRegister dst, DoubleRegister src) {
+-  Sqrtsd(dst, src);
++  liftoff::EmitWithArm64NaN(this, 64, dst, src, no_dreg,
++                            [&] { Sqrtsd(dst, src); });
+ }
+ 
+ namespace liftoff {
+@@ -3797,9 +3877,30 @@
+                                                           SSSE3);
+ }
+ 
++namespace liftoff {
++// The signed 16-bit pair sums of ARM64 (SMULL, ADDP), which wrap. {dst} may be
++// an input.
++inline void Arm64DotI8x16(LiftoffAssembler* lasm, XMMRegister dst,
++                          XMMRegister lhs, XMMRegister rhs) {
++  CpuFeatureScope avx_scope(lasm, AVX);
++  lasm->vpsllw(kScratchDoubleReg, lhs, uint8_t{8});
++  lasm->vpsraw(kScratchDoubleReg, kScratchDoubleReg, uint8_t{8});
++  lasm->vpsllw(kScratchDoubleReg2, rhs, uint8_t{8});
++  lasm->vpsraw(kScratchDoubleReg2, kScratchDoubleReg2, uint8_t{8});
++  lasm->vpmullw(kScratchDoubleReg, kScratchDoubleReg, kScratchDoubleReg2);
++  lasm->vpsraw(kScratchDoubleReg2, lhs, uint8_t{8});
++  lasm->vpsraw(dst, rhs, uint8_t{8});
++  lasm->vpmullw(dst, dst, kScratchDoubleReg2);
++  lasm->vpaddw(dst, dst, kScratchDoubleReg);
++}
++}  // namespace liftoff
++
+ void LiftoffAssembler::emit_i16x8_dot_i8x16_i7x16_s(LiftoffRegister dst,
+                                                     LiftoffRegister lhs,
+                                                     LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::Arm64DotI8x16(this, dst.fp(), lhs.fp(), rhs.fp());
++  }
+   DoubleRegister lhs_src = lhs.fp();
+   if (!CpuFeatures::IsSupported(AVX) && dst == lhs && dst != rhs) {
+     movdqa(kScratchDoubleReg, lhs.fp());
+@@ -3812,6 +3913,18 @@
+                                                         LiftoffRegister lhs,
+                                                         LiftoffRegister rhs,
+                                                         LiftoffRegister acc) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    // SADALP widens the wrapped 16-bit pair sums into the accumulator.
++    LiftoffRegister sums = GetUnusedRegister(
++        reg_class_for(kS128), LiftoffRegList{dst, lhs, rhs, acc});
++    liftoff::Arm64DotI8x16(this, sums.fp(), lhs.fp(), rhs.fp());
++    CpuFeatureScope avx_scope(this, AVX);
++    vpcmpeqw(kScratchDoubleReg, kScratchDoubleReg, kScratchDoubleReg);
++    vpsrlw(kScratchDoubleReg, kScratchDoubleReg, uint8_t{15});
++    vpmaddwd(sums.fp(), sums.fp(), kScratchDoubleReg);
++    vpaddd(dst.fp(), sums.fp(), acc.fp());
++    return;
++  }
+   if (CpuFeatures::IsSupported(AVX_VNNI) ||
+       CpuFeatures::IsSupported(AVX_VNNI_INT8)) {
+     I32x4DotI8x16I7x16AddS(dst.fp(), lhs.fp(), rhs.fp(), acc.fp(),
+@@ -4139,6 +4252,11 @@
+ 
+ void LiftoffAssembler::emit_f32x4_sqrt(LiftoffRegister dst,
+                                        LiftoffRegister src) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {src.fp()},
++        [&](XMMRegister out) { vsqrtps(out, src.fp()); });
++  }
+   Sqrtps(dst.fp(), src.fp());
+ }
+ 
+@@ -4172,6 +4290,11 @@
+ 
+ void LiftoffAssembler::emit_f32x4_add(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vaddps(out, lhs.fp(), rhs.fp()); });
++  }
+   // Addition is not commutative in the presence of NaNs.
+   liftoff::EmitSimdNonCommutativeBinOp<&Assembler::vaddps, &Assembler::addps>(
+       this, dst, lhs, rhs);
+@@ -4179,29 +4302,56 @@
+ 
+ void LiftoffAssembler::emit_f32x4_sub(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vsubps(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdNonCommutativeBinOp<&Assembler::vsubps, &Assembler::subps>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f32x4_mul(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vmulps(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdCommutativeBinOp<&Assembler::vmulps, &Assembler::mulps>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f32x4_div(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vdivps(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdNonCommutativeBinOp<&Assembler::vdivps, &Assembler::divps>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f32x4_min(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {lhs.fp(), rhs.fp()}, [&](XMMRegister out) {
++          F32x4Min(out, lhs.fp(), rhs.fp(), kScratchDoubleReg);
++        });
++  }
+   F32x4Min(dst.fp(), lhs.fp(), rhs.fp(), kScratchDoubleReg);
+ }
+ 
+ void LiftoffAssembler::emit_f32x4_max(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {lhs.fp(), rhs.fp()}, [&](XMMRegister out) {
++          F32x4Max(out, lhs.fp(), rhs.fp(), kScratchDoubleReg);
++        });
++  }
+   F32x4Max(dst.fp(), lhs.fp(), rhs.fp(), kScratchDoubleReg);
+ }
+ 
+@@ -4245,6 +4395,11 @@
+ 
+ void LiftoffAssembler::emit_f64x2_sqrt(LiftoffRegister dst,
+                                        LiftoffRegister src) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {src.fp()},
++        [&](XMMRegister out) { vsqrtpd(out, src.fp()); });
++  }
+   Sqrtpd(dst.fp(), src.fp());
+ }
+ 
+@@ -4278,35 +4433,67 @@
+ 
+ void LiftoffAssembler::emit_f64x2_add(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vaddpd(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdCommutativeBinOp<&Assembler::vaddpd, &Assembler::addpd>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f64x2_sub(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vsubpd(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdNonCommutativeBinOp<&Assembler::vsubpd, &Assembler::subpd>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f64x2_mul(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vmulpd(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdCommutativeBinOp<&Assembler::vmulpd, &Assembler::mulpd>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f64x2_div(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {lhs.fp(), rhs.fp()},
++        [&](XMMRegister out) { vdivpd(out, lhs.fp(), rhs.fp()); });
++  }
+   liftoff::EmitSimdNonCommutativeBinOp<&Assembler::vdivpd, &Assembler::divpd>(
+       this, dst, lhs, rhs);
+ }
+ 
+ void LiftoffAssembler::emit_f64x2_min(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {lhs.fp(), rhs.fp()}, [&](XMMRegister out) {
++          F64x2Min(out, lhs.fp(), rhs.fp(), kScratchDoubleReg);
++        });
++  }
+   F64x2Min(dst.fp(), lhs.fp(), rhs.fp(), kScratchDoubleReg);
+ }
+ 
+ void LiftoffAssembler::emit_f64x2_max(LiftoffRegister dst, LiftoffRegister lhs,
+                                       LiftoffRegister rhs) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {lhs.fp(), rhs.fp()}, [&](XMMRegister out) {
++          F64x2Max(out, lhs.fp(), rhs.fp(), kScratchDoubleReg);
++        });
++  }
+   F64x2Max(dst.fp(), lhs.fp(), rhs.fp(), kScratchDoubleReg);
+ }
+ 
+@@ -4647,6 +4834,14 @@
+                                        LiftoffRegister src1,
+                                        LiftoffRegister src2,
+                                        LiftoffRegister src3) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {src3.fp(), src1.fp(), src2.fp()},
++        [&](XMMRegister out) {
++          F32x4Qfma(out, src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
++        },
++        MacroAssembler::Arm64NaNRule::kMulAdd, 0);
++  }
+   F32x4Qfma(dst.fp(), src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
+ }
+ 
+@@ -4654,6 +4849,14 @@
+                                        LiftoffRegister src1,
+                                        LiftoffRegister src2,
+                                        LiftoffRegister src3) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 32, dst, {src3.fp(), src1.fp(), src2.fp()},
++        [&](XMMRegister out) {
++          F32x4Qfms(out, src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
++        },
++        MacroAssembler::Arm64NaNRule::kMulAdd, 2);
++  }
+   F32x4Qfms(dst.fp(), src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
+ }
+ 
+@@ -4661,6 +4864,14 @@
+                                        LiftoffRegister src1,
+                                        LiftoffRegister src2,
+                                        LiftoffRegister src3) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {src3.fp(), src1.fp(), src2.fp()},
++        [&](XMMRegister out) {
++          F64x2Qfma(out, src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
++        },
++        MacroAssembler::Arm64NaNRule::kMulAdd, 0);
++  }
+   F64x2Qfma(dst.fp(), src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
+ }
+ 
+@@ -4668,6 +4879,14 @@
+                                        LiftoffRegister src1,
+                                        LiftoffRegister src2,
+                                        LiftoffRegister src3) {
++  if (v8_flags.camouwolf_arm64_fp) {
++    return liftoff::EmitSimdWithArm64NaN(
++        this, 64, dst, {src3.fp(), src1.fp(), src2.fp()},
++        [&](XMMRegister out) {
++          F64x2Qfms(out, src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
++        },
++        MacroAssembler::Arm64NaNRule::kMulAdd, 2);
++  }
+   F64x2Qfms(dst.fp(), src1.fp(), src2.fp(), src3.fp(), kScratchDoubleReg);
+ }
+ 
+diff --git a/v8/src/wasm/turboshaft-graph-interface.cc b/v8/src/wasm/turboshaft-graph-interface.cc
+--- a/v8/src/wasm/turboshaft-graph-interface.cc
++++ b/v8/src/wasm/turboshaft-graph-interface.cc
+@@ -3389,8 +3389,46 @@
+     }
+   }
+ 
++  // The signed dot products as ARM64 computes them: SMULL and ADDP wrap the
++  // pair sums at 16 bits, and SDOT sums all four products exactly.
++  V<compiler::turboshaft::Simd128> Arm64DotI8x16(WasmOpcode opcode,
++                                                 const Value* args) {
++    using compiler::turboshaft::Simd128;
++    using compiler::turboshaft::Simd128BinopOp;
++    using compiler::turboshaft::Simd128ShiftOp;
++    auto byte = [&](V<Simd128> x, bool odd) {
++      V<Word32> eight = __ Word32Constant(8);
++      if (!odd) x = __ Simd128Shift(x, eight, Simd128ShiftOp::Kind::kI16x8Shl);
++      return __ Simd128Shift(x, eight, Simd128ShiftOp::Kind::kI16x8ShrS);
++    };
++    V<Simd128> a = args[0].get<Simd128>();
++    V<Simd128> b = args[1].get<Simd128>();
++    V<Simd128> ae = byte(a, false), ao = byte(a, true);
++    V<Simd128> be = byte(b, false), bo = byte(b, true);
++    if (opcode == kExprI16x8DotI8x16I7x16S) {
++      return __ Simd128Binop(
++          __ Simd128Binop(ae, be, Simd128BinopOp::Kind::kI16x8Mul),
++          __ Simd128Binop(ao, bo, Simd128BinopOp::Kind::kI16x8Mul),
++          Simd128BinopOp::Kind::kI16x8Add);
++    }
++    V<Simd128> dot = __ Simd128Binop(
++        __ Simd128Binop(ae, be, Simd128BinopOp::Kind::kI32x4DotI16x8S),
++        __ Simd128Binop(ao, bo, Simd128BinopOp::Kind::kI32x4DotI16x8S),
++        Simd128BinopOp::Kind::kI32x4Add);
++    return __ Simd128Binop(dot, args[2].get<Simd128>(),
++                           Simd128BinopOp::Kind::kI32x4Add);
++  }
++
+   void SimdOp(FullDecoder* decoder, WasmOpcode opcode, const Value* args,
+               Value* result) {
++    if (v8_flags.camouwolf_arm64_fp) {
++      opcode = Arm64EquivalentSimdOpcode(opcode);
++      if (opcode == kExprI16x8DotI8x16I7x16S ||
++          opcode == kExprI32x4DotI8x16I7x16AddS) {
++        result->op = Arm64DotI8x16(opcode, args);
++        return;
++      }
++    }
+     switch (opcode) {
+ #define HANDLE_BINARY_OPCODE(kind)                                            \
+   case kExpr##kind:                                                           \
+diff --git a/v8/src/wasm/wasm-opcodes.h b/v8/src/wasm/wasm-opcodes.h
+--- a/v8/src/wasm/wasm-opcodes.h
++++ b/v8/src/wasm/wasm-opcodes.h
+@@ -970,6 +970,37 @@
+   static constexpr uint8_t ExtractPrefix(WasmOpcode);
+ };
+ 
++// The deterministic opcode whose result ARM64 gives a relaxed SIMD opcode, for
++// --camouwolf-arm64-fp. The dot products, qfma and qfms have none; the
++// unsigned truncations already match.
++constexpr WasmOpcode Arm64EquivalentSimdOpcode(WasmOpcode opcode) {
++  switch (opcode) {
++    case kExprI8x16RelaxedSwizzle:
++      return kExprI8x16Swizzle;
++    case kExprI8x16RelaxedLaneSelect:
++    case kExprI16x8RelaxedLaneSelect:
++    case kExprI32x4RelaxedLaneSelect:
++    case kExprI64x2RelaxedLaneSelect:
++      return kExprS128Select;
++    case kExprF32x4RelaxedMin:
++      return kExprF32x4Min;
++    case kExprF32x4RelaxedMax:
++      return kExprF32x4Max;
++    case kExprF64x2RelaxedMin:
++      return kExprF64x2Min;
++    case kExprF64x2RelaxedMax:
++      return kExprF64x2Max;
++    case kExprI32x4RelaxedTruncF32x4S:
++      return kExprI32x4SConvertF32x4;
++    case kExprI32x4RelaxedTruncF64x2SZero:
++      return kExprI32x4TruncSatF64x2SZero;
++    case kExprI16x8RelaxedQ15MulRS:
++      return kExprI16x8Q15MulRSatS;
++    default:
++      return opcode;
++  }
++}
++
+ }  // namespace wasm
+ }  // namespace internal
+ }  // namespace v8

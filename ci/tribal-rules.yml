@@ -200,6 +200,20 @@ rules:
       paths: [browser/patches/0048-cpu-arithmetic.patch]
       pattern: 'SkCpu::Supports\(SkX64::ML4\) && !sk_cpu_pinned\(\)'
 
+  - id: arm64-nans-where-they-are-made
+    decision: >-
+      An arm64 identity on an x86 host gets ARM64's NaNs from the V8 code that
+      makes them, in every tier and constant fold (0049, --camouwolf-arm64-fp).
+      Nothing canonicalizes a NaN where a page reads it.
+    why: >-
+      A NaN's sign and payload reach a page through typed arrays, DataView and
+      wasm memory, so rewriting it at a reader misses every other reader, and
+      rewriting all of them turns a signalling or payload NaN into a value
+      ARM64 never makes. Made where ARM64 makes it, every reader agrees.
+    required:
+      paths: [browser/patches/0049-v8-arm64-fp.patch]
+      pattern: 'EmulatedCpu\(\) ==\s*\n\+\s*base::CamouwolfConfig::Cpu::kArm64\) \{\n\+\s*constexpr char kArm64Fp\[\] = "--camouwolf-arm64-fp";'
+
   - id: no-readback-noise
     decision: >-
       Audio, WebGL readPixels and text metrics are what Chromium computes, and

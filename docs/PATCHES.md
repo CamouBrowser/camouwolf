@@ -1029,3 +1029,36 @@ byte for byte.
 `python3 tests/cpu-estimates/check.py` checks the tables: both vendors' hashes
 over all 2^32 inputs against the recorded CPUs, and the host's own vendor bit
 for bit against its native instructions.
+
+### 0049 — ARM64's NaNs and relaxed SIMD in V8 (`cpu:identity` `arm64`)
+
+`content/renderer/render_process_impl.cc` and V8's x64 code generation. An x64
+CPU and an ARM64 CPU compute the same IEEE results except where a NaN comes
+out. x64 returns its first NaN operand and makes the default NaN −`fff8…`;
+ARM64 (FPCR.DN=0) returns the first signalling NaN quieted, else the first
+quiet NaN, else +`7ff8…`. They also differ in the relaxed-SIMD results wasm
+leaves to the CPU. A page reads all of this through typed arrays, DataView and
+wasm memory. When `cpu:identity` is `arm64` on an x86 host, the renderer sets
+V8's `--camouwolf-arm64-fp`, and every place V8 makes such a value makes
+ARM64's:
+
+- TurboFan/Turboshaft, Maglev and Liftoff: float add, sub, mul, div and sqrt
+  (scalar and SIMD), min/max, modulus and rounding, through
+  `MacroAssembler::Arm64NaN`/`Arm64NaNLanes`, which run out of line only when
+  an operand or the result is a NaN. ARM64 TurboFan fuses `-a*b` into FNMUL, and
+  that is reproduced too.
+- The relaxed-SIMD operations as ARM64 lowers them: swizzle as TBL, laneselect
+  as bitselect, min/max as FMIN/FMAX, trunc as saturating, qfma/qfms as
+  FMLA/FMLS, q15mulr saturating, and the integer dots with ARM64's widths.
+- The builtins the interpreter and Sparkplug call check the flag at run time.
+  The host's constant folds (`math::FoldedArithmetic`, `math::pow`) make the
+  default NaN ARM64 makes.
+
+A NaN is made correctly where it is made and never rewritten where it is read
+(`arm64-nans-where-they-are-made` in `ci/tribal-rules.yml`). Without the flag
+the generated code is instruction for instruction the same as upstream's. With
+it, ordinary float code costs 1–10%, and a loop that keeps making NaNs a few
+times more. Measured against an ARM64 Chrome over 195 probe values (JS in every
+tier, wasm in Liftoff and Turboshaft, constant folds), an x64 build matches all
+of them; without the flag 119 differ. The host's `Math.*` library already agreed
+and is untouched. `tests/native/test_arm64_fp.py` checks it in the browser.

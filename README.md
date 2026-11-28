@@ -71,7 +71,7 @@ fingerprint in its own right.
 | Touch points | The claimed device's digitizer | `0024` |
 | System colors, web platform features, editing and key bindings | The claimed OS's | `0019`, `0020`, `0029`, `0033` |
 | Windows math | `sin`, `cos` and `atan2` as Windows computes them | `0018` |
-| CPU arithmetic | Skia's drawing and Opus's encoding as the identity's CPU computes them: another x86 vendor's reciprocal estimates, or ARM's NEON code on an x86 host | `0048` |
+| CPU arithmetic | Skia's drawing and Opus's encoding as the identity's CPU computes them: another x86 vendor's reciprocal estimates, or ARM's NEON code on an x86 host; V8's NaNs and relaxed SIMD as ARM64 makes them | `0048`, `0049` |
 
 Left as stock Chromium has it, on purpose:
 
