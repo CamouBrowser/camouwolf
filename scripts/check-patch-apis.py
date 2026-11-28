@@ -334,9 +334,10 @@ def check_includes(
             # Ours, by definition not upstream yet.
             if "camouwolf" in path or path in provided:
                 continue
-            # Skia includes from its own root.
-            if target.startswith("third_party/skia/") and not path.startswith("third_party/"):
-                path = "third_party/skia/" + path
+            # Skia and V8 include from their own roots.
+            for root in ("third_party/skia/", "v8/"):
+                if target.startswith(root) and not path.startswith(("third_party/", "v8/")):
+                    path = root + path
             if path.startswith(GENERATED_PREFIXES) or path.endswith(GENERATED_SUFFIXES):
                 skipped += 1
                 continue

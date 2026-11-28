@@ -153,6 +153,13 @@
 # and not the host.
 0048-cpu-arithmetic.patch
 
+# --- Another CPU's arithmetic: V8 ---------------------------------------------
+# An arm64 identity on an x86 host: every V8 tier and constant fold makes the
+# NaN an ARM64 CPU makes (the first signalling NaN quieted, else the default
+# +NaN) and ARM64's relaxed-SIMD results. --camouwolf-arm64-fp, set by the
+# renderer; off, the generated code is unchanged.
+0049-v8-arm64-fp.patch
+
 # --- protocol wheel ticks -----------------------------------------------------
 # A protocol wheel event is one tick whatever its delta; count ticks in the
 # pixels a notch scrolls on the claimed OS, so wheelDelta keeps its ratio to
