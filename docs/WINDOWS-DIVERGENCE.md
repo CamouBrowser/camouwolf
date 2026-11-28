@@ -76,9 +76,11 @@ the later reads come from a CPU copy, which rounds low-alpha pixels (the edges
 of antialiased text) differently. Only those pixels differed, and a CPU canvas
 was stable. Fixed by 0037; regression test `tests/native/test_canvas_readback.py`.
 
-This is a three-line probe that identifies Linux regardless of every other
-spoof, and **canvas farbling cannot mask it**: `0009` perturbs both reads with
-the same seed, so the underlying instability passes straight through.
+This was a three-line probe that identified Linux regardless of every other
+spoof, and canvas noise could not mask it: seeded noise perturbed both reads
+alike, so the instability passed straight through. That noise patch is gone;
+the farbling that replaced it (`0047`, only off the host's OS or GPU) cannot
+mask it either, since two different reads farble to two different results.
 
 ### 2.2 WebGL — the backend signature contradicts the claimed renderer
 
@@ -194,7 +196,7 @@ The current build reports 0 / 87 for every identity, headless or headed, which
 is the most common frame in the recorded Windows and macOS devices (a maximized
 window). See "Window frame geometry" in `docs/PATCHES.md`.
 
-### 2.8 Audio — one narrow region, and farbling is the wrong tool
+### 2.8 Audio — one narrow region, and noise is the wrong tool
 
 The classic fingerprint (sum over samples 4500–5000 of the
 oscillator→compressor render) is **bit-identical**: `124.04347527516074` on
@@ -204,9 +206,8 @@ first and last samples.
 
 The residue is a ULP-scale
 platform-math difference in a narrow window, not a per-device signal — so it is
-the same *kind* of problem as `0018`, and per-identity noise (`0011`) would make
-it strictly worse. `0011` is currently inert (`canvas:seed` defaults to 0);
-leaving it off remains correct.
+the same *kind* of problem as `0018`, and per-identity noise would make it
+strictly worse. The audio noise patch has been removed (`no-readback-noise`).
 
 ## 3. Verified correct
 

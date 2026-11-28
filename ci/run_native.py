@@ -38,7 +38,7 @@ SUITE_DIR = REPO_ROOT / "tests" / "native"
 
 FILES = {
     "rules": ["test_tribal_rules.py"],
-    "browser": ["test_no_leaks.py", "test_crash_recovery.py", "test_canvas_readback.py",
+    "browser": ["test_no_leaks.py", "test_crash_recovery.py", "test_canvas_readback.py", "test_canvas_farbling.py",
                 "test_webrtc_policy.py", "test_webrtc_proxied.py", "test_launch_behaviour.py",
                 "test_web_bluetooth.py"],
 }

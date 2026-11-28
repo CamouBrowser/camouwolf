@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 import warnings
 
 import pytest
@@ -14,9 +15,11 @@ from camouwolf.exceptions import (
     InvalidOS,
     NonChromeFingerprint,
     UnknownIPLocation,
+    UnknownProperty,
     UnsupportedOSSpoof,
 )
 from camouwolf.fingerprints import Screen, chrome_viewport_width, chrome_window_reports
+from camouwolf.webgl import chrome_gpus
 
 
 @pytest.fixture(autouse=True)
@@ -168,13 +171,73 @@ def test_the_reported_core_count_is_the_hosts_unless_pinned(options, monkeypatch
     assert config_of(options(os='windows'))['navigator.hardwareConcurrency'] == 8
 
 
-def test_stock_chrome_canvas_by_default_and_noise_on_request(options):
-    config = config_of(options(os='linux'))
-    assert config['canvas:seed'] == 0 and config['canvas:randomizeReadback'] is False
+LINUX_GPU = sorted(chrome_gpus('linux'))[0]
 
-    with pytest.warns(LeakWarning, match='canvas_noise'):
-        noisy = config_of(options(os='linux', canvas_noise=True))
-    assert noisy['canvas:seed'] > 0 and noisy['canvas:randomizeReadback'] is True
+
+def test_on_the_hosts_os_the_identity_claims_the_hosts_gpu_and_is_not_farbled(options, monkeypatch):
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: LINUX_GPU)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', LeakWarning)
+        config = config_of(options(os='linux'))
+    assert (config['webGl:vendor'], config['webGl:renderer']) == LINUX_GPU
+    assert 'canvas:farblingToken' not in config
+
+
+@pytest.mark.parametrize('host', [None, ('Google Inc. (Example)', 'ANGLE (Example, unrecorded GPU)')])
+def test_a_host_gpu_fpgen_never_recorded_is_farbled(options, monkeypatch, host):
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: host)
+    with pytest.warns(LeakWarning, match='farbled'):
+        config = config_of(options(os='linux'))
+    assert re.fullmatch('[0-9a-f]{32}', config['canvas:farblingToken'])
+
+
+def test_another_os_is_farbled_with_a_token_per_launch(options, monkeypatch):
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: LINUX_GPU)
+    with pytest.warns(LeakWarning, match='farbled'):
+        tokens = {config_of(options(os='windows'))['canvas:farblingToken'] for _ in range(2)}
+    assert len(tokens) == 2
+
+
+@pytest.mark.parametrize('canvas_noise', [True, False])
+def test_canvas_noise_forces_farbling_without_probing_the_host(options, monkeypatch, canvas_noise):
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: pytest.fail('probed the host GPU'))
+    config = config_of(options(os='linux', canvas_noise=canvas_noise))
+    assert ('canvas:farblingToken' in config) is canvas_noise
+
+
+def test_a_display_the_launcher_starts_is_farbled_without_a_probe(options, monkeypatch):
+    from camoucore.virtdisplay import VirtualDisplay
+    from camouwolf.product import PRODUCT
+
+    display = VirtualDisplay(PRODUCT)
+    monkeypatch.setattr(display, 'get', lambda: ':99')
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: pytest.fail('probed before the display started'))
+    with pytest.warns(LeakWarning, match='farbled'):
+        config = config_of(options(os='linux', headless=False, virtual_display=display))
+    assert 'canvas:farblingToken' in config
+
+
+def test_a_farbled_browsers_contexts_each_get_their_own_token(options):
+    launch = options(os='linux', canvas_noise=True)
+    tokens = {utils.context_identity(launch, locale='en-US')[0]['canvas:farblingToken'] for _ in range(2)}
+    assert config_of(launch)['canvas:farblingToken'] not in tokens and len(tokens) == 2
+
+
+def test_an_unfarbled_browsers_contexts_claim_its_gpu(options, monkeypatch):
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: LINUX_GPU)
+    launch = options(os='linux')
+    identity = utils.context_identity(launch, locale='en-US')[0]
+    assert (identity['webGl:vendor'], identity['webGl:renderer']) == LINUX_GPU
+    assert 'canvas:farblingToken' not in identity
+    other = next(gpu for gpu in sorted(chrome_gpus('linux')) if gpu != LINUX_GPU)
+    with pytest.raises(ValueError, match='canvas_noise=True'):
+        utils.context_identity(launch, locale='en-US', webgl_config=other)
+
+
+def test_the_old_noise_keys_are_gone(options):
+    for key in ('canvas:seed', 'canvas:randomizeReadback', 'AudioContext:randomizeSamples'):
+        with pytest.raises(UnknownProperty, match=key):
+            options(os='linux', config={key: 1})
 
 
 # ---- geometry --------------------------------------------------------------
@@ -690,6 +753,24 @@ def test_cpu_is_sec_ch_ua_arch_beside_a_gpu_that_machine_has(options, os_name, c
     assert gpu_arch == arch
     assert not cpu.get('manufacturer') or not makers or cpu['manufacturer'] in makers
     assert not [v for v in coherence.validate(config, utils.OS_KEYS[os_name]) if v.rule == 'architecture']
+    assert config.get('cpu:identity') == coherence.cpu_identity(
+        config['webGl:renderer'], config['navigator.hardwareConcurrency'], utils.OS_KEYS[os_name], arch,
+        cpu.get('manufacturer'))
+    assert arch == 'x86' or config['cpu:identity'] == 'arm64'
+
+
+@pytest.mark.parametrize('machine, cpu, warns', [
+    ('aarch64', {'manufacturer': 'intel'}, True),
+    ('arm64', {'manufacturer': 'amd'}, True),
+    ('arm64', {'arch': 'arm'}, False),
+    ('x86_64', {'manufacturer': 'intel'}, False),
+])
+def test_an_x86_identity_on_an_arm_host_warns(options, monkeypatch, machine, cpu, warns):
+    monkeypatch.setattr(utils.platform, 'machine', lambda: machine)
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter('always', LeakWarning)
+        options(os='windows', cpu=cpu)
+    assert any('this host is ARM' in str(w.message) for w in seen) is warns
 
 
 @pytest.mark.parametrize('os_name, cpu, match', [

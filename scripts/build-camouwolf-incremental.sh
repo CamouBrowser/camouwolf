@@ -38,7 +38,9 @@ echo "==> reverting patched files"
 # back EMPTY. Nothing gets reverted, the series is then re-applied on top of an
 # already-patched tree, and the first patch fails with "does not apply" — which
 # reads like patch drift rather than a scripting bug.
-mapfile -t FILES < <(grep -hoP '(?<=^diff --git a/)\S+' "$ROOT"/browser/patches/*.patch | sort -u)
+# .camouwolf-patched-files is what the last apply patched; a patch removed since
+# then is reverted through it.
+mapfile -t FILES < <({ grep -hoP '(?<=^diff --git a/)\S+' "$ROOT"/browser/patches/*.patch; cat .camouwolf-patched-files 2>/dev/null; } | sort -u)
 if [ "${#FILES[@]}" -eq 0 ]; then
   echo "!! no patched files parsed out of browser/patches/ — refusing to continue" >&2
   exit 1
@@ -63,8 +65,16 @@ for f in "${FILES[@]}"; do
   cp -p "$f" "$STASH/$f"
 done
 
+# A file a patch creates is deleted, so the patch can create it again; every
+# other file is checked out of the repository that holds it, which for v8/ and
+# third_party/skia/ is their own, not chromium/src.
+mapfile -t CREATED < <({ awk '/^diff --git a\//{f=substr($3,3)} /^new file mode/{print f}' "$ROOT"/browser/patches/*.patch; cat .camouwolf-created-files 2>/dev/null; } | sort -u)
 for f in "${FILES[@]}"; do
-  git checkout -f -- "$f" 2>/dev/null || true
+  if printf '%s\n' "${CREATED[@]}" | grep -qxF -- "$f"; then
+    rm -f -- "$f"
+  elif [ -e "$f" ]; then
+    git -C "$(dirname "$f")" checkout -f -- "$(basename "$f")"
+  fi
 done
 rm -f .camouwolf-patched
 

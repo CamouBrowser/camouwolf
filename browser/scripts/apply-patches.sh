@@ -24,8 +24,8 @@ fi
 
 echo "==> Camouwolf $release on Chromium $version -> $SRC"
 
-# 1. additions (new files, not diffs). base/camouwolf_config.* and base/camouwolf_farble.h
-#    are shipped whole rather than as `new file` hunks: a 200-line file expressed
+# 1. additions (new files, not diffs). base/camouwolf_config.* are
+#    shipped whole rather than as `new file` hunks: a 200-line file expressed
 #    as a diff is unreadable in review and conflicts pointlessly on every bump.
 #
 #    Installed only when the bytes actually differ. ninja keys on mtime, so an
@@ -42,7 +42,6 @@ install_if_changed() {
 }
 install_if_changed "$REPO/browser/additions/camouwolfcfg/camouwolf_config.h" "$SRC/base/camouwolf_config.h"
 install_if_changed "$REPO/browser/additions/camouwolfcfg/camouwolf_config.cc" "$SRC/base/camouwolf_config.cc"
-install_if_changed "$REPO/browser/additions/camouwolfcfg/camouwolf_farble.h" "$SRC/base/camouwolf_farble.h"
 
 # The ucrtbase replica. Shipped whole for the same reason as camouwolf_config: it is
 # ~1900 lines of transcribed lookup tables and polynomial kernels that no one
@@ -56,6 +55,15 @@ install_if_changed "$REPO/browser/additions/camouwolfucrt/camouwolf_ucrt_pow_tab
 # identity's network, whole files with no upstream counterpart.
 install_if_changed "$REPO/browser/additions/camouwolfp2p/camouwolf_proxied_p2p.h" "$SRC/services/network/p2p/camouwolf_proxied_p2p.h"
 install_if_changed "$REPO/browser/additions/camouwolfp2p/camouwolf_proxied_p2p.cc" "$SRC/services/network/p2p/camouwolf_proxied_p2p.cc"
+
+# Another CPU's arithmetic in Skia and Opus (the cpu:identity patch): recorded
+# estimate tables and x86 builds of their AArch64 code, each laid out as the
+# library's own tree.
+for lib in skia opus; do
+  while IFS= read -r -d '' src; do
+    install_if_changed "$src" "$SRC/third_party/$lib/${src#"$REPO/browser/additions/camouwolf$lib/"}"
+  done < <(find "$REPO/browser/additions/camouwolf$lib" -type f -print0)
+done
 
 # 2. branding art
 #
@@ -115,4 +123,10 @@ while read -r line; do
 done < "$REPO/browser/patches/series"
 
 date -u +"%Y-%m-%dT%H:%M:%SZ ${version} ${release}" > "$STAMP"
+# The files this series patched, so the next incremental run reverts a file
+# whose patch has since left the series, not only the ones still in it.
+grep -v '^#' "$REPO/browser/patches/series" | grep -v '^$' | sed "s|^|$REPO/browser/patches/|" \
+  | xargs grep -hoP '(?<=^diff --git a/)\S+' | sort -u > "$SRC/.camouwolf-patched-files"
+grep -v '^#' "$REPO/browser/patches/series" | grep -v '^$' | sed "s|^|$REPO/browser/patches/|" \
+  | xargs awk '/^diff --git a\//{f=substr($3,3)} /^new file mode/{print f}' | sort -u > "$SRC/.camouwolf-created-files"
 echo "==> $applied patches applied"

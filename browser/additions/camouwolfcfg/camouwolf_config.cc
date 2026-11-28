@@ -7,6 +7,8 @@
 #include <map>
 #include <utility>
 
+#include "base/check.h"
+#include "base/cpu.h"
 #include "base/environment.h"
 #include "base/json/json_reader.h"
 #include "base/logging.h"
@@ -15,6 +17,7 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
+#include "build/build_config.h"
 
 namespace base {
 
@@ -170,8 +173,8 @@ std::optional<int> CamouwolfConfig::GetInt(std::string_view key) const {
   if (std::optional<int> value = dict_.FindInt(key)) {
     return value;
   }
-  // A JSON number that arrived as a double (the launcher emits 1e9-scale seeds
-  // and devicePixelRatio through the same serializer) still answers here.
+  // A JSON number that arrived as a double (the launcher emits devicePixelRatio
+  // and the integers through the same serializer) still answers here.
   if (std::optional<double> value = dict_.FindDouble(key)) {
     return static_cast<int>(*value);
   }
@@ -202,6 +205,26 @@ std::optional<bool> CamouwolfConfig::GetBool(std::string_view key) const {
 
 bool CamouwolfConfig::CheckBool(std::string_view key) const {
   return dict_.FindBool(key).value_or(false);
+}
+
+CamouwolfConfig::Cpu CamouwolfConfig::EmulatedCpu() const {
+  const std::optional<std::string> claim = GetString("cpu:identity");
+  if (!claim) {
+    return Cpu::kHost;
+  }
+  // The launcher writes only these; anything else is a config no real machine
+  // has, and running it as the host would hide that.
+  CHECK(*claim == "intel" || *claim == "amd" || *claim == "arm64") << "cpu:identity " << *claim;
+  const Cpu claimed = *claim == "intel" ? Cpu::kIntel : *claim == "amd" ? Cpu::kAmd : Cpu::kArm64;
+#if defined(ARCH_CPU_X86_FAMILY)
+  static const Cpu host = [] {
+    const std::string vendor = base::CPU().vendor_name();
+    return vendor == "GenuineIntel" ? Cpu::kIntel : vendor == "AuthenticAMD" ? Cpu::kAmd : Cpu::kHost;
+  }();
+  return claimed == host ? Cpu::kHost : claimed;
+#else
+  return Cpu::kHost;
+#endif
 }
 
 std::vector<std::string> CamouwolfConfig::GetStringList(

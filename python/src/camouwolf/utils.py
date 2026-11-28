@@ -4,6 +4,7 @@ import ipaddress
 import json
 import math
 import os
+import platform
 import re
 import secrets
 import subprocess  # nosec
@@ -51,6 +52,7 @@ from .fingerprints import (
 )
 from camoucore.geolocation import geoip_allowed, get_geolocation
 from .gpudisplay import GPU_SWITCHES, GpuDisplay, async_prove_gpu, prove_gpu, select_gpu
+from .host_rendering import host_gpu
 from .humanize import HumanizeSetting
 from .humanize import normalize as normalize_humanize
 from camoucore.ip import Proxy, public_ip, public_ipv6, valid_ipv4
@@ -819,6 +821,18 @@ def context_identity(
             if key == 'timezone' or key.startswith(('geolocation:', 'webrtc:')):
                 config.setdefault(key, value)
         locale = locale or launch_languages(from_options)
+    canvas_noise = 'canvas:farblingToken' in launch
+    if not canvas_noise:
+        # The browser draws its canvas as its launch GPU does, unfarbled.
+        launch_gpu = (launch.get('webGl:vendor'), launch.get('webGl:renderer'))
+        gpu = (fingerprint or {}).get('gpu') or {}
+        drawn_gpu = webgl_config or ((gpu.get('vendor'), gpu.get('renderer')) if fingerprint else launch_gpu)
+        if tuple(drawn_gpu) != launch_gpu:
+            raise ValueError(
+                f'NewContext: the browser launched without canvas farbling, so its canvas is its '
+                f'{launch_gpu[1]!r}. A context claiming another GPU needs a browser launched with canvas_noise=True.'
+            )
+        webgl_config = None if fingerprint is not None else launch_gpu
     identity, languages, _ = draw_identity(
         config,
         os=target_os,
@@ -833,7 +847,6 @@ def context_identity(
         window=None,
         fonts=fonts,
         custom_fonts_only=custom_fonts_only,
-        canvas_noise=bool(launch.get('canvas:randomizeReadback')),
         pin_cpu_cores=None,
         full_version=launch_full_version(from_options),
         # The launch's OS already passed the policy.
@@ -841,6 +854,7 @@ def context_identity(
         i_know_what_im_doing=i_know_what_im_doing,
         browser_binary=from_options['executable_path'],
         launch=launch,
+        canvas_noise=canvas_noise,
     )
     identity.update({k: launch[k] for k in BROWSER_KEYS if k in launch})
     # The browser serves navigator.languages from the context's language pref.
@@ -1161,6 +1175,7 @@ def draw_fingerprint(
     webgl_config: Optional[Tuple[str, str]],
     language: Optional[str] = None,
     cpu: Optional[Dict[str, str]] = None,
+    host_canvas: Optional[Callable[[], Optional[Tuple[str, str]]]] = None,
 ) -> Dict[str, Any]:
     """Draw an fpgen Chrome fingerprint whose GPU the identity may claim.
 
@@ -1172,7 +1187,17 @@ def draw_fingerprint(
     Without `webgl_config`, any recorded hardware GPU on a backend its OS uses.
     With it, a record of exactly that device: its limits, screen and fonts are
     then the ones a machine with that GPU reported.
+
+    `host_canvas` reads the GPU this host's canvas renders on. A draw on this
+    host's OS then claims it where fpgen recorded it, so the canvas is the
+    claimed machine's and needs no farbling (draw_identity).
     """
+    if host_canvas and not webgl_config:
+        fingerprint = draw_fingerprint(os, screen, window, None, language, cpu)
+        host = host_canvas() if fingerprint_os(fingerprint) == OS_NAME else None
+        if host not in chrome_gpus(OS_NAMES[OS_NAME]):
+            return fingerprint
+        return draw_fingerprint(OS_NAMES[OS_NAME], screen, window, host, language, cpu)
     names = [os] if isinstance(os, str) else list(os or [])
     if webgl_config:
         vendor, renderer = webgl_config
@@ -1269,7 +1294,6 @@ def draw_identity(
     window: Optional[Tuple[int, int]],
     fonts: Optional[List[str]],
     custom_fonts_only: Optional[bool],
-    canvas_noise: Optional[bool],
     pin_cpu_cores: Optional[bool],
     full_version: str,
     allow_os_mismatch: Optional[bool],
@@ -1280,6 +1304,8 @@ def draw_identity(
     launch: Optional[Dict[str, Any]] = None,
     cpu: Optional[Dict[str, str]] = None,
     recorded: Optional[Dict[str, Any]] = None,
+    canvas_noise: Optional[bool] = None,
+    host_canvas: Optional[Callable[[], Optional[Tuple[str, str]]]] = None,
 ) -> Tuple[Dict[str, Any], Optional[List[str]], str]:
     """A whole identity: the config, its language list, and its OS.
 
@@ -1288,6 +1314,10 @@ def draw_identity(
     and core count are the launch's, which one browser process cannot vary.
     `recorded` holds a preset's values, which stand as a caller's would except
     the core count.
+
+    The canvas is farbled when `canvas_noise` says so or, left None, when the
+    identity's canvas is not this host's: another OS, or a GPU other than the
+    one `host_canvas` reads.
     """
     _caller_keys = frozenset(config)
     _user_set_screen_window = is_domain_set(config, 'screen.', 'window.')
@@ -1349,7 +1379,8 @@ def draw_identity(
         window = None
     if fingerprint is None and 'navigator.userAgent' not in config:
         fingerprint = draw_fingerprint(
-            os, screen or display_bound, window, webgl_config, languages[0] if languages else None, cpu
+            os, screen or display_bound, window, webgl_config, languages[0] if languages else None, cpu,
+            host_canvas,
         )
     elif fingerprint is not None:
         if webgl_config:
@@ -1435,16 +1466,15 @@ def draw_identity(
         config.setdefault('systemColors', dict(colors))
 
     # ---- canvas ------------------------------------------------------------
+    # Canvas pixels are the host's rendering. On another OS, or another GPU,
+    # Brave's farbling (patch 0047) hides the host's hash instead.
+    if canvas_noise is None:
+        claimed_gpu = (config.get('webGl:vendor'), config.get('webGl:renderer'))
+        canvas_noise = not (target_os == OS_NAME and host_canvas is not None and claimed_gpu == host_canvas())
+        if canvas_noise:
+            LeakWarning.warn(WARNINGS_DATA['canvas_noise'], i_know_what_im_doing)
     if canvas_noise:
-        LeakWarning.warn(WARNINGS_DATA['canvas_noise'], i_know_what_im_doing)
-        config.setdefault('canvas:seed', secrets.randbelow(2**32 - 1) + 1)
-        config.setdefault('canvas:randomizeReadback', True)
-    else:
-        # Stock Chrome returns the pixels it drew.
-        config.setdefault('canvas:seed', 0)
-        config.setdefault('canvas:randomizeReadback', False)
-    config.setdefault('canvas:quantizeTextMetrics', False)
-    config.setdefault('AudioContext:randomizeSamples', False)
+        config.setdefault('canvas:farblingToken', secrets.token_hex(16))
 
     # ---- geometry ----------------------------------------------------------
     if launch is not None:
@@ -1482,6 +1512,15 @@ def draw_identity(
             + '\n  - '.join(v.detail for v in fatal)
             + '\nFix `config`, or pass i_know_what_im_doing=True to launch anyway.'
         )
+
+    identity_cpu = coherence.cpu_identity(
+        config.get('webGl:renderer'), config.get('navigator.hardwareConcurrency'), target_os,
+        config.get('userAgentData.architecture'), cpu_claim[1] if cpu_claim else None,
+    )
+    if identity_cpu:
+        config.setdefault('cpu:identity', identity_cpu)
+    if config.get('cpu:identity') in ('intel', 'amd') and platform.machine().lower() in ('arm64', 'aarch64'):
+        LeakWarning.warn(WARNINGS_DATA['x86_identity_on_arm'], i_know_what_im_doing)
 
     validate_config(config, path=browser_binary)
 
@@ -1674,8 +1713,13 @@ def launch_options(
             intel, arm apple; linux x86 intel or amd. The browser still computes
             as the host's x86-64 CPU does.
         canvas_noise (Optional[bool]):
-            Perturb canvas readback with a per-identity seed (canvas:seed and
-            canvas:randomizeReadback). Stock Chrome does not, so it warns. Off by default.
+            Farble canvas readback as Brave does (canvas:farblingToken). Left
+            None, it is on, with a warning, when the identity's canvas is not
+            this host's: another OS, or a GPU other than this host's. On the
+            host's OS the identity claims the host's GPU where fpgen recorded
+            it, which the launcher reads by starting the browser once. A
+            headless='virtual' or 'virtual-gpu' display is started only after
+            the identity is drawn, so those launches are farbled.
         allow_os_mismatch (Optional[bool]):
             Allow an identity on an OS this host cannot pass for.
         i_know_what_im_doing (Optional[bool]):
@@ -1804,7 +1848,6 @@ def launch_options(
         window=window,
         fonts=fonts,
         custom_fonts_only=custom_fonts_only,
-        canvas_noise=canvas_noise,
         pin_cpu_cores=pin_cpu_cores,
         full_version=full_version,
         allow_os_mismatch=allow_os_mismatch,
@@ -1814,6 +1857,12 @@ def launch_options(
         virtual_display=bool(virtual_display),
         cpu=cpu,
         recorded=preset.config if preset else None,
+        canvas_noise=canvas_noise,
+        # A display the launcher owns is sized to the identity, so it cannot
+        # render the probe before the draw; its canvas is farbled.
+        host_canvas=None if canvas_noise is not None or owned_display else (
+            lambda: host_gpu(browser_binary, headless is True, env, args)
+        ),
     )
 
     # ---- browser behaviour ------------------------------------------------

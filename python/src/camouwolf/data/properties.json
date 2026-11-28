@@ -164,20 +164,12 @@
     "type": "str"
   },
   {
-    "property": "canvas:seed",
-    "type": "uint"
+    "property": "canvas:farblingToken",
+    "type": "str"
   },
   {
-    "property": "canvas:randomizeReadback",
-    "type": "bool"
-  },
-  {
-    "property": "canvas:quantizeTextMetrics",
-    "type": "bool"
-  },
-  {
-    "property": "AudioContext:randomizeSamples",
-    "type": "bool"
+    "property": "cpu:identity",
+    "type": "str"
   },
   {
     "property": "AudioContext:sampleRate",

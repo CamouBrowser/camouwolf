@@ -31,6 +31,7 @@ import {
 
 const { NewBrowser, NewContext } = await import("../src/sync_api.js");
 const { VirtualDisplay } = await import("camoucore/virtdisplay.js");
+const { PRODUCT } = await import("../src/product.js");
 
 class FakeBrowser {
 	closed = false;
@@ -630,6 +631,109 @@ describe.skipIf(!MODEL.ok)("launchOptions", () => {
 		utils.utilsDeps.hostCpu = () => ({ cpuCount: 6, canPinHost: true });
 		expect(await cores(false)).toBe(6);
 		expect(await cores(true)).toBeLessThanOrEqual(6);
+	});
+
+	it("claims the host's GPU on the host's OS and does not farble", async () => {
+		const gpu = utils.utilsDeps.chromeGpus("linux")[0];
+		utils.utilsDeps.hostGpu = async () => gpu;
+		const { result, warnings: caught } = await warnings.recordWarnings(() =>
+			utils.launchOptions(base()),
+		);
+		const config = configOf(result as any);
+		expect([config["webGl:vendor"], config["webGl:renderer"]]).toEqual(gpu);
+		expect(config).not.toHaveProperty("canvas:farblingToken");
+		expect(caught.filter((w) => w.message.includes("farbled"))).toEqual([]);
+
+		const { identity } = await utils.contextIdentity(result as any, {
+			locale: "en-US",
+		});
+		expect([identity["webGl:vendor"], identity["webGl:renderer"]]).toEqual(gpu);
+		expect(identity).not.toHaveProperty("canvas:farblingToken");
+		const other = utils.utilsDeps
+			.chromeGpus("linux")
+			.find(([v, r]) => v !== gpu[0] || r !== gpu[1]) as [string, string];
+		await expect(
+			utils.contextIdentity(result as any, {
+				locale: "en-US",
+				webgl_config: other,
+			}),
+		).rejects.toThrow(/canvas_noise=True/);
+	});
+
+	it("farbles another OS, an unrecorded host GPU, and a launcher-owned display", async () => {
+		utils.utilsDeps.farblingToken = () => "ab".repeat(16);
+		const farbled = async (options: Record<string, any>) => {
+			const { result, warnings: caught } = await warnings.recordWarnings(() =>
+				utils.launchOptions({ ...base(), ...options }),
+			);
+			expect(caught.some((w) => w.message.includes("farbled"))).toBe(true);
+			return configOf(result as any)["canvas:farblingToken"];
+		};
+		utils.utilsDeps.hostGpu = async () =>
+			utils.utilsDeps.chromeGpus("linux")[0];
+		expect(await farbled({ os: "windows" })).toBe("ab".repeat(16));
+		utils.utilsDeps.hostGpu = async () => [
+			"Example",
+			"ANGLE (Example, unrecorded GPU)",
+		];
+		expect(await farbled({})).toBe("ab".repeat(16));
+		utils.utilsDeps.hostGpu = async () => {
+			throw new Error("probed before the display started");
+		};
+		const display = new VirtualDisplay(PRODUCT);
+		display.get = async () => ":99";
+		expect(await farbled({ headless: false, virtual_display: display })).toBe(
+			"ab".repeat(16),
+		);
+	});
+
+	it("canvas_noise forces farbling either way without a probe", async () => {
+		utils.utilsDeps.hostGpu = async () => {
+			throw new Error("probed the host GPU");
+		};
+		for (const canvas_noise of [true, false]) {
+			const config = configOf(
+				await quietly(() => utils.launchOptions({ ...base(), canvas_noise })),
+			);
+			expect("canvas:farblingToken" in config).toBe(canvas_noise);
+		}
+	});
+
+	it("warns when an ARM host launches an x86 identity", async () => {
+		for (const [arch, cpu, warns] of [
+			["arm64", { manufacturer: "intel" }, true],
+			["arm64", { arch: "arm" }, false],
+			["x64", { manufacturer: "amd" }, false],
+		] as const) {
+			utils.utilsDeps.hostArch = () => arch;
+			const warn = vi
+				.spyOn(warnings.LeakWarning, "warn")
+				.mockImplementation(() => {});
+			await utils.launchOptions({ ...base(), os: "windows", cpu });
+			expect(
+				warn.mock.calls.some(
+					([m]) => m === warnings.loadWarnings().x86_identity_on_arm,
+				),
+			).toBe(warns);
+			warn.mockRestore();
+		}
+	});
+
+	it("gives each context of a farbled browser its own token", async () => {
+		let drawn = 0;
+		utils.utilsDeps.farblingToken = () => String(drawn++).padStart(32, "0");
+		const launch = await quietly(() =>
+			utils.launchOptions({ ...base(), canvas_noise: true }),
+		);
+		const tokens = new Set<string>();
+		for (let i = 0; i < 2; i++) {
+			const { identity } = await quietly(() =>
+				utils.contextIdentity(launch, { locale: "en-US" }),
+			);
+			tokens.add(identity["canvas:farblingToken"]);
+		}
+		expect(tokens.size).toBe(2);
+		expect(tokens.has(configOf(launch)["canvas:farblingToken"])).toBe(false);
 	});
 
 	it("writes chromium_prefs into the profile", async () => {

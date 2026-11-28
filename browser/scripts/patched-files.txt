@@ -54,6 +54,10 @@ content/browser/bluetooth/bluetooth_adapter_factory_wrapper.cc
 
 # --- canvas 2D readback ---
 third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
+third_party/blink/renderer/core/canvas_interventions/build.gni
+third_party/blink/renderer/core/html/canvas/html_canvas_element.cc
+third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.cc
+third_party/blink/renderer/platform/graphics/image_data_buffer.h
 third_party/blink/renderer/platform/graphics/mailbox_texture_backing.cc
 
 # --- ucrt math (Windows libm parity) -----------------------------------------
@@ -188,3 +192,32 @@ chrome/browser/net/profile_network_context_service.cc
 
 # --- show cursor --------------------------------------------------------------
 third_party/blink/renderer/core/exported/web_dev_tools_agent_impl.cc
+
+# --- CPU arithmetic: Opus ---
+content/common/BUILD.gn
+content/common/DEPS
+third_party/opus/BUILD.gn
+third_party/opus/src/celt/cpu_support.h
+third_party/opus/src/celt/x86/pitch_sse.h
+third_party/opus/src/celt/x86/vq_sse.h
+third_party/opus/src/celt/x86/vq_sse2.c
+third_party/opus/src/celt/x86/x86_celt_map.c
+third_party/opus/src/celt/x86/x86cpu.c
+third_party/opus/src/silk/x86/x86_silk_map.c
+third_party/opus/src/src/opus_multistream_encoder.c
+
+# --- CPU arithmetic: Skia -----------------------------------------------------
+skia/BUILD.gn
+content/common/skia_utils.cc
+third_party/skia/src/core/SkBitmapProcState_opts.cpp
+third_party/skia/src/core/SkBlitMask_opts.cpp
+third_party/skia/src/core/SkBlitRow_D32.cpp
+third_party/skia/src/core/SkBlitRow_opts.cpp
+third_party/skia/src/core/SkConvertPixels.cpp
+third_party/skia/src/core/SkOpts.cpp
+third_party/skia/src/core/SkSwizzler_opts.cpp
+third_party/skia/src/opts/SkBitmapProcState_opts.h
+third_party/skia/src/opts/SkBlitMask_opts.h
+third_party/skia/src/opts/SkBlitRow_opts.h
+third_party/skia/src/opts/SkRasterPipeline_opts.h
+third_party/skia/src/opts/SkSwizzler_opts.inc

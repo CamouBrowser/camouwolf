@@ -25,13 +25,10 @@
 # --- graphics ----------------------------------------------------------------
 0007-webgl-spoofing.patch
 0008-webgpu-adapter-spoofing.patch
-0009-canvas-farbling.patch
-0010-text-metrics-quantization.patch
 
 # --- audio -------------------------------------------------------------------
-0011-audio-farbling.patch
-# 0027 is the device half of the audio surface: what the output device IS
-# (sample rate, latency, channel count), where 0011 is what it renders.
+# What the output device is (sample rate, latency, channel count). What it
+# renders is the host CPU's, as stock Chrome's is: there is no audio noise.
 0027-audio-context.patch
 
 # --- devices -----------------------------------------------------------------
@@ -142,6 +139,19 @@
 # every later one on the CPU, so low-alpha pixels (text edges) read differently
 # the first time. Real Windows Chrome returns the same bytes on every read.
 0037-canvas-cpu-unpremultiply.patch
+
+# --- Canvas farbling on another OS or GPU ---------------------------------------
+# Brave's canvas farbling, for an identity whose canvas is not this host's: an
+# identity on another OS, or claiming a GPU this host lacks. canvas:farblingToken
+# turns it on; without it every readback is what Chromium computes.
+0047-canvas-farbling.patch
+
+# --- Another CPU's arithmetic: Skia and Opus ---------------------------------
+# cpu:identity names the identity's CPU. Skia draws and Opus codes as that CPU
+# does: another x86 vendor's RCPPS/RSQRTPS from recorded tables, their AArch64
+# code for arm64, and never Skia's AVX-512 tier, so the output follows the claim
+# and not the host.
+0048-cpu-arithmetic.patch
 
 # --- protocol wheel ticks -----------------------------------------------------
 # A protocol wheel event is one tick whatever its delta; count ticks in the

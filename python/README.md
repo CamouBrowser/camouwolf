@@ -61,7 +61,7 @@ instance you own, and `launch_options(...)` returns the options for
 | `fingerprint` | An fpgen Chrome fingerprint to use instead of drawing one. |
 | `webgl_config` | A `(vendor, renderer)` pair fpgen has recorded from Chrome on `os`; the identity is drawn from a machine with that GPU. |
 | `fingerprint_preset` | A device recorded from real Chrome, in Camoufox's preset format (user agent, cores, touch points, screen, GPU, timezone); the rest is drawn from a machine fpgen recorded with that GPU. |
-| `cpu` | `{"arch": "x86" \| "arm", "manufacturer": "intel" \| "amd" \| "apple" \| "qualcomm"}`, either key optional. Narrows the drawn machine: the GPU it comes with, the OS, and `userAgentData`'s architecture; a CPU no machine has with the GPU raises `ValueError`. |
+| `cpu` | `{"arch": "x86" \| "arm", "manufacturer": "intel" \| "amd" \| "apple" \| "qualcomm"}`, either key optional. Narrows the drawn machine: the GPU it comes with, the OS, and `userAgentData`'s architecture; a CPU no machine has with the GPU raises `ValueError`. The drawn CPU also sets `cpu:identity`, so Skia and Opus compute as that CPU does (0048); an x86 identity on an ARM host can only be the host's arithmetic and warns. |
 | `config` | Config keys set directly; they win over drawn values. An unknown key raises `UnknownProperty`. |
 | `locale` | The UI and `Intl` locale (`--lang`), `navigator.languages`, and the `Accept-Language` header. One locale claims Chrome's default list for it (`de-DE` is `de-DE, de, en-US, en`); a non-persistent context serves that default for the first of a longer list, as Chrome does off the record. The identity is drawn from a machine set up in that language where fpgen records one, so its voices and fonts follow it; with `geoip`, the place's language does the same. |
 | `geoip`, `proxy` | `geoip=True` (or an IP) sets the timezone, locale and geolocation from the exit IP. A SOCKS5 proxy's `username` and `password` go to the browser in its config, not on the command line. Without a proxy, the browser behaves as on an IPv4-only network unless this host's IPv6 address geolocates to the same place, so a site reached over IPv6 cannot see an address elsewhere. |
@@ -75,7 +75,7 @@ instance you own, and `launch_options(...)` returns the options for
 | `config={"certificates": [...]}`, `config={"certificatePaths": [...]}` | CA certificates (base64 DER, or PEM or DER files) trusted for this launch, for a proxy that terminates TLS. |
 | `chromium_prefs` | Merged into the profile's `Preferences`; needs `persistent_context=True` and `user_data_dir`. |
 | `chrome_version` | Claim another Chromium milestone than the browser's (warns). |
-| `canvas_noise` | Seeded canvas readback noise. Off by default, since stock Chrome has none. |
+| `canvas_noise` | Brave's canvas farbling. Unset, it is on (with a warning) when the identity's canvas is not this host's: another OS, or a GPU this host does not render on. On the host's OS the launcher claims the host's GPU where fpgen recorded it, by starting the browser once, and leaves the canvas alone. A `headless='virtual'` or `'virtual-gpu'` display is started after the draw, so those launches are farbled. `True` or `False` forces it. |
 | `pin_cpu_cores` | Pin the browser to as many cores as the identity reports. |
 | `args`, `env` | Extra switches and environment. |
 | `executable_path` | A specific build; `CAMOUWOLF_EXECUTABLE_PATH` does the same. |

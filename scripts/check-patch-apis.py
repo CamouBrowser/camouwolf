@@ -307,16 +307,36 @@ def check_includes(
     checked = skipped = 0
     deps_roots = deps_managed_roots(version, cache, offline)
 
+    # Files an additions tree installs. camouwolf<lib> mirrors third_party/<lib>,
+    # whose sources include through their own include dirs, so any trailing part
+    # of the path names the file.
+    provided = set()
+    for d in ADDITIONS.iterdir():
+        for f in d.rglob("*") if d.is_dir() else ():
+            parts = f.relative_to(d).parts
+            provided.update("/".join(parts[i:]) for i in range(len(parts)))
+            if d.name.startswith("camouwolf"):
+                provided.add(f"third_party/{d.name.removeprefix('camouwolf')}/" + "/".join(parts))
+
     for patch in sorted(PATCHES.glob("*.patch")):
-        for _, line in added_lines(patch.read_text()):
-            match = INCLUDE_RE.match(line)
+        target = ""
+        for line in patch.read_text().splitlines():
+            if line.startswith("+++ "):
+                target = line[4:].removeprefix("b/")
+                continue
+            if not line.startswith("+"):
+                continue
+            match = INCLUDE_RE.match(line[1:])
             if not match:
                 continue
             path = match.group(1)
 
             # Ours, by definition not upstream yet.
-            if "camouwolf" in path:
+            if "camouwolf" in path or path in provided:
                 continue
+            # Skia includes from its own root.
+            if target.startswith("third_party/skia/") and not path.startswith("third_party/"):
+                path = "third_party/skia/" + path
             if path.startswith(GENERATED_PREFIXES) or path.endswith(GENERATED_SUFFIXES):
                 skipped += 1
                 continue
@@ -338,7 +358,9 @@ def check_includes(
             # No checkout. A header under a DEPS-managed root lives in another
             # repo entirely, so googlesource's chromium/src does not have it and
             # a 404 would be meaningless.
-            if any(lookup == r or lookup.startswith(r + "/") for r in deps_roots):
+            if any(lookup == r or lookup.startswith(r + "/") for r in deps_roots) and not (
+                REPO / "browser" / ".pristine" / version / lookup
+            ).exists():
                 skipped += 1
                 continue
 

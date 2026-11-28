@@ -710,8 +710,8 @@ def run_profile(playwright: Any, binary: Path, server: Server, os_name: str, ind
         profile["results"] = {"Launch": {"launched": check(True)}, **launched}
         for category, checks in own.items():
             profile["results"].setdefault(category, {}).update({f"context:{n}": c for n, c in checks.items()})
-        # Two draws of a whole machine never land on one GPU, font list,
-        # canvas seed and voice list together.
+        # Two draws of a whole machine never land on one GPU, font list and
+        # voice list together.
         place = ("timezone", "locale:", "geolocation:", "webrtc:")
         drawn = {k for k in {*identity, *claimed} if not k.startswith(place) and identity.get(k) != claimed.get(k)}
         profile["results"]["Launch"]["contextIsAnotherMachine"] = check(

@@ -46,7 +46,9 @@ HOST = {
         'language': 'de', 'region': 'DE', 'script': 'Latn',
         'longitude': 13.4105, 'latitude': 52.5244, 'timezone': 'Europe/Berlin', 'accuracy': 25.5,
     },
-    'canvasSeed': 123456789,
+    # The fixture bundle cannot render, so the host's canvas is no recorded GPU's.
+    'hostGpu': None,
+    'farblingToken': '00112233445566778899aabbccddeeff',
 }
 
 ENV = {'HOME': '/home/golden', 'PATH': '/usr/bin:/bin'}
@@ -106,7 +108,8 @@ CASES = [
     ('humanize-true', 25, {'os': 'windows', 'humanize': True}),
     ('humanize-seed', 26, {'os': 'linux', 'humanize': {'seed': 7}}),
     ('humanize-seconds', 27, {'os': 'linux', 'humanize': 1.5}),
-    ('canvas-noise', 28, {'os': 'windows', 'canvas_noise': True}),
+    ('canvas-noise', 28, {'os': 'linux', 'canvas_noise': True}),
+    ('canvas-noise-off', 73, {'os': 'windows', 'canvas_noise': False}),
     ('pin-cpu-cores', 29, {'os': 'windows', 'pin_cpu_cores': True}),
     ('fonts', 30, {'os': 'linux', 'fonts': ['Comic Neue', 'Arial', 'Comic Neue']}),
     ('custom-fonts-only', 31, {'os': 'windows', 'fonts': ['Inter', 'Inter', 'Roboto'], 'custom_fonts_only': True}),
@@ -220,7 +223,8 @@ def run(case_options, binary, scratch):
         locale=Locale(language=geo['language'], region=geo['region'], script=geo['script']),
         longitude=geo['longitude'], latitude=geo['latitude'], timezone=geo['timezone'], accuracy=geo['accuracy'],
     )
-    utils.secrets.randbelow = lambda n: HOST['canvasSeed'] - 1
+    utils.host_gpu = lambda *args: HOST['hostGpu']
+    utils.secrets.token_hex = lambda n: HOST['farblingToken']
 
     options.setdefault('env', dict(ENV))
     options.setdefault('headless', True)

@@ -238,6 +238,31 @@ describe("coherence", () => {
 		).toEqual([null, []]);
 	});
 
+	it("names the CPU whose arithmetic the browser reproduces", () => {
+		const intelIgpu =
+			"ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)";
+		const discrete = windows()["webGl:renderer"];
+		expect(
+			coherence.cpuIdentity(
+				"ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)",
+				8,
+				"mac",
+				"arm",
+				null,
+			),
+		).toBe("arm64");
+		expect(coherence.cpuIdentity(intelIgpu, 8, "win", "x86", null)).toBe(
+			"intel",
+		);
+		expect(coherence.cpuIdentity(discrete, 14, "win", "x86", null)).toBe(
+			"intel",
+		);
+		expect(coherence.cpuIdentity(discrete, 16, "win", "x86", "amd")).toBe(
+			"amd",
+		);
+		expect(coherence.cpuIdentity(discrete, 16, "win", "x86", null)).toBeNull();
+	});
+
 	it("names a CPU the machine cannot have", () => {
 		const intelIgpu =
 			"ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)";

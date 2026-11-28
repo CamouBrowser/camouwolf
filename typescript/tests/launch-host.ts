@@ -79,7 +79,8 @@ export interface GoldenHost {
 		timezone: string;
 		accuracy: number;
 	};
-	canvasSeed: number;
+	hostGpu: [string, string] | null;
+	farblingToken: string;
 }
 
 export const DEFAULT_HOST: GoldenHost = {
@@ -96,7 +97,8 @@ export const DEFAULT_HOST: GoldenHost = {
 		timezone: "Europe/Berlin",
 		accuracy: 25.5,
 	},
-	canvasSeed: 123456789,
+	hostGpu: null,
+	farblingToken: "00112233445566778899aabbccddeeff",
 };
 
 /**
@@ -133,7 +135,8 @@ export function stubHost(
 			geo.timezone,
 			geo.accuracy,
 		);
-	deps.canvasSeed = () => host.canvasSeed;
+	deps.hostGpu = async () => host.hostGpu;
+	deps.farblingToken = () => host.farblingToken;
 	deps.ensureCamouwolfInstalled = (async () => BUNDLE) as any;
 	deps.installedVerStr = () => "152.0.7977.42-alpha.1";
 	deps.launchPath = (() => BUNDLE_EXE) as any;

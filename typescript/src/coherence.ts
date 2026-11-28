@@ -301,6 +301,30 @@ export function cpuMisfit(
 }
 
 /**
+ * The CPU whose arithmetic the browser reproduces (`cpu:identity`): "arm64",
+ * "intel" or "amd", or null where any x86 maker fits and the host's serves.
+ */
+export function cpuIdentity(
+	gpuRenderer: unknown,
+	cores: unknown,
+	targetOs: string,
+	arch: unknown,
+	maker: string | null,
+): string | null {
+	if (arch === "arm") return "arm64";
+	if (arch !== "x86") return null;
+	const [, makers] = gpuCpu(gpuRenderer, targetOs);
+	if (maker === null && makers.length === 1) maker = makers[0];
+	if (
+		maker === null &&
+		isPyInt(cores) &&
+		INTEL_ONLY_CORE_COUNTS.has(Number(num(cores)))
+	)
+		maker = "intel";
+	return maker;
+}
+
+/**
  * Why no Mac with this GPU has these cores and this screen, or null.
  *
  * It checks drawn records, which are rejected, as well as finished identities.

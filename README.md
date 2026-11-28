@@ -61,8 +61,8 @@ fingerprint in its own right.
 | Languages, `Intl` and the default locale | The identity's, matching `Accept-Language` | `0005`, `0026` |
 | Timezone | The identity's, or the proxy exit's with `geoip=True` | `0006` |
 | WebGL and WebGPU | One GPU fpgen recorded for Chrome on that OS, with its parameters, extensions and adapter | `0007`, `0008` |
-| Canvas and text metrics | Real pixels by default; seeded, deterministic noise with `canvas_noise=True` | `0009`, `0010`, `0037` |
-| Audio | The output device's sample rate, latency and channels, and a per-identity audio fingerprint | `0011`, `0027` |
+| Canvas readback | The host's pixels when the identity is on the host's OS and GPU, which the launcher then claims; Brave's per-site farbling when it is not (`canvas_noise` overrides) | `0037`, `0047` |
+| Audio device | The output device's sample rate, latency and channels | `0027` |
 | Fonts | The claimed OS's fonts, a per-identity subset, and its `system-ui` font | `0021`, `0022` |
 | Speech voices | The claimed OS's voices, which speak at a real engine's pace | `0012`, `0032` |
 | Microphones, cameras, speakers | OS-style labels and groups | `0013` |
@@ -71,6 +71,15 @@ fingerprint in its own right.
 | Touch points | The claimed device's digitizer | `0024` |
 | System colors, web platform features, editing and key bindings | The claimed OS's | `0019`, `0020`, `0029`, `0033` |
 | Windows math | `sin`, `cos` and `atan2` as Windows computes them | `0018` |
+| CPU arithmetic | Skia's drawing and Opus's encoding as the identity's CPU computes them: another x86 vendor's reciprocal estimates, or ARM's NEON code on an x86 host | `0048` |
+
+Left as stock Chromium has it, on purpose:
+
+| Trait | What a page sees | Why it is not spoofed |
+|---|---|---|
+| WebGL `readPixels` | What the GPU produces, the same on every read | Brave leaves it alone too, and stock Chrome does not perturb pixels ([`no-readback-noise`](ci/tribal-rules.yml)) |
+| Text widths | What the font really measures | A width no real installation produces is a fingerprint |
+| Audio render (`OfflineAudioContext`, `AnalyserNode`) | What the host CPU computes, the same in every context and launch | A noised value is one no real machine produces |
 
 ### Network
 

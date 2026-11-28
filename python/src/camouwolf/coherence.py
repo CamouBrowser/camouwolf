@@ -200,6 +200,22 @@ def cpu_misfit(renderer: Optional[str], cores: Any, target_os: str, arch: str, m
     return None
 
 
+def cpu_identity(renderer: Optional[str], cores: Any, target_os: str, arch: Optional[str],
+                 maker: Optional[str]) -> Optional[str]:
+    """The CPU whose arithmetic the browser reproduces (`cpu:identity`): 'arm64',
+    'intel' or 'amd', or None where any x86 maker fits and the host's serves."""
+    if arch == 'arm':
+        return 'arm64'
+    if arch != 'x86':
+        return None
+    _, makers = gpu_cpu(renderer, target_os)
+    if maker is None and len(makers) == 1:
+        maker = makers[0]
+    if maker is None and cores in INTEL_ONLY_CORE_COUNTS:
+        maker = 'intel'
+    return maker
+
+
 def machine_misfit(renderer: Optional[str], target_os: str, cores: Any, width: Any, height: Any) -> Optional[str]:
     """Why no Mac with this GPU has these cores and this screen, or None.
 
