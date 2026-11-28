@@ -1,10 +1,11 @@
 """What this machine's own GPU reports through the browser.
 
-A library probe, not part of the launch: Camouwolf's identity names its GPU in
-webGl:vendor / webGl:renderer, which the browser reports whatever the host
-renders on, so a launch never needs to know the host's device. The probe
-answers the question a caller choosing between headless modes has: does this
-display render on hardware, or on SwiftShader?
+Camouwolf's identity names its GPU in webGl:vendor / webGl:renderer, which the
+browser reports whatever the host renders on. Canvas pixels are still the
+host's, so on the host's OS a launch claims this GPU where fpgen recorded it,
+and farbles the canvas otherwise (utils.draw_identity). The probe also answers
+a caller choosing between headless modes: does this display render on
+hardware, or on SwiftShader?
 
     from camouwolf.host_rendering import host_gpu, renders_on_hardware
     gpu = host_gpu(executable_path, headless=True, env=os.environ, args=())

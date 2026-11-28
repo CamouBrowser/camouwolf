@@ -26,6 +26,21 @@ mkdir -p "$DEST"
 echo "==> mirroring Chromium $version -> $DEST"
 
 fail=0
+# v8/ and third_party/skia/ are repositories of their own, at the revisions the
+# tag's DEPS pins.
+deps_revision() {
+  curl -sS --retry 6 --retry-max-time 300 "$BASE/DEPS?format=TEXT" | base64 -d \
+    | grep -oP "(?<='$1': ')[0-9a-f]{40}" || { echo "!! DEPS pins no $1" >&2; exit 1; }
+}
+grep -q '^v8/' "$FILELIST" && : "${CAMOUWOLF_V8_BASE:=https://chromium.googlesource.com/v8/v8/+/$(deps_revision v8_revision)}"
+grep -q '^third_party/skia/' "$FILELIST" && : "${CAMOUWOLF_SKIA_BASE:=https://skia.googlesource.com/skia/+/$(deps_revision skia_revision)}"
+source_url() {
+  case "$1" in
+    v8/*) echo "$CAMOUWOLF_V8_BASE/${1#v8/}" ;;
+    third_party/skia/*) echo "$CAMOUWOLF_SKIA_BASE/${1#third_party/skia/}" ;;
+    *) echo "$BASE/$1" ;;
+  esac
+}
 while read -r path; do
   case "$path" in ''|\#*) continue ;; esac
   out="$DEST/$path"
@@ -39,7 +54,7 @@ while read -r path; do
   # Only a 404 means the file is gone. googlesource throttles shared CI
   # runners; curl retries its 429/5xx with backoff and Retry-After, as
   # check-patch-apis.py does.
-  code=$(curl -sS --retry 6 --retry-max-time 300 -o "$out.b64" -w '%{http_code}' "$BASE/$path?format=TEXT" || true)
+  code=$(curl -sS --retry 6 --retry-max-time 300 -o "$out.b64" -w '%{http_code}' "$(source_url "$path")?format=TEXT" || true)
   if [ "$code" = 200 ] && base64 -d < "$out.b64" > "$out" 2>/dev/null && [ -s "$out" ]; then
     echo "    fetched $path ($(wc -l < "$out") lines)"
     rm -f "$out.b64"

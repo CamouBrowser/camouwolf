@@ -167,6 +167,11 @@ export class ValueError extends Error {
 	name = "ValueError";
 }
 
+/** Python's RuntimeError. */
+export class RuntimeError extends Error {
+	name = "RuntimeError";
+}
+
 /** Python's KeyError (pycompat.ts re-exports it). */
 export class KeyError extends Error {
 	name = "KeyError";

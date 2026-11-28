@@ -35,9 +35,9 @@
 //   the right model there. docs/PATCHES.md describes the design.
 //
 // COST:
-//   Accessors are called from hot paths (Navigator getters, canvas readback,
-//   font lookup). Key lookups are a flat_map probe over a small tree; callers on
-//   the hottest paths (canvas farble, font enumeration) should hoist the value
+//   Accessors are called from hot paths (Navigator getters, font lookup). Key
+//   lookups are a flat_map probe over a small tree; callers on the hottest
+//   paths (font enumeration) should hoist the value
 //   into a static/local rather than re-reading per pixel or per glyph.
 
 #ifndef BASE_CAMOU_CONFIG_H_
@@ -165,6 +165,13 @@ class BASE_EXPORT CamouwolfConfig {
 
   // The whole parsed object, for patches that iterate (font list, voices).
   const DictValue& AsDict() const { return dict_; }
+
+  // The CPU whose arithmetic this process reproduces: cpu:identity when it
+  // names a CPU other than the host's, kHost when it is absent or the host's.
+  // An ARM host cannot reproduce an x86 one and answers kHost; the launcher
+  // warns of that.
+  enum class Cpu { kHost, kIntel, kAmd, kArm64 };
+  Cpu EmulatedCpu() const;
 
  private:
   friend class NoDestructor<CamouwolfConfig>;

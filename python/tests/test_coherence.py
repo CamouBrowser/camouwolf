@@ -142,6 +142,20 @@ def test_a_gpu_names_the_cpu_it_can_sit_beside():
         None, ())
 
 
+def test_the_cpu_identity_is_the_one_the_identity_determines():
+    intel_igpu = 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+    discrete = windows()['webGl:renderer']
+    assert coherence.cpu_identity('ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)', 8, 'mac',
+                                  'arm', None) == 'arm64'
+    assert coherence.cpu_identity(intel_igpu, 8, 'win', 'x86', None) == 'intel'
+    assert coherence.cpu_identity(discrete, 14, 'win', 'x86', None) == 'intel'
+    assert coherence.cpu_identity(discrete, 16, 'win', 'x86', 'amd') == 'amd'
+    # Any x86 maker fits: the host's arithmetic is one of them.
+    assert coherence.cpu_identity(discrete, 16, 'win', 'x86', None) is None
+    assert coherence.cpu_identity('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)', 8, 'lin',
+                                  None, None) is None
+
+
 def test_a_cpu_the_machine_cannot_have_is_named():
     intel_igpu = 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)'
     assert coherence.cpu_misfit(intel_igpu, 8, 'win', 'x86', 'amd')

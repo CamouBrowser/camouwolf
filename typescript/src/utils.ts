@@ -5,8 +5,9 @@
  * monkeypatch.
  */
 import { spawnSync } from "node:child_process";
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { inspect } from "node:util";
 import * as cpuAffinity from "camoucore/cpu_affinity.js";
@@ -21,7 +22,7 @@ import {
 } from "camoucore/ip.js";
 import { handleLocales } from "camoucore/locales.js";
 import { VirtualDisplay } from "camoucore/virtdisplay.js";
-import { ensureModel } from "fpgen-js";
+import { ensureModel, ValueError as FpgenValueError } from "fpgen-js";
 import { addDefaultAddons, confirmPaths, type DefaultAddon } from "./addons.js";
 import * as clienthints from "./clienthints.js";
 import * as coherence from "./coherence.js";
@@ -32,6 +33,7 @@ import {
 	InvalidPropertyType,
 	NonChromeFingerprint,
 	NotImplementedError,
+	RuntimeError,
 	UnknownIPLocation,
 	UnknownProperty,
 	UnsupportedOSSpoof,
@@ -58,6 +60,7 @@ import {
 	windowSwitchBounds,
 } from "./fingerprints.js";
 import { GPU_SWITCHES, GpuDisplay, proveGpu, selectGpu } from "./gpudisplay.js";
+import { hostGpu } from "./host_rendering.js";
 import { type HumanizeSetting, normalize } from "./humanize.js";
 import { INSTALL_DIR, loadDataFile, OS_NAME } from "./paths.js";
 import {
@@ -144,6 +147,8 @@ export const utilsDeps = {
 	largestDisplay,
 	/** Overrides for the host CPU probes of fixHardwareConcurrency. */
 	hostCpu: (): HostCpu => ({}),
+	/** The host's CPU architecture, as os.arch() names it. */
+	hostArch: (): string => os.arch(),
 	print: (line: string): void => {
 		process.stdout.write(`${line}\n`);
 	},
@@ -161,13 +166,14 @@ export const utilsDeps = {
 	},
 	generateFingerprint,
 	chromeGpus,
+	hostGpu,
+	/** A launch's canvas farbling token: 128 random bits, like Brave's. */
+	farblingToken: (): string => randomBytes(16).toString("hex"),
 	publicIp: publicIP,
 	publicIpv6: publicIPv6,
 	geoipAllowed,
 	getGeolocation,
 	selectGpu,
-	/** secrets.randbelow(2**32 - 1) + 1 */
-	canvasSeed: (): number => randomInt(0, 2 ** 32 - 1) + 1,
 };
 
 /*
@@ -1221,9 +1227,28 @@ export async function contextIdentity(
 		}
 		contextLocale = pyTruthy(locale) ? locale : launchLanguages(fromOptions);
 	}
+	const canvasNoise = "canvas:farblingToken" in launch;
+	let contextGpu = webgl_config;
+	if (!canvasNoise) {
+		// The browser draws its canvas as its launch GPU does, unfarbled.
+		const launchGpu: [string, string] = [
+			launch["webGl:vendor"],
+			launch["webGl:renderer"],
+		];
+		const gpu = fingerprint?.gpu ?? {};
+		const drawnGpu =
+			webgl_config ?? (fingerprint ? [gpu.vendor, gpu.renderer] : launchGpu);
+		if (drawnGpu[0] !== launchGpu[0] || drawnGpu[1] !== launchGpu[1]) {
+			throw new ValueError(
+				"NewContext: the browser launched without canvas farbling, so its canvas is its " +
+					`${pyRepr(launchGpu[1])}. A context claiming another GPU needs a browser launched with canvas_noise=True.`,
+			);
+		}
+		contextGpu = fingerprint ? null : launchGpu;
+	}
 	const { languages } = await drawIdentity(config, {
 		os: targetOs,
-		webgl_config,
+		webgl_config: contextGpu,
 		geoip: Boolean(proxy),
 		proxy,
 		block_webrtc: (fromOptions.args ?? []).includes(WEBRTC_BLOCK_SWITCH),
@@ -1232,13 +1257,13 @@ export async function contextIdentity(
 		screen: null,
 		fonts,
 		custom_fonts_only,
-		canvas_noise: Boolean(launch["canvas:randomizeReadback"]),
 		fullVersion: launchFullVersion(fromOptions),
 		// The launch's OS already passed the policy.
 		allow_os_mismatch: true,
 		i_know_what_im_doing: Boolean(i_know_what_im_doing),
 		browserBinary: fromOptions.executablePath,
 		launch,
+		canvas_noise: canvasNoise,
 	});
 	for (const key of BROWSER_KEYS) {
 		if (key in launch) config[key] = launch[key];
@@ -1688,6 +1713,11 @@ export function speaks(language: string): (value: unknown) => boolean {
  *
  * With `language`, a record of Chrome in that language where fpgen has one:
  * a machine's voices and fonts follow the language its OS was installed in.
+ *
+ * `hostCanvas` reads the GPU this host's canvas renders on. A draw on this
+ * host's OS then claims it where fpgen recorded it beside the other
+ * constraints, so the canvas is the claimed machine's and needs no farbling
+ * (drawIdentity).
  */
 export async function drawFingerprint(
 	os: ListOrString | null | undefined,
@@ -1696,7 +1726,44 @@ export async function drawFingerprint(
 	webglConfig: readonly [string, string] | null | undefined,
 	language?: string,
 	cpu?: Record<string, string> | null,
+	hostCanvas?: HostCanvas | null,
 ): Promise<Config> {
+	if (hostCanvas && !webglConfig?.length) {
+		const fingerprint = await drawFingerprint(
+			os,
+			screen,
+			window,
+			null,
+			language,
+			cpu,
+		);
+		const host =
+			fingerprintOs(fingerprint) === utilsDeps.osName()
+				? await hostCanvas()
+				: null;
+		const hostOs = OS_NAMES[utilsDeps.osName()];
+		if (
+			!host ||
+			!utilsDeps
+				.chromeGpus(hostOs)
+				.some(([v, r]) => v === host[0] && r === host[1])
+		) {
+			return fingerprint;
+		}
+		// fpgen may have the host's GPU but no machine with it that also fits
+		// the screen, window or CPU; the first draw then stands, farbled.
+		try {
+			return await drawFingerprint(hostOs, screen, window, host, language, cpu);
+		} catch (err) {
+			if (
+				err instanceof ValueError ||
+				err instanceof FpgenValueError ||
+				err instanceof RuntimeError
+			)
+				return fingerprint;
+			throw err;
+		}
+	}
 	await utilsDeps.ensureModel();
 	const names: string[] = typeof os === "string" ? [os] : [...(os ?? [])];
 	let gpu: (value: unknown) => boolean;
@@ -1809,7 +1876,7 @@ export async function drawFingerprint(
 			continue;
 		return fingerprint;
 	}
-	throw new Error(
+	throw new RuntimeError(
 		`fpgen drew no desktop Chrome fingerprint with a usable GPU for os=${pyRepr(os ?? null)} in ` +
 			`${MAX_FINGERPRINT_DRAWS} draws`,
 	);
@@ -1940,7 +2007,15 @@ export interface LaunchOptions {
 	/** Keep the fingerprint's own core count by pinning the browser to that
 	 * many cores. Off by default: the host's count is reported. */
 	pin_cpu_cores?: boolean;
-	/** Perturb canvas readback with a per-identity seed. Off by default. */
+	/**
+	 * Farble canvas readback as Brave does (canvas:farblingToken). Left
+	 * unset, it is on, with a warning, when the identity's canvas is not this
+	 * host's: another OS, or a GPU other than this host's. On the host's OS
+	 * the identity claims the host's GPU where fpgen recorded it, which the
+	 * launcher reads by starting the browser once. A headless="virtual" or
+	 * "virtual-gpu" display is started only after the identity is drawn, so
+	 * those launches are farbled.
+	 */
 	canvas_noise?: boolean | null;
 	/** Allow an identity on an OS this host cannot pass for. */
 	allow_os_mismatch?: boolean;
@@ -1970,7 +2045,6 @@ export interface DrawIdentityOptions {
 	window?: [number, number];
 	fonts?: string[] | null;
 	custom_fonts_only?: boolean | null;
-	canvas_noise?: boolean | null;
 	pin_cpu_cores?: boolean | null;
 	fullVersion: string;
 	allow_os_mismatch?: boolean;
@@ -1983,7 +2057,13 @@ export interface DrawIdentityOptions {
 	cpu?: Record<string, string> | null;
 	/** A preset's values: they stand as a caller's would, except the core count. */
 	recorded?: Config | null;
+	/** Farble the canvas; null decides by whether the canvas is the host's. */
+	canvas_noise?: boolean | null;
+	hostCanvas?: HostCanvas | null;
 }
+
+/** Reads the (vendor, renderer) this host's canvas renders on. */
+export type HostCanvas = () => Promise<readonly [string, string] | null>;
 
 /**
  * A whole identity, drawn into `config`: its language list and its OS.
@@ -1991,6 +2071,10 @@ export interface DrawIdentityOptions {
  * `config` holds the caller's keys, which win over drawn ones. With `launch`
  * (the browser's own config) it is a context's identity: the screen, window
  * and core count are the launch's, which one browser process cannot vary.
+ *
+ * The canvas is farbled when `canvas_noise` says so or, left null, when the
+ * identity's canvas is not this host's: another OS, or a GPU other than the
+ * one `hostCanvas` reads.
  */
 export async function drawIdentity(
 	config: Config,
@@ -2007,7 +2091,6 @@ export async function drawIdentity(
 		window,
 		fonts,
 		custom_fonts_only,
-		canvas_noise,
 		pin_cpu_cores,
 		fullVersion,
 		allow_os_mismatch,
@@ -2018,6 +2101,8 @@ export async function drawIdentity(
 		launch,
 		cpu,
 		recorded,
+		canvas_noise,
+		hostCanvas,
 	}: DrawIdentityOptions,
 ): Promise<{ languages: string[] | null; targetOs: clienthints.OsKey }> {
 	const callerKeys = new Set(Object.keys(config));
@@ -2100,6 +2185,7 @@ export async function drawIdentity(
 			webgl_config,
 			languages?.[0],
 			cpu,
+			hostCanvas,
 		);
 	} else if (fingerprint !== undefined && fingerprint !== null) {
 		if (pyTruthy(webgl_config)) {
@@ -2216,18 +2302,22 @@ export async function drawIdentity(
 	if (pyTruthy(colors)) setDefault(config, "systemColors", { ...colors });
 
 	// ---- canvas ------------------------------------------------------------
-	if (canvas_noise) {
-		LeakWarning.warn(loadWarnings().canvas_noise, i_know_what_im_doing);
-		if (!("canvas:seed" in config))
-			config["canvas:seed"] = utilsDeps.canvasSeed();
-		setDefault(config, "canvas:randomizeReadback", true);
-	} else {
-		// Stock Chrome returns the pixels it drew.
-		setDefault(config, "canvas:seed", 0);
-		setDefault(config, "canvas:randomizeReadback", false);
+	// Canvas pixels are the host's rendering. On another OS, or another GPU,
+	// Brave's farbling (patch 0047) hides the host's hash instead.
+	let farble = canvas_noise;
+	if (farble === undefined || farble === null) {
+		const host =
+			targetOs === utilsDeps.osName() && hostCanvas ? await hostCanvas() : null;
+		farble = !(
+			host &&
+			config["webGl:vendor"] === host[0] &&
+			config["webGl:renderer"] === host[1]
+		);
+		if (farble)
+			LeakWarning.warn(loadWarnings().canvas_noise, i_know_what_im_doing);
 	}
-	setDefault(config, "canvas:quantizeTextMetrics", false);
-	setDefault(config, "AudioContext:randomizeSamples", false);
+	if (farble)
+		setDefault(config, "canvas:farblingToken", utilsDeps.farblingToken());
 
 	// ---- geometry ----------------------------------------------------------
 	if (launch) {
@@ -2280,6 +2370,21 @@ export async function drawIdentity(
 				fatal.map((v) => v.detail).join("\n  - ") +
 				"\nFix `config`, or pass i_know_what_im_doing=True to launch anyway.",
 		);
+	}
+
+	const identityCpu = coherence.cpuIdentity(
+		config["webGl:renderer"],
+		config["navigator.hardwareConcurrency"],
+		targetOs,
+		config["userAgentData.architecture"],
+		cpuClaim ? cpuClaim[1] : null,
+	);
+	if (identityCpu) setDefault(config, "cpu:identity", identityCpu);
+	if (
+		["intel", "amd"].includes(config["cpu:identity"] as string) &&
+		utilsDeps.hostArch() === "arm64"
+	) {
+		LeakWarning.warn(loadWarnings().x86_identity_on_arm, i_know_what_im_doing);
 	}
 
 	validateConfig(config, browserBinary);
@@ -2504,7 +2609,6 @@ export async function launchOptions({
 		window,
 		fonts,
 		custom_fonts_only,
-		canvas_noise,
 		pin_cpu_cores,
 		fullVersion,
 		allow_os_mismatch,
@@ -2514,6 +2618,13 @@ export async function launchOptions({
 		virtualDisplay: Boolean(virtual_display),
 		cpu,
 		recorded: preset?.config,
+		canvas_noise,
+		// A display the launcher owns is sized to the identity, so it cannot
+		// render the probe before the draw; its canvas is farbled.
+		hostCanvas:
+			(canvas_noise !== undefined && canvas_noise !== null) || ownedDisplay
+				? null
+				: () => utilsDeps.hostGpu(browserBinary, headless === true, env, args),
 	});
 
 	// ---- browser behaviour ------------------------------------------------

@@ -34,8 +34,8 @@ def make_bundle(directory: Path, version: str = FAKE_VERSION, release: str = FAK
 @pytest.fixture(autouse=True)
 def isolated_environment(monkeypatch, tmp_path):
     """No test reaches the real desktop, the network for a browser download, or
-    another test's cache: the display variables are removed and the install
-    directory is a temporary one."""
+    another test's cache: the display variables are removed, the install
+    directory is a temporary one, and the host GPU is not probed."""
     for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'CAMOUWOLF_EXECUTABLE_PATH', 'CAMOUWOLF_GPU'):
         monkeypatch.delenv(name, raising=False)
     from camouwolf import addons, utils
@@ -43,6 +43,8 @@ def isolated_environment(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, 'INSTALL_DIR', tmp_path / 'cache')
     monkeypatch.setattr(addons, 'ADDONS_DIR', tmp_path / 'cache' / 'addons')
     monkeypatch.setattr(utils, 'warn_if_package_outdated', lambda: None)
+    # The fake bundle cannot render, so its canvas is no recorded GPU's.
+    monkeypatch.setattr(utils, 'host_gpu', lambda *args: None)
 
 
 @pytest.fixture

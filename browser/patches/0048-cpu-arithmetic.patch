@@ -1,0 +1,865 @@
+diff --git a/content/common/BUILD.gn b/content/common/BUILD.gn
+--- a/content/common/BUILD.gn
++++ b/content/common/BUILD.gn
+@@ -260,6 +260,9 @@
+     "//third_party/angle:angle_gpu_info_util",
+     "//third_party/boringssl",
+     "//third_party/icu",
++
++    # CAMOUWOLF: InitializeSkia sets Opus's CPU identity.
++    "//third_party/opus",
+     "//third_party/re2",
+     "//ui/base",
+     "//ui/base/cursor/mojom:cursor_type",
+diff --git a/content/common/DEPS b/content/common/DEPS
+--- a/content/common/DEPS
++++ b/content/common/DEPS
+@@ -40,6 +40,8 @@
+   "+third_party/blink/public/web/web_drag_status.h",
+   "+third_party/blink/public/web/web_frame_owner_properties.h",
+   "+third_party/blink/public/web/win/web_font_rendering.h",
++  # CAMOUWOLF: InitializeSkia sets Opus's CPU identity.
++  "+third_party/opus/src/include/opus_cpu_identity.h",
+ ]
+ specific_include_rules = {
+   '.*_unittest.*': [
+diff --git a/third_party/opus/BUILD.gn b/third_party/opus/BUILD.gn
+--- a/third_party/opus/BUILD.gn
++++ b/third_party/opus/BUILD.gn
+@@ -197,6 +197,9 @@
+     "src/celt/arch.h",
+     "src/celt/bands.c",
+     "src/celt/bands.h",
++
++    # CAMOUWOLF: the CPU identity the embedder sets (opus_cpu_identity.h).
++    "src/celt/camouwolf_cpu_identity.c",
+     "src/celt/celt.c",
+     "src/celt/celt.h",
+     "src/celt/celt_decoder.c",
+@@ -240,6 +243,7 @@
+     "src/celt/vq.c",
+     "src/celt/vq.h",
+     "src/include/opus.h",
++    "src/include/opus_cpu_identity.h",
+     "src/include/opus_custom.h",
+     "src/include/opus_defines.h",
+     "src/include/opus_multistream.h",
+@@ -420,6 +424,10 @@
+     sources += [
+       "src/celt/x86/celt_lpc_sse.h",
+       "src/celt/x86/celt_lpc_sse4_1.c",
++
++      # CAMOUWOLF: Chromium arm64's float kernels, for an arm64 identity.
++      "src/celt/x86/celt_neonemu.c",
++      "src/celt/x86/celt_neonemu.h",
+       "src/celt/x86/pitch_sse.c",
+       "src/celt/x86/pitch_sse.h",
+       "src/celt/x86/pitch_sse2.c",
+diff --git a/third_party/opus/src/celt/cpu_support.h b/third_party/opus/src/celt/cpu_support.h
+--- a/third_party/opus/src/celt/cpu_support.h
++++ b/third_party/opus/src/celt/cpu_support.h
+@@ -59,6 +59,9 @@
+  * arch[4] -> avx
+  */
+ #define OPUS_ARCHMASK 7
++/* CAMOUWOLF: arch[5] runs Chromium arm64's float kernels on x86
++   (x86/celt_neonemu.c), for an identity that claims an arm64 CPU. */
++#define OPUS_ARCH_X86_NEONEMU 5
+ int opus_select_arch(void);
+ 
+ #else
+diff --git a/third_party/opus/src/celt/x86/pitch_sse.h b/third_party/opus/src/celt/x86/pitch_sse.h
+--- a/third_party/opus/src/celt/x86/pitch_sse.h
++++ b/third_party/opus/src/celt/x86/pitch_sse.h
+@@ -37,6 +37,8 @@
+ #include "config.h"
+ #endif
+ 
++#include "x86/celt_neonemu.h"
++
+ #if defined(OPUS_X86_MAY_HAVE_SSE4_1) && defined(FIXED_POINT)
+ void xcorr_kernel_sse4_1(
+                     const opus_int16 *x,
+@@ -59,9 +61,12 @@
+     ((void)arch, xcorr_kernel_sse4_1(x, y, sum, len))
+ 
+ #elif defined(OPUS_X86_PRESUME_SSE) && !defined(FIXED_POINT)
++/* CAMOUWOLF: Chromium arm64 runs the float xcorr_kernel and comb filter as C,
++   and celt_inner_prod and dual_inner_prod as NEON (x86/celt_neonemu.c). */
+ #define OVERRIDE_XCORR_KERNEL
+ #define xcorr_kernel(x, y, sum, len, arch) \
+-    ((void)arch, xcorr_kernel_sse(x, y, sum, len))
++    (OPUS_X86_IS_NEONEMU(arch) ? xcorr_kernel_c(x, y, sum, len) \
++                               : xcorr_kernel_sse(x, y, sum, len))
+ 
+ #elif defined(OPUS_HAVE_RTCD) &&  ((defined(OPUS_X86_MAY_HAVE_SSE4_1) && defined(FIXED_POINT)) || (defined(OPUS_X86_MAY_HAVE_SSE) && !defined(FIXED_POINT)))
+ 
+@@ -112,7 +117,8 @@
+ #elif defined(OPUS_X86_PRESUME_SSE) && !defined(FIXED_POINT)
+ #define OVERRIDE_CELT_INNER_PROD
+ #define celt_inner_prod(x, y, N, arch) \
+-    ((void)arch, celt_inner_prod_sse(x, y, N))
++    (OPUS_X86_IS_NEONEMU(arch) ? celt_inner_prod_neonemu(x, y, N) \
++                               : celt_inner_prod_sse(x, y, N))
+ 
+ 
+ #elif defined(OPUS_HAVE_RTCD) && (((defined(OPUS_X86_MAY_HAVE_SSE4_1) || defined(OPUS_X86_MAY_HAVE_SSE2)) && defined(FIXED_POINT)) || \
+@@ -151,10 +157,17 @@
+ #define OVERRIDE_DUAL_INNER_PROD
+ #define OVERRIDE_COMB_FILTER_CONST
+ # define dual_inner_prod(x, y01, y02, N, xy1, xy2, arch) \
+-    ((void)(arch),dual_inner_prod_sse(x, y01, y02, N, xy1, xy2))
++    (OPUS_X86_IS_NEONEMU(arch) \
++         ? dual_inner_prod_neonemu(x, y01, y02, N, xy1, xy2) \
++         : dual_inner_prod_sse(x, y01, y02, N, xy1, xy2))
+ 
+ # define comb_filter_const(y, x, T, N, g10, g11, g12, arch) \
+-    ((void)(arch),comb_filter_const_sse(y, x, T, N, g10, g11, g12))
++    (OPUS_X86_IS_NEONEMU(arch) \
++         ? comb_filter_const_c(y, x, T, N, g10, g11, g12) \
++         : comb_filter_const_sse(y, x, T, N, g10, g11, g12))
++
++/* CAMOUWOLF: celt.c compiles comb_filter_const_c only when this is set. */
++#define NON_STATIC_COMB_FILTER_CONST_C
+ #elif defined(OPUS_HAVE_RTCD)
+ 
+ #define OVERRIDE_DUAL_INNER_PROD
+diff --git a/third_party/opus/src/celt/x86/vq_sse.h b/third_party/opus/src/celt/x86/vq_sse.h
+--- a/third_party/opus/src/celt/x86/vq_sse.h
++++ b/third_party/opus/src/celt/x86/vq_sse.h
+@@ -29,13 +29,17 @@
+ 
+ #if defined(OPUS_X86_MAY_HAVE_SSE2) && !defined(FIXED_POINT)
+ 
++#include "x86/celt_neonemu.h"
++
+ opus_val16 op_pvq_search_sse2(celt_norm *_X, int *iy, int K, int N, int arch);
+ 
+ #if defined(OPUS_X86_PRESUME_SSE2)
+ 
++/* CAMOUWOLF: an emulated arm64 CPU runs the C search, as Chromium arm64 does. */
+ #define OVERRIDE_OP_PVQ_SEARCH
+ #define op_pvq_search(x, iy, K, N, arch) \
+-    (op_pvq_search_sse2(x, iy, K, N, arch))
++    (OPUS_X86_IS_NEONEMU(arch) ? op_pvq_search_c(x, iy, K, N, arch) \
++                               : op_pvq_search_sse2(x, iy, K, N, arch))
+ 
+ #elif defined(OPUS_HAVE_RTCD)
+ 
+diff --git a/third_party/opus/src/celt/x86/vq_sse2.c b/third_party/opus/src/celt/x86/vq_sse2.c
+--- a/third_party/opus/src/celt/x86/vq_sse2.c
++++ b/third_party/opus/src/celt/x86/vq_sse2.c
+@@ -37,9 +37,26 @@
+ #include "mathops.h"
+ #include "vq.h"
+ #include "x86cpu.h"
++#include "opus_cpu_identity.h"
++#include "third_party/skia/src/opts/SkCpuEstimates.h"  // nogncheck
+ 
+ 
+ #ifndef FIXED_POINT
++
++/* CAMOUWOLF: RCPPS/RSQRTPS as the identity's x86 vendor computes them, from
++   the recorded table the embedder set (opus_cpu_identity.h). */
++static __m128 estimate_as(__m128 v, int rsqrt)
++{
++   const uint32_t *table = opus_cpu_estimates();
++   uint32_t b[4];
++   int i;
++   if (!table)
++      return rsqrt ? _mm_rsqrt_ps(v) : _mm_rcp_ps(v);
++   _mm_storeu_ps((float*)(void*)b, v);
++   for (i=0;i<4;i++)
++      b[i] = rsqrt ? sk_cpu_estimate_rsqrt(table, b[i]) : sk_cpu_estimate_rcp(table, b[i]);
++   return _mm_loadu_ps((float*)(void*)b);
++}
+ 
+ opus_val16 op_pvq_search_sse2(celt_norm *_X, int *iy, int K, int N, int arch)
+ {
+@@ -105,7 +122,7 @@
+          sums = _mm_set_ps1(1.f);
+       }
+       /* Using K+e with e < 1 guarantees we cannot get more than K pulses. */
+-      rcp4 = _mm_mul_ps(_mm_set_ps1((float)(K+.8)), _mm_rcp_ps(sums));
++      rcp4 = _mm_mul_ps(_mm_set_ps1((float)(K+.8)), estimate_as(sums, 0));
+       xy4 = yy4 = _mm_setzero_ps();
+       pulses_sum = _mm_setzero_si128();
+       for (j=0;j<N;j+=4)
+@@ -170,7 +187,7 @@
+          y4 = _mm_loadu_ps(&y[j]);
+          x4 = _mm_add_ps(x4, xy4);
+          y4 = _mm_add_ps(y4, yy4);
+-         y4 = _mm_rsqrt_ps(y4);
++         y4 = estimate_as(y4, 1);
+          r4 = _mm_mul_ps(x4, y4);
+          /* Update the index of the max. */
+          pos = _mm_max_epi16(pos, _mm_and_si128(count, _mm_castps_si128(_mm_cmpgt_ps(r4, max))));
+diff --git a/third_party/opus/src/celt/x86/x86_celt_map.c b/third_party/opus/src/celt/x86/x86_celt_map.c
+--- a/third_party/opus/src/celt/x86/x86_celt_map.c
++++ b/third_party/opus/src/celt/x86/x86_celt_map.c
+@@ -104,7 +104,8 @@
+   celt_pitch_xcorr_c,
+   celt_pitch_xcorr_c,
+   celt_pitch_xcorr_c,
+-  MAY_HAVE_AVX2(celt_pitch_xcorr)
++  MAY_HAVE_AVX2(celt_pitch_xcorr),
++  celt_pitch_xcorr_neonemu   /* CAMOUWOLF: emulated arm64 */
+ };
+ 
+ #endif
+diff --git a/third_party/opus/src/celt/x86/x86cpu.c b/third_party/opus/src/celt/x86/x86cpu.c
+--- a/third_party/opus/src/celt/x86/x86cpu.c
++++ b/third_party/opus/src/celt/x86/x86cpu.c
+@@ -34,6 +34,8 @@
+ #include "main.h"
+ #include "pitch.h"
+ #include "x86cpu.h"
++#include "x86/celt_neonemu.h"
++#include "opus_cpu_identity.h"
+ 
+ #if defined(OPUS_HAVE_RTCD) && \
+   ((defined(OPUS_X86_MAY_HAVE_SSE) && !defined(OPUS_X86_PRESUME_SSE)) || \
+@@ -173,7 +175,13 @@
+ }
+ 
+ int opus_select_arch(void) {
+-    int arch = opus_select_arch_impl();
++    int arch;
++#if defined(OPUS_X86_NEONEMU)
++    /* CAMOUWOLF: an emulated arm64 CPU runs its kernels whatever this CPU has. */
++    if (opus_cpu_emulates_arm64())
++        return OPUS_ARCH_X86_NEONEMU;
++#endif
++    arch = opus_select_arch_impl();
+ #ifdef FUZZING
+     /* Randomly downgrade the architecture. */
+     arch = rand()%(arch+1);
+diff --git a/third_party/opus/src/silk/x86/x86_silk_map.c b/third_party/opus/src/silk/x86/x86_silk_map.c
+--- a/third_party/opus/src/silk/x86/x86_silk_map.c
++++ b/third_party/opus/src/silk/x86/x86_silk_map.c
+@@ -66,7 +66,8 @@
+   silk_VAD_GetSA_Q8_c,
+   silk_VAD_GetSA_Q8_c,
+   MAY_HAVE_SSE4_1( silk_VAD_GetSA_Q8 ), /* sse4.1 */
+-  MAY_HAVE_SSE4_1( silk_VAD_GetSA_Q8 )  /* avx */
++  MAY_HAVE_SSE4_1( silk_VAD_GetSA_Q8 ), /* avx */
++  silk_VAD_GetSA_Q8_c                   /* CAMOUWOLF: emulated arm64 */
+ };
+ 
+ void (*const SILK_NSQ_IMPL[ OPUS_ARCHMASK + 1 ] )(
+@@ -90,7 +91,8 @@
+   silk_NSQ_c,
+   silk_NSQ_c,
+   MAY_HAVE_SSE4_1( silk_NSQ ), /* sse4.1 */
+-  MAY_HAVE_SSE4_1( silk_NSQ )  /* avx */
++  MAY_HAVE_SSE4_1( silk_NSQ ), /* avx */
++  silk_NSQ_c                   /* CAMOUWOLF: emulated arm64 */
+ };
+ 
+ void (*const SILK_VQ_WMAT_EC_IMPL[ OPUS_ARCHMASK + 1 ] )(
+@@ -111,7 +113,8 @@
+   silk_VQ_WMat_EC_c,
+   silk_VQ_WMat_EC_c,
+   MAY_HAVE_SSE4_1( silk_VQ_WMat_EC ), /* sse4.1 */
+-  MAY_HAVE_SSE4_1( silk_VQ_WMat_EC )  /* avx */
++  MAY_HAVE_SSE4_1( silk_VQ_WMat_EC ), /* avx */
++  silk_VQ_WMat_EC_c                   /* CAMOUWOLF: emulated arm64 */
+ };
+ 
+ void (*const SILK_NSQ_DEL_DEC_IMPL[ OPUS_ARCHMASK + 1 ] )(
+@@ -135,7 +138,8 @@
+   silk_NSQ_del_dec_c,
+   silk_NSQ_del_dec_c,
+   MAY_HAVE_SSE4_1( silk_NSQ_del_dec ), /* sse4.1 */
+-  MAY_HAVE_AVX2( silk_NSQ_del_dec )  /* avx */
++  MAY_HAVE_AVX2( silk_NSQ_del_dec ), /* avx */
++  silk_NSQ_del_dec_c                 /* CAMOUWOLF: emulated arm64 */
+ };
+ 
+ #if defined(FIXED_POINT)
+@@ -171,7 +175,8 @@
+   silk_inner_product_FLP_c,
+   silk_inner_product_FLP_c,
+   silk_inner_product_FLP_c, /* sse4.1 */
+-  MAY_HAVE_AVX2( silk_inner_product_FLP )  /* avx */
++  MAY_HAVE_AVX2( silk_inner_product_FLP ), /* avx */
++  silk_inner_product_FLP_c                 /* CAMOUWOLF: emulated arm64 */
+ };
+ 
+ #endif
+diff --git a/third_party/opus/src/src/opus_multistream_encoder.c b/third_party/opus/src/src/opus_multistream_encoder.c
+--- a/third_party/opus/src/src/opus_multistream_encoder.c
++++ b/third_party/opus/src/src/opus_multistream_encoder.c
+@@ -270,7 +270,8 @@
+ #ifndef FIXED_POINT
+       {
+          opus_val32 sum;
+-         sum = celt_inner_prod(in, in, frame_size+overlap, 0);
++         /* CAMOUWOLF: the encoder's arch, so an emulated CPU's kernel runs. */
++         sum = celt_inner_prod(in, in, frame_size+overlap, arch);
+          /* This should filter out both NaNs and ridiculous signals that could
+             cause NaNs further down. */
+          if (!(sum < 1e18f) || celt_isnan(sum))
+diff --git a/skia/BUILD.gn b/skia/BUILD.gn
+--- a/skia/BUILD.gn
++++ b/skia/BUILD.gn
+@@ -1014,6 +1014,9 @@
+ skia_source_set("skia_core_and_effects") {
+   defines = []
+   sources = skia_core_sources
++
++  # CAMOUWOLF: the CPU whose arithmetic Skia reproduces (cpu:identity).
++  sources += [ "//third_party/skia/src/core/SkCpuEstimates.cpp" ]
+   sources += skia_colorfilters_sources
+   sources += skia_effects_sources
+   sources += skia_effects_imagefilter_sources
+@@ -1074,6 +1077,19 @@
+     configs += [ ":skia_avx512_flags" ]
+     visibility = [ ":skia_opts" ]
+   }
++
++  # CAMOUWOLF: Skia's AArch64 code built against SkNeonEmu.h, for an identity
++  # whose CPU is ARM64.
++  skia_source_set("skia_opts_neonemu") {
++    sources = [
++      "//third_party/skia/src/core/SkBitmapProcState_opts_neonemu.cpp",
++      "//third_party/skia/src/core/SkBlitMask_opts_neonemu.cpp",
++      "//third_party/skia/src/core/SkBlitRow_opts_neonemu.cpp",
++      "//third_party/skia/src/core/SkSwizzler_opts_neonemu.cpp",
++      "//third_party/skia/src/opts/SkOpts_neonemu.cpp",
++    ]
++    visibility = [ ":skia_opts" ]
++  }
+ }
+ 
+ if (current_cpu == "loong64") {
+@@ -1094,7 +1110,10 @@
+   deps = [ "//base" ]
+ 
+   if (current_cpu == "x86" || current_cpu == "x64") {
+-    deps += [ ":skia_opts_ml3" ]
++    deps += [
++      ":skia_opts_ml3",
++      ":skia_opts_neonemu",
++    ]
+     if (allow_avx512) {
+       deps += [ ":skia_opts_ml4" ]
+     }
+diff --git a/content/common/skia_utils.cc b/content/common/skia_utils.cc
+--- a/content/common/skia_utils.cc
++++ b/content/common/skia_utils.cc
+@@ -4,6 +4,7 @@
+ 
+ #include "content/common/skia_utils.h"
+ 
++#include "base/camouwolf_config.h"
+ #include "base/command_line.h"
+ #include "base/strings/string_number_conversions.h"
+ #include "base/system/sys_info.h"
+@@ -14,7 +15,9 @@
+ #include "skia/ext/event_tracer_impl.h"
+ #include "skia/ext/font_utils.h"
+ #include "skia/ext/skia_memory_dump_provider.h"
++#include "third_party/opus/src/include/opus_cpu_identity.h"
+ #include "third_party/skia/include/core/SkGraphics.h"
++#include "third_party/skia/src/opts/SkCpuEstimates.h"
+ 
+ namespace content {
+ namespace {
+@@ -41,6 +44,21 @@
+ 
+   // Make sure that any switches used here are propagated to the renderer and
+   // GPU processes.
++  // CAMOUWOLF: Skia draws with the identity's CPU's arithmetic. Its tiers are
++  // chosen in SkGraphics::Init(), so it is told first.
++  const base::CamouwolfConfig& config = base::CamouwolfConfig::Get();
++  using Cpu = base::CamouwolfConfig::Cpu;
++  const Cpu cpu = config.EmulatedCpu();
++  sk_cpu_set_identity(config.GetString("cpu:identity").has_value(),
++                      cpu == Cpu::kIntel   ? SK_CPU_VENDOR_INTEL
++                      : cpu == Cpu::kAmd   ? SK_CPU_VENDOR_AMD
++                      : cpu == Cpu::kArm64 ? SK_CPU_IDENTITY_ARM64
++                                           : SK_CPU_VENDOR_HOST);
++  // CAMOUWOLF: Opus encodes and decodes with the same CPU's arithmetic, from
++  // Skia's state so the two cannot disagree. Every renderer gets here before
++  // Blink or media start, so before any Opus encoder or decoder exists.
++  opus_cpu_set_identity(sk_cpu_estimates(), sk_cpu_emulates_arm64());
++
+   const base::CommandLine& cmd = *base::CommandLine::ForCurrentProcess();
+   if (!cmd.HasSwitch(switches::kDisableSkiaRuntimeOpts)) {
+     SkGraphics::Init();
+diff --git a/third_party/skia/src/core/SkBitmapProcState_opts.cpp b/third_party/skia/src/core/SkBitmapProcState_opts.cpp
+--- a/third_party/skia/src/core/SkBitmapProcState_opts.cpp
++++ b/third_party/skia/src/core/SkBitmapProcState_opts.cpp
+@@ -5,6 +5,7 @@
+  * found in the LICENSE file.
+  */
+ 
++#include "src/opts/SkCpuEstimates.h"
+ #include "include/private/SkFeatures.h"
+ #include "src/core/SkBitmapProcState.h"
+ #include "src/core/SkCpu.h"
+@@ -22,6 +23,7 @@
+     DEFINE_DEFAULT(S32_alpha_D32_filter_DXDY);
+ 
+     void Init_BitmapProcState_ssse3();
++    void Init_BitmapProcState_neonemu();
+     void Init_BitmapProcState_lasx();
+ 
+     static bool init() {
+@@ -31,6 +33,8 @@
+         #if SK_CPU_X64_LEVEL < SK_CPU_X64_LEVEL_SSSE3
+             if (SkCpu::Supports(SkX64::SSSE3)) { Init_BitmapProcState_ssse3(); }
+         #endif
++        // CAMOUWOLF: cpu:identity arm64: Skia's AArch64 code, emulated.
++        if (sk_cpu_emulates_arm64()) { Init_BitmapProcState_neonemu(); }
+     #elif defined(SK_CPU_LOONGARCH)
+         #if SK_CPU_LSX_LEVEL < SK_CPU_LSX_LEVEL_LASX
+             if (SkCpu::Supports(SkLoongArch::ASX)) { Init_BitmapProcState_lasx(); }
+diff --git a/third_party/skia/src/core/SkBlitMask_opts.cpp b/third_party/skia/src/core/SkBlitMask_opts.cpp
+--- a/third_party/skia/src/core/SkBlitMask_opts.cpp
++++ b/third_party/skia/src/core/SkBlitMask_opts.cpp
+@@ -5,6 +5,7 @@
+  * found in the LICENSE file.
+  */
+ 
++#include "src/opts/SkCpuEstimates.h"
+ #include "include/private/SkFeatures.h"
+ #include "src/core/SkBlitMask.h"
+ #include "src/core/SkCpu.h"
+@@ -21,6 +22,7 @@
+     DEFINE_DEFAULT(blit_mask_d32_a8);
+ 
+     void Init_BlitMask_ssse3();
++    void Init_BlitMask_neonemu();
+ 
+     static bool init() {
+     #if defined(SK_ENABLE_OPTIMIZE_SIZE)
+@@ -29,6 +31,8 @@
+         #if SK_CPU_X64_LEVEL < SK_CPU_X64_LEVEL_SSSE3
+             if (SkCpu::Supports(SkX64::SSSE3)) { Init_BlitMask_ssse3(); }
+         #endif
++        // CAMOUWOLF: cpu:identity arm64: Skia's AArch64 code, emulated.
++        if (sk_cpu_emulates_arm64()) { Init_BlitMask_neonemu(); }
+     #endif
+       return true;
+     }
+diff --git a/third_party/skia/src/core/SkBlitRow_D32.cpp b/third_party/skia/src/core/SkBlitRow_D32.cpp
+--- a/third_party/skia/src/core/SkBlitRow_D32.cpp
++++ b/third_party/skia/src/core/SkBlitRow_D32.cpp
+@@ -12,6 +12,7 @@
+ #include "src/core/SkColorData.h"
+ #include "src/core/SkColorPriv.h"
+ #include "src/core/SkMemset.h"
++#include "src/opts/SkCpuEstimates.h"
+ 
+ #include <array>
+ #include <cstring>
+@@ -156,128 +157,7 @@
+ 
+ #elif defined(SK_ARM_HAS_NEON)
+     #include <arm_neon.h>
+-
+-    static void blit_row_s32_blend(SkPMColor* dst, const SkPMColor* src, int count, U8CPU alpha) {
+-        SkASSERT(alpha <= 255);
+-
+-        uint16_t src_scale = SkAlpha255To256(alpha);
+-        uint16_t dst_scale = 256 - src_scale;
+-
+-        while (count >= 2) {
+-            uint8x8_t vsrc, vdst, vres;
+-            uint16x8_t vsrc_wide, vdst_wide;
+-
+-            vsrc = vreinterpret_u8_u32(vld1_u32(src));
+-            vdst = vreinterpret_u8_u32(vld1_u32(dst));
+-
+-            vsrc_wide = vmovl_u8(vsrc);
+-            vsrc_wide = vmulq_u16(vsrc_wide, vdupq_n_u16(src_scale));
+-
+-            vdst_wide = vmull_u8(vdst, vdup_n_u8(dst_scale));
+-
+-            vdst_wide += vsrc_wide;
+-            vres = vshrn_n_u16(vdst_wide, 8);
+-
+-            vst1_u32(dst, vreinterpret_u32_u8(vres));
+-
+-            src += 2;
+-            dst += 2;
+-            count -= 2;
+-        }
+-
+-        if (count == 1) {
+-            uint8x8_t vsrc = vdup_n_u8(0), vdst = vdup_n_u8(0), vres;
+-            uint16x8_t vsrc_wide, vdst_wide;
+-
+-            vsrc = vreinterpret_u8_u32(vld1_lane_u32(src, vreinterpret_u32_u8(vsrc), 0));
+-            vdst = vreinterpret_u8_u32(vld1_lane_u32(dst, vreinterpret_u32_u8(vdst), 0));
+-
+-            vsrc_wide = vmovl_u8(vsrc);
+-            vsrc_wide = vmulq_u16(vsrc_wide, vdupq_n_u16(src_scale));
+-            vdst_wide = vmull_u8(vdst, vdup_n_u8(dst_scale));
+-            vdst_wide += vsrc_wide;
+-            vres = vshrn_n_u16(vdst_wide, 8);
+-
+-            vst1_lane_u32(dst, vreinterpret_u32_u8(vres), 0);
+-        }
+-    }
+-
+-    static void blit_row_s32a_blend(SkPMColor* dst, const SkPMColor* src, int count, U8CPU alpha) {
+-        SkASSERT(alpha < 255);
+-
+-        unsigned alpha256 = SkAlpha255To256(alpha);
+-
+-        if (count & 1) {
+-            uint8x8_t vsrc = vdup_n_u8(0), vdst = vdup_n_u8(0), vres;
+-            uint16x8_t vdst_wide, vsrc_wide;
+-            unsigned dst_scale;
+-
+-            vsrc = vreinterpret_u8_u32(vld1_lane_u32(src, vreinterpret_u32_u8(vsrc), 0));
+-            vdst = vreinterpret_u8_u32(vld1_lane_u32(dst, vreinterpret_u32_u8(vdst), 0));
+-
+-            dst_scale = vget_lane_u8(vsrc, 3);
+-            dst_scale = SkAlphaMulInv256(dst_scale, alpha256);
+-
+-            vsrc_wide = vmovl_u8(vsrc);
+-            vsrc_wide = vmulq_n_u16(vsrc_wide, alpha256);
+-
+-            vdst_wide = vmovl_u8(vdst);
+-            vdst_wide = vmulq_n_u16(vdst_wide, dst_scale);
+-
+-            vdst_wide += vsrc_wide;
+-            vres = vshrn_n_u16(vdst_wide, 8);
+-
+-            vst1_lane_u32(dst, vreinterpret_u32_u8(vres), 0);
+-            dst++;
+-            src++;
+-            count--;
+-        }
+-
+-        uint8x8_t alpha_mask;
+-        static const uint8_t alpha_mask_setup[] = {3,3,3,3,7,7,7,7};
+-        alpha_mask = vld1_u8(alpha_mask_setup);
+-
+-        while (count) {
+-
+-            uint8x8_t vsrc, vdst, vres, vsrc_alphas;
+-            uint16x8_t vdst_wide, vsrc_wide, vsrc_scale, vdst_scale;
+-
+-            __builtin_prefetch(src+32);
+-            __builtin_prefetch(dst+32);
+-
+-            vsrc = vreinterpret_u8_u32(vld1_u32(src));
+-            vdst = vreinterpret_u8_u32(vld1_u32(dst));
+-
+-            vsrc_scale = vdupq_n_u16(alpha256);
+-
+-            vsrc_alphas = vtbl1_u8(vsrc, alpha_mask);
+-            vdst_scale = vmovl_u8(vsrc_alphas);
+-            // Calculate SkAlphaMulInv256(vdst_scale, vsrc_scale).
+-            // A 16-bit lane would overflow if we used 0xFFFF here,
+-            // so use an approximation with 0xFF00 that is off by 1,
+-            // and add back 1 after to get the correct value.
+-            // This is valid if alpha256 <= 255.
+-            vdst_scale = vmlsq_u16(vdupq_n_u16(0xFF00), vdst_scale, vsrc_scale);
+-            vdst_scale = vsraq_n_u16(vdst_scale, vdst_scale, 8);
+-            vdst_scale = vsraq_n_u16(vdupq_n_u16(1), vdst_scale, 8);
+-
+-            vsrc_wide = vmovl_u8(vsrc);
+-            vsrc_wide *= vsrc_scale;
+-
+-            vdst_wide = vmovl_u8(vdst);
+-            vdst_wide *= vdst_scale;
+-
+-            vdst_wide += vsrc_wide;
+-            vres = vshrn_n_u16(vdst_wide, 8);
+-
+-            vst1_u32(dst, vreinterpret_u32_u8(vres));
+-
+-            src += 2;
+-            dst += 2;
+-            count -= 2;
+-        }
+-    }
+-
++    #include "src/core/SkBlitRow_D32_neon.inc"
+ #elif SK_CPU_LSX_LEVEL >= SK_CPU_LSX_LEVEL_LASX
+     #include <lasxintrin.h>
+ 
+@@ -538,6 +418,14 @@
+     }
+ #endif
+ 
++#if defined(SK_CPU_X86) && !defined(SK_ENABLE_OPTIMIZE_SIZE)
++namespace SkOpts {
++    // SkBlitRow_opts_neonemu.cpp
++    void neonemu_blit_row_s32_blend(SkPMColor*, const SkPMColor*, int, U8CPU);
++    void neonemu_blit_row_s32a_blend(SkPMColor*, const SkPMColor*, int, U8CPU);
++}  // namespace SkOpts
++#endif
++
+ SkBlitRow::Proc32 SkBlitRow::Factory32(unsigned flags) {
+     static constexpr auto kProcs = std::to_array<SkBlitRow::Proc32>({
+         blit_row_s32_opaque,
+@@ -549,6 +437,14 @@
+     SkASSERT(flags < std::size(kProcs));
+     flags &= std::size(kProcs) - 1;  // just to be safe
+ 
++#if defined(SK_CPU_X86) && !defined(SK_ENABLE_OPTIMIZE_SIZE)
++    // CAMOUWOLF: cpu:identity arm64: the NEON blends, emulated.
++    if (sk_cpu_emulates_arm64() && (flags == 1 || flags == 3)) {
++        return flags == 1 ? SkOpts::neonemu_blit_row_s32_blend
++                          : SkOpts::neonemu_blit_row_s32a_blend;
++    }
++#endif
++
+     return flags == Flags32::kSrcPixelAlpha_Flag32 ? SkOpts::blit_row_s32a_opaque : kProcs[flags];
+ }
+ 
+diff --git a/third_party/skia/src/core/SkBlitRow_opts.cpp b/third_party/skia/src/core/SkBlitRow_opts.cpp
+--- a/third_party/skia/src/core/SkBlitRow_opts.cpp
++++ b/third_party/skia/src/core/SkBlitRow_opts.cpp
+@@ -5,6 +5,7 @@
+  * found in the LICENSE file.
+  */
+ 
++#include "src/opts/SkCpuEstimates.h"
+ #include "include/private/SkFeatures.h"
+ #include "src/core/SkBlitRow.h"
+ #include "src/core/SkCpu.h"
+@@ -22,6 +23,7 @@
+     DEFINE_DEFAULT(blit_row_s32a_opaque);
+ 
+     void Init_BlitRow_ml3();
++    void Init_BlitRow_neonemu();
+     void Init_BlitRow_lasx();
+ 
+     static bool init() {
+@@ -31,6 +33,8 @@
+         #if SK_CPU_X64_LEVEL < SK_CPU_X64_LEVEL_AVX2
+             if (SkCpu::Supports(SkX64::ML3)) { Init_BlitRow_ml3(); }
+         #endif
++        // CAMOUWOLF: cpu:identity arm64: Skia's AArch64 code, emulated.
++        if (sk_cpu_emulates_arm64()) { Init_BlitRow_neonemu(); }
+     #elif defined(SK_CPU_LOONGARCH)
+         #if SK_CPU_LSX_LEVEL < SK_CPU_LSX_LEVEL_LASX
+             if (SkCpu::Supports(SkLoongArch::ASX)) { Init_BlitRow_lasx(); }
+diff --git a/third_party/skia/src/core/SkConvertPixels.cpp b/third_party/skia/src/core/SkConvertPixels.cpp
+--- a/third_party/skia/src/core/SkConvertPixels.cpp
++++ b/third_party/skia/src/core/SkConvertPixels.cpp
+@@ -4,6 +4,7 @@
+  * Use of this source code is governed by a BSD-style license that can be
+  * found in the LICENSE file.
+  */
++#include "src/opts/SkCpuEstimates.h"
+ #include "src/core/SkConvertPixels.h"
+ 
+ #include "include/core/SkColorType.h"
+@@ -55,7 +56,8 @@
+         steps.fFlags.linearize         ||
+         steps.fFlags.gamut_transform   ||
+ #if !defined(SK_ARM_HAS_NEON)
+-        steps.fFlags.unpremul          ||
++        // ARM unpremultiplies in its swizzler, and so does its emulation.
++        (steps.fFlags.unpremul && !sk_cpu_emulates_arm64()) ||
+ #endif
+         steps.fFlags.encode) {
+         return false;
+diff --git a/third_party/skia/src/core/SkOpts.cpp b/third_party/skia/src/core/SkOpts.cpp
+--- a/third_party/skia/src/core/SkOpts.cpp
++++ b/third_party/skia/src/core/SkOpts.cpp
+@@ -4,6 +4,7 @@
+  * Use of this source code is governed by a BSD-style license that can be
+  * found in the LICENSE file.
+  */
++#include "src/opts/SkCpuEstimates.h"
+ #include "src/core/SkOpts.h"
+ 
+ #include "include/private/SkFeatures.h"
+@@ -45,6 +46,7 @@
+ 
+     // Each Init_foo() is defined in src/opts/SkOpts_foo.cpp.
+     void Init_ml3();
++    void Init_neonemu();
+     void Init_ml4();
+     void Init_lasx();
+ 
+@@ -59,10 +61,13 @@
+         #if (SK_CPU_X64_LEVEL < SK_CPU_X64_LEVEL_ML4)
+             // TODO(kjlubick): Remove the SK_ENABLE_AVX512_OPTS flag in favor of the disable one
+             #if defined(SK_ENABLE_AVX512_OPTS) && !defined(SK_DISABLE_AVX512_OPTS)
+-                if (SkCpu::Supports(SkX64::ML4)) { Init_ml4(); }
++                // CAMOUWOLF: an identity's CPU is drawn as an AVX2 machine.
++                if (SkCpu::Supports(SkX64::ML4) && !sk_cpu_pinned()) { Init_ml4(); }
+             #endif
+         #endif
+ 
++        // CAMOUWOLF: cpu:identity arm64: Skia's AArch64 code, emulated.
++        if (sk_cpu_emulates_arm64()) { Init_neonemu(); }
+     #elif defined(SK_CPU_LOONGARCH)
+         #if SK_CPU_LSX_LEVEL < SK_CPU_LSX_LEVEL_LASX
+             if (SkCpu::Supports(SkLoongArch::ASX)) { Init_lasx(); }
+diff --git a/third_party/skia/src/core/SkSwizzler_opts.cpp b/third_party/skia/src/core/SkSwizzler_opts.cpp
+--- a/third_party/skia/src/core/SkSwizzler_opts.cpp
++++ b/third_party/skia/src/core/SkSwizzler_opts.cpp
+@@ -5,6 +5,7 @@
+  * found in the LICENSE file.
+  */
+ 
++#include "src/opts/SkCpuEstimates.h"
+ #include "include/private/SkFeatures.h"
+ #include "src/core/SkCpu.h"
+ #include "src/core/SkOptsTargets.h"
+@@ -32,6 +33,7 @@
+     DEFINE_DEFAULT(inverted_CMYK_to_BGR1);
+ 
+     void Init_Swizzler_ssse3();
++    void Init_Swizzler_neonemu();
+     void Init_Swizzler_ml3();
+     void Init_Swizzler_lasx();
+ 
+@@ -46,6 +48,8 @@
+         #if SK_CPU_X64_LEVEL < SK_CPU_X64_LEVEL_AVX2
+             if (SkCpu::Supports(SkX64::ML3)) { Init_Swizzler_ml3(); }
+         #endif
++        // CAMOUWOLF: cpu:identity arm64: Skia's AArch64 code, emulated.
++        if (sk_cpu_emulates_arm64()) { Init_Swizzler_neonemu(); }
+     #elif defined(SK_CPU_LOONGARCH)
+         #if SK_CPU_LSX_LEVEL < SK_CPU_LSX_LEVEL_LASX
+             if (SkCpu::Supports(SkLoongArch::ASX)) { Init_Swizzler_lasx(); }
+diff --git a/third_party/skia/src/opts/SkBitmapProcState_opts.h b/third_party/skia/src/opts/SkBitmapProcState_opts.h
+--- a/third_party/skia/src/opts/SkBitmapProcState_opts.h
++++ b/third_party/skia/src/opts/SkBitmapProcState_opts.h
+@@ -24,7 +24,11 @@
+ #if SK_CPU_X64_LEVEL >= SK_CPU_X64_LEVEL_SSE2
+     #include <immintrin.h>
+ #elif defined(SK_ARM_HAS_NEON)
+-    #include <arm_neon.h>
++    #if defined(SK_NEON_EMU)
++        #include "src/opts/SkNeonEmu.h"
++    #else
++        #include <arm_neon.h>
++    #endif
+ #elif SK_CPU_LSX_LEVEL >= SK_CPU_LSX_LEVEL_LASX
+     #include <lasxintrin.h>
+ #elif SK_CPU_LSX_LEVEL >= SK_CPU_LSX_LEVEL_LSX
+diff --git a/third_party/skia/src/opts/SkBlitMask_opts.h b/third_party/skia/src/opts/SkBlitMask_opts.h
+--- a/third_party/skia/src/opts/SkBlitMask_opts.h
++++ b/third_party/skia/src/opts/SkBlitMask_opts.h
+@@ -12,7 +12,11 @@
+ #include "src/core/Sk4px.h"
+ 
+ #if defined(SK_ARM_HAS_NEON)
+-    #include <arm_neon.h>
++    #if defined(SK_NEON_EMU)
++        #include "src/opts/SkNeonEmu.h"
++    #else
++        #include <arm_neon.h>
++    #endif
+ #endif
+ 
+ namespace SK_OPTS_NS {
+diff --git a/third_party/skia/src/opts/SkBlitRow_opts.h b/third_party/skia/src/opts/SkBlitRow_opts.h
+--- a/third_party/skia/src/opts/SkBlitRow_opts.h
++++ b/third_party/skia/src/opts/SkBlitRow_opts.h
+@@ -89,7 +89,11 @@
+ #endif
+ 
+ #if defined(SK_ARM_HAS_NEON)
+-    #include <arm_neon.h>
++    #if defined(SK_NEON_EMU)
++        #include "src/opts/SkNeonEmu.h"
++    #else
++        #include <arm_neon.h>
++    #endif
+ 
+     // SkMulDiv255Round() applied to each lane.
+     static inline uint8x8_t SkMulDiv255Round_neon8(uint8x8_t x, uint8x8_t y) {
+diff --git a/third_party/skia/src/opts/SkRasterPipeline_opts.h b/third_party/skia/src/opts/SkRasterPipeline_opts.h
+--- a/third_party/skia/src/opts/SkRasterPipeline_opts.h
++++ b/third_party/skia/src/opts/SkRasterPipeline_opts.h
+@@ -102,7 +102,11 @@
+ #if defined(SKRP_CPU_SCALAR)
+     #include <math.h>
+ #elif defined(SKRP_CPU_NEON)
+-    #include <arm_neon.h>
++    #if defined(SK_NEON_EMU)
++        #include "src/opts/SkNeonEmu.h"
++    #else
++        #include <arm_neon.h>
++    #endif
+ #elif defined(SKRP_CPU_LASX)
+     #include <lasxintrin.h>
+     #include <lsxintrin.h>
+@@ -110,6 +114,7 @@
+     #include <lsxintrin.h>
+ #else
+     #include <immintrin.h>
++    #include "src/opts/SkCpuEstimates.h"
+ #endif
+ 
+ // Notes:
+@@ -709,8 +714,21 @@
+     SI I32 abs_  (I32 v)     { return (I32)_mm256_abs_epi32((__m256i)v); }
+     SI F   floor_(F v)       { return _mm256_floor_ps(v);    }
+     SI F   ceil_(F v)        { return _mm256_ceil_ps(v);     }
+-    SI F   rcp_approx(F v)   { return _mm256_rcp_ps  (v);    }  // use rcp_fast instead
+-    SI F   rsqrt_approx(F v) { return _mm256_rsqrt_ps(v);    }
++    // CAMOUWOLF: another vendor's estimates, when cpu:identity names one (SkCpuEstimates.h).
++    template <uint32_t (*Op)(const uint32_t*, uint32_t)>
++    SI F estimate_as(const uint32_t* table, F v) {
++        U32 bits = sk_bit_cast<U32>(v);
++        for (int i = 0; i < 8; i++) { bits[i] = Op(table, bits[i]); }
++        return sk_bit_cast<F>(bits);
++    }
++    SI F   rcp_approx(F v)   {  // use rcp_fast instead
++        if (const uint32_t* table = sk_cpu_estimates()) { return estimate_as<sk_cpu_estimate_rcp>(table, v); }
++        return _mm256_rcp_ps  (v);
++    }
++    SI F   rsqrt_approx(F v) {
++        if (const uint32_t* table = sk_cpu_estimates()) { return estimate_as<sk_cpu_estimate_rsqrt>(table, v); }
++        return _mm256_rsqrt_ps(v);
++    }
+     SI F   sqrt_ (F v)       { return _mm256_sqrt_ps (v);    }
+     SI F   rcp_precise (F v) {
+         F e = rcp_approx(v);
+@@ -973,9 +991,22 @@
+ #else
+     SI I32 abs_(I32 v)         { return max(v, -v); }
+ #endif
+-    SI F   rcp_approx(F v)     { return _mm_rcp_ps  (v);    }  // use rcp_fast instead
++    // CAMOUWOLF: another vendor's estimates, when cpu:identity names one (SkCpuEstimates.h).
++    template <uint32_t (*Op)(const uint32_t*, uint32_t)>
++    SI F estimate_as(const uint32_t* table, F v) {
++        U32 bits = sk_bit_cast<U32>(v);
++        for (int i = 0; i < 4; i++) { bits[i] = Op(table, bits[i]); }
++        return sk_bit_cast<F>(bits);
++    }
++    SI F   rcp_approx(F v)     {  // use rcp_fast instead
++        if (const uint32_t* table = sk_cpu_estimates()) { return estimate_as<sk_cpu_estimate_rcp>(table, v); }
++        return _mm_rcp_ps  (v);
++    }
+     SI F   rcp_precise (F v)   { F e = rcp_approx(v); return e * (2.0f - v * e); }
+-    SI F   rsqrt_approx(F v)   { return _mm_rsqrt_ps(v);    }
++    SI F   rsqrt_approx(F v)   {
++        if (const uint32_t* table = sk_cpu_estimates()) { return estimate_as<sk_cpu_estimate_rsqrt>(table, v); }
++        return _mm_rsqrt_ps(v);
++    }
+     SI F    sqrt_(F v)         { return _mm_sqrt_ps (v);    }
+ 
+     // The compiler often scalarizes integer division into scalar idiv loops because
+diff --git a/third_party/skia/src/opts/SkSwizzler_opts.inc b/third_party/skia/src/opts/SkSwizzler_opts.inc
+--- a/third_party/skia/src/opts/SkSwizzler_opts.inc
++++ b/third_party/skia/src/opts/SkSwizzler_opts.inc
+@@ -17,7 +17,11 @@
+ #if SK_CPU_X64_LEVEL >= SK_CPU_X64_LEVEL_SSE1
+     #include <immintrin.h>
+ #elif defined(SK_ARM_HAS_NEON)
+-    #include <arm_neon.h>
++    #if defined(SK_NEON_EMU)
++        #include "src/opts/SkNeonEmu.h"
++    #else
++        #include <arm_neon.h>
++    #endif
+ #elif SK_CPU_LSX_LEVEL >= SK_CPU_LSX_LEVEL_LASX
+     #include <lasxintrin.h>
+ #elif SK_CPU_LSX_LEVEL >= SK_CPU_LSX_LEVEL_LSX

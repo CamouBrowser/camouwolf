@@ -22,6 +22,6 @@ class CONSTRAINTS:
     # browser change would break released libraries; raise MIN_INTERFACE when
     # this library can no longer drive older browsers. Releases from before
     # manifests carried the field are interface 1.
-    INTERFACE = 1
+    INTERFACE = 2
     MIN_INTERFACE = 1
 

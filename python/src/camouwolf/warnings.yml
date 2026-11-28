@@ -67,10 +67,16 @@ chrome_version: >-
     the user agent and client hints then name a version whose features the binary does not have.
     Install the Camouwolf release built from that milestone instead.
 
+x86_identity_on_arm: >-
+    The identity claims an x86 CPU, but this host is ARM, and the browser reproduces another
+    CPU's arithmetic only on an x86 host. Canvas, audio and float results will be an ARM
+    machine's under an x86 identity. Launch on an x86 host for an x86 identity.
+
 canvas_noise: >-
-    canvas_noise perturbs canvas readback with a per-identity seed. Stock Chrome returns the
-    pixels it drew, so a page that draws the same canvas twice, or compares it with a known
-    rendering, can tell. It is off by default.
+    The identity's canvas is not this host's (another OS, or a GPU this host does not render
+    on), so canvas readback is farbled as Brave does it: per site, stable within a launch. A
+    page that knows the claimed device's exact rendering can still tell it is not that device.
+    Launch on the identity's OS with the host's GPU to draw unfarbled.
 
 per_context_identity: >-
     LEAK: {problem}. The browser has one identity per process: workers, request headers and the

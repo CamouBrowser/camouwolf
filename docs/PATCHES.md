@@ -63,18 +63,12 @@ fuzzy hunk in the wrong place and report success.
 
 ### 0001 — config plumbing
 
-Adds `base/camouwolf_config.{h,cc}` and `base/camouwolf_farble.h` to `base/BUILD.gn`.
+Adds `base/camouwolf_config.{h,cc}` to `base/BUILD.gn`.
 
 `CamouwolfConfig` reads `CAMOU_CONFIG_1..N` from the environment once per process,
 under a `NoDestructor` + `call_once`, and exposes typed getters. Every Chromium
 process inherits the environment at spawn, so browser, renderer, GPU and utility
 processes reconstruct the same identity with no IPC and no mojo plumbing.
-
-`camouwolf_farble.h` holds the seeded perturbation shared by canvas 2D, canvas
-encode, WebGL readback and audio. One helper rather than four, because a
-detector that hashes two of those surfaces and compares them catches
-independent perturbation — the two hashes stop agreeing the way they do on real
-hardware.
 
 ### 0002 — navigator identity
 
@@ -277,41 +271,13 @@ a key could only make it wrong. (Hook, if a bump ever changes that:
 constructor.) Camoufox has no
 `webGpu:*` keys to mirror; these names are Camouwolf's own.
 
-### 0009 — canvas farbling
+### Not patched: canvas, text and audio readback
 
-`base_rendering_context_2d.cc` (getImageData) and `image_data_buffer.cc`
-(toDataURL/toBlob).
-
-Both, because the classic canvas fingerprint hashes `toDataURL()` output —
-patching only `getImageData` leaves it untouched *and* makes the two disagree,
-which is a stronger signal than either hash alone.
-
-The perturbation is **deterministic**: two reads of an unchanged canvas return
-the same bytes. Per-read randomness is the loudest possible signal — a page that
-gets two different hashes has proved it is being farbled. Real hardware is
-stable across reads; so is this. It is skipped on the zero-initialized
-readback-failure path, since farbling a buffer that was never filled turns a
-transparent canvas into noise.
-
-### 0010 — text metrics
-
-`text_metrics.cc`. Quantizes `measureText().width` to the 26.6 fixed-point grid.
-
-The width's low mantissa bits encode the exact face, version, hinting settings
-and rasterizer — far more entropy than the font list. 1/64 px is the grid both
-FreeType and DirectWrite use internally, so every value returned is one the
-claimed platform could genuinely produce. Rounding to whole pixels (the naive
-fix) produces values no real browser reports.
-
-### 0011 — audio
-
-`audio_buffer.{h,cc}` and `realtime_analyser.cc`. Covers both the
-OfflineAudioContext fingerprint (render → `getChannelData` → sum) and the
-realtime AnalyserNode one.
-
-`getChannelData` perturbs **once** and caches the fact (`camouwolf_farbled_`),
-because the returned array is the live buffer: re-perturbing per call would make
-a second read differ from the first.
+Canvas and WebGL pixels, `measureText()` widths and the Web Audio render are
+what Chromium computes on the host. Stock Chrome perturbs none of them, so any
+noise is a tell a page can find by drawing twice or in two APIs; the noise
+patches that used to be here (0009, 0010, 0011) were removed
+(`no-readback-noise` in `ci/tribal-rules.yml`).
 
 ### 0012 — speech voices
 
@@ -800,8 +766,8 @@ window and one display), `navigator.hardwareConcurrency` (one process's
 cores), and the browser's behaviour keys (`network:ipv4Only`,
 `allowAddonNewtab`, `instantAnimations`, `showcursor`), which the launchers
 copy into the context's identity because its renderers read that in place of
-the launch's. SOCKS5 credentials are not copied. The launchers draw the rest afresh: GPU, fonts, voices, client hints,
-canvas and audio seeds. An unproxied context leaves from the browser's address,
+the launch's. SOCKS5 credentials are not copied. The launchers draw the rest afresh: GPU, fonts, voices and client
+hints. An unproxied context leaves from the browser's address,
 so it keeps the launch's timezone, position, WebRTC address and languages; a
 proxied one is placed at the proxy's exit, looked up through the proxy.
 
@@ -909,8 +875,7 @@ see "Not yet patched".
 `getImageData` asks for unpremultiplied pixels, and Ganesh unpremultiplied them
 in a shader, which rounds low-alpha pixels differently from the CPU. So read 1
 of a canvas with antialiased text differed from read 2, on Linux GL, Vulkan and
-SwiftShader backends alike, and on no real Windows machine; 0009's farbling
-perturbs both reads with one seed and cannot hide it. The backing now reads the
+SwiftShader backends alike, and on no real Windows machine. The backing now reads the
 premultiplied pixels back and unpremultiplies them on the CPU, as the later
 reads do. `--disable-accelerated-2d-canvas` (the `virtual-gpu` launch) never
 had the problem. Regression test: `tests/native/test_canvas_readback.py`.
@@ -998,3 +963,69 @@ session an automation driver attaches: a 350 ms ripple at each mouse or pointer
 press, painted in the frame overlay a page cannot read. It shows where clicks
 land, not where the pointer rests: Chromium draws no pointer in a page, and a
 hover-only position would need a page-visible element. Off by default.
+
+### 0047 — canvas farbling (`canvas:farblingToken`)
+
+`camouwolf_farbling.{h,cc}` in `core/canvas_interventions/`, called from
+`getImageData` (`base_rendering_context_2d.cc`), `toDataURL`
+(`html_canvas_element.cc`) and `toBlob` / `convertToBlob`
+(`canvas_async_blob_creator.cc`). Brave's balanced-mode farbling, ported as
+Brave has it: the pixels' HMAC-SHA256 under the site's key seeds an LFSR that
+flips the low bit of 512 channel values, so the same pixels read the same
+within a site and launch, and differ between sites and launches. WebGL
+`readPixels` is left alone, as Brave leaves it; a WebGL canvas's `toDataURL` is
+farbled.
+
+The key is the first 16 bytes of HMAC-SHA256(launch token, the top-level
+site), with an opaque storage key's nonce added, so a cross-site iframe or
+worker reads its top-level page's key. Pages that are not http or https, and
+launches without the key, are not farbled.
+
+Brave farbles the encoder's buffer in place. For a software canvas that buffer
+can be the canvas's own pixels, which would make later reads drift and the
+noise stack up, so `toDataURL` and `toBlob` farble a copy
+(`CamouwolfPerturbedCopy`, `ImageDataBuffer::ReplacePixels`).
+
+The launcher sets the key only when the identity's canvas is not the host's:
+another OS, or a GPU the host does not render on (`no-readback-noise` in
+`ci/tribal-rules.yml`). On the host's OS it claims the host's GPU where fpgen
+recorded it, so the canvas is the claimed machine's and stays unfarbled.
+
+### 0048 — another CPU's arithmetic in Skia and Opus (`cpu:identity`)
+
+`skia_utils.cc` and Skia's `opts` tiers, with the whole files in
+`browser/additions/camouwolfskia/`; ported from Camoufox. A software canvas
+reads differently by CPU: Intel's and AMD's `RCPPS`/`RSQRTPS` estimates differ
+in their low bits, and an ARM machine runs Skia's NEON code, which rounds its
+blends and unpremultiplies differently. `cpu:identity` (`intel`, `amd` or
+`arm64`) names the identity's CPU, and `InitializeSkia` tells Skia which one to
+reproduce before `SkGraphics::Init()` picks the tiers:
+
+- another x86 vendor: the AVX2 and SSE estimates are read from that vendor's
+  recorded tables (`SkCpuEstimateTables.h`, generated by
+  `scripts/gen-cpu-estimate-tables.py` from `tests/cpu-estimates/recorded`);
+- `arm64` on an x86 host: the `_neonemu` builds of Skia's AArch64 code, with
+  `SkNeonEmu.h` standing in for `arm_neon.h`;
+- the host's own vendor: the host's instructions.
+
+When the key is present the AVX-512 tier is never taken, so the output follows
+the claim and not the host's generation (`cpu-identity-draws-avx2` in
+`ci/tribal-rules.yml`). Without the key the host's tiers run unchanged. An ARM
+host reproduces nothing; it can claim only `arm64`.
+
+Opus (`browser/additions/camouwolfopus/`) follows Skia's state, set beside it
+in `InitializeSkia`, so the two cannot disagree. Every Opus user that handles
+page content (WebCodecs, MediaRecorder, WebRTC, media playback) runs in the
+renderer, which gets there first. The encoder's PVQ search (`vq_sse2.c`) reads
+its `RCPPS`/`RSQRTPS` from Skia's table. For `arm64`, a new arch level (5)
+runs the kernels Chromium's arm64 build runs: NEON `inner_prod`,
+`dual_inner_prod` and `pitch_xcorr` (`celt_neonemu.c`, with fused
+multiply-adds) and plain C for the rest. Camoufox's MDCT, deemphasis and comb
+filter emulation is not ported, because it reproduced Firefox's arm64 assembly
+and Chromium's arm64 build has none. In arm64 mode, across 76 encode and decode
+settings, the x86 output equals Chromium's arm64 Opus on an Apple Silicon Mac
+byte for byte.
+
+`python3 tests/cpu-estimates/check.py` checks the tables: both vendors' hashes
+over all 2^32 inputs against the recorded CPUs, and the host's own vendor bit
+for bit against its native instructions.

@@ -183,3 +183,46 @@ rules:
     required:
       paths: [ci/targets.py]
       pattern: 'Target\("linux", "x86_64", True, ""\),\s*Target\("linux", "arm64", True, ""\),\s*Target\("windows", "x86_64", True, ""\),\s*Target\("windows", "i686", True, ""\),\s*Target\("macos", "x86_64", True, ""\),\s*Target\("macos", "arm64", True, ""\),'
+
+  - id: cpu-identity-draws-avx2
+    decision: >-
+      A launch whose identity names a CPU (cpu:identity) never takes Skia's
+      AVX-512 tier; Skia runs the AVX2 tier with that vendor's estimates, or
+      its AArch64 code for arm64 (0048). Without the key the host's tiers run.
+    why: >-
+      Chromium 158 Skia uses AVX-512's RCP14/RSQRT14 on AMD and on Intel with
+      VBMI2, so the same claim drawn on a Zen 4 and on an older host would
+      read two ways, and the tables recorded for an AVX2 machine would not
+      apply. Every vendor's AVX2 machines are real and common; the AVX-512 tier
+      runs only on some generations (AMD Zen 4 and later, Intel with VBMI2),
+      which nothing in the identity names.
+    required:
+      paths: [browser/patches/0048-cpu-arithmetic.patch]
+      pattern: 'SkCpu::Supports\(SkX64::ML4\) && !sk_cpu_pinned\(\)'
+
+  - id: no-readback-noise
+    decision: >-
+      Audio, WebGL readPixels and text metrics are what Chromium computes, and
+      so is canvas readback on the identity's own OS and GPU. Canvas readback
+      is farbled, as Brave farbles it (0047), only when the identity's canvas
+      is not the host's: another OS, or a GPU the host does not render on. The
+      launcher decides that (canvas_noise left unset); there is no seed, no
+      audio noise and no text-width rounding.
+    why: >-
+      Stock Chrome perturbs none of them, so noise is a tell: a page that draws
+      the same thing twice, or in two APIs, and compares can see it, and a
+      value no real machine produces is a fingerprint. Measured, it hid nothing
+      either: the Linux canvas first-read difference passed through it (fixed
+      by 0037 instead), and the audio residue is libm drift, a 0018 problem
+      (docs/WINDOWS-DIVERGENCE.md 2.1, 2.8). Off the host's OS or GPU the
+      unfarbled canvas is the host's hash under another machine's name, which
+      is worse; Camoufox farbles exactly then, and Brave's per-site, per-launch
+      farbling is what a real browser ships, stable within a page.
+    forbidden:
+      paths:
+        - browser/patches/*.patch
+        - browser/additions/**/*
+        - browser/settings/properties.json
+        - python/src/**/*.py
+        - typescript/src/**/*.ts
+      pattern: '(?i)canvas:seed|randomizeReadback|randomizeSamples|quantizeTextMetrics|audio_?noise'
